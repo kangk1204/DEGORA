@@ -1,0 +1,5 @@
+Created before any TNF-alpha DEGORA result for the iter-10 TNF/NF-kB lane.
+Primary source: MSigDB HALLMARK_TNFA_SIGNALING_VIA_NFKB, described as genes regulated by NF-kB in response to TNF (GeneID=7124): https://www.gsea-msigdb.org/gsea/msigdb/cards/HALLMARK_TNFA_SIGNALING_VIA_NFKB.html
+Supporting publication for Hallmark collection: Liberzon et al. 2015, Cell Systems, PMID 26771021; public PMC page https://pmc.ncbi.nlm.nih.gov/articles/PMC4707969/ reports TNFA_SIGNALING_VIA_NFKB as a 200-gene hallmark.
+Panel policy: compact predeclared validation panel, not tuned against DEGORA outputs; do not edit after first TNF result except via protocol-deviation note and full rerun.
+Command: python inline writer run by OMX worker-1 on 2026-05-25.

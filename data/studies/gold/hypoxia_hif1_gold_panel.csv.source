@@ -1,0 +1,1 @@
+Created from the pre-existing locked `outputs/code/degora/gold.py::HIF1A_UP_TARGETS` panel before the refreshed hypoxia/HIF1 benchmark scoring run. External biological basis: MSigDB HALLMARK_HYPOXIA describes genes up-regulated in response to low oxygen, and the MSigDB hallmark publication labels HYPOXIA as a response-to-hypoxia/HIF1A-target hallmark.

@@ -1,0 +1,9 @@
+command: python - <<'PY'  # generated feasibility-only domain dossier; no DEGORA/baseline/recall/rank-plane execution
+inputs:
+  - .omx/plans/prd-publication-evidence-upgrade-20260525T111156Z.md
+  - .omx/plans/test-spec-publication-evidence-upgrade-20260525T111156Z.md
+  - NCBI GEO/GDS ESearch/ESummary metadata counts and top accession samples, accessed 2026-05-25 UTC
+outputs:
+  - data/studies/curation/iter11_domain_feasibility_dossier.csv
+sha256: 112f89d4ac7aec389e6b0da2d8635c4710ea3f0e9bf4d761e11087e561f8598a
+notes: Feasibility-only dossier. Candidate domains were ranked by likely table availability, likely independent units, direct perturbation clarity, and pre-lockable gold biology only. No scoring, baselines, recall, rank-plane, target recovery, catalog activation, or CONTEXT amendment was performed.

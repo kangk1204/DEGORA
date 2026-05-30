@@ -1,0 +1,36 @@
+{
+  "artifact_path": "data/studies/indisulam_cross_platform_catalog.csv",
+  "artifact_sha256": "0f74b9fa59c08246be256f77c4b65c93ca231e55d200ac4366d21285140a4581",
+  "artifact_size_bytes": 3139,
+  "command": "PYTHONPATH=outputs/code python outputs/code/scripts/write_indisulam_microarray_sensitivity.py --series-matrix data/deg/raw/microarray/GSE93829_series_matrix.txt.gz --platform data/deg/raw/microarray/GPL17077_platform.txt --base-catalog data/studies/indisulam_derived_catalog.csv --output-catalog data/studies/indisulam_cross_platform_catalog.csv --raw-dir data/deg/raw/microarray --output-dir outputs/results/indisulam-microarray",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "data/studies/indisulam_derived_catalog.csv",
+      "sha256": "ac4d1270d822fddf6e41ad49160949c6037b615484bf49d76eefe44a21d23a4f",
+      "size_bytes": 1894
+    },
+    {
+      "exists": true,
+      "path": "data/deg/raw/microarray/GSE93829_HCT116_E7820_24h_vs_DMSO_microarray_welch.csv",
+      "sha256": "9d3dc9ba4aa00b505b9cb9d4a8d2f7551bfe8b0b7b420b973feac05088b7e795",
+      "size_bytes": 4915526
+    },
+    {
+      "exists": true,
+      "path": "data/deg/raw/microarray/GSE93829_HCT116_siRBM39_48h_vs_nontarget_microarray_welch.csv",
+      "sha256": "3d0f697541237cff4b4897eb0dc0d44db049b5f41b106a1d184cadf370df185e",
+      "size_bytes": 4914949
+    }
+  ],
+  "metadata": {
+    "as_published_author_deg_validation": false,
+    "claim_scope": "cross_platform_rbm39_sulfonamide_mechanism_sensitivity",
+    "generator": "indisulam-cross-platform-catalog",
+    "includes_microarray": true,
+    "microarray_compound": "E7820",
+    "microarray_direct_indisulam": false,
+    "microarray_interpretation": "GSE93829 is an E7820/RBM39-axis microarray sensitivity layer, not a direct Indisulam treatment dataset.",
+    "primary_indisulam_result_replaced": false
+  }
+}

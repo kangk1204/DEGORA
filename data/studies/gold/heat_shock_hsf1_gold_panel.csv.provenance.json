@@ -1,0 +1,16 @@
+{
+  "artifact_path": "data/studies/gold/heat_shock_hsf1_gold_panel.csv",
+  "artifact_sha256": "43b84b05728a989184d741a1fea4d48dee450d17aba9797b3a8d23bf074d2c7d",
+  "artifact_size_bytes": 5766,
+  "command": "PYTHONPATH=outputs/code python outputs/code/scripts/write_heat_shock_benchmark.py --raw-dir data/deg/raw/heat_shock --catalog data/studies/heat_shock_hsf1_catalog.csv --gold data/studies/gold/heat_shock_hsf1_gold_panel.csv --output-dir outputs/results/heat-shock-benchmark",
+  "inputs": [],
+  "metadata": {
+    "benchmark_topic": "heat shock / HSF1 transcriptional response",
+    "claim_scope": "gold_panel_prioritization_in_a_prelocked_heat_shock_hsf1_benchmark",
+    "generator": "heat-shock-hsf1-gold-panel",
+    "gold_panel_locked_before_scoring": true,
+    "primary_min_studies": 2,
+    "score_interpretation": "prioritization_index_not_calibrated_probability",
+    "time_course_policy": "Related time points or related phenotypes from one accession share a paper_id/source-unit and are mean-aggregated by the score; no max-signal source-unit selection is used."
+  }
+}

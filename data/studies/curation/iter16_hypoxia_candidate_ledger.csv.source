@@ -1,0 +1,14 @@
+Manual curation ledger for iteration 16 strict S0 hypoxia expansion.
+
+Primary accepted source:
+https://www.nature.com/articles/s42003-026-09875-6
+https://static-content.springer.com/esm/art%3A10.1038%2Fs42003-026-09875-6/MediaObjects/42003_2026_9875_MOESM2_ESM.xlsx
+
+Derived table command:
+PYTHONPATH=outputs/code python outputs/code/scripts/extract_kindrick2026_source_data.py --workbook data/deg/raw/iter16/Kindrick_2026_CommBio_SourceData.xlsx --output-dir data/deg/raw/iter16
+
+Screened exclusion sources:
+https://ftp.ncbi.nlm.nih.gov/geo/series/GSE319nnn/GSE319825/suppl/
+https://ftp.ncbi.nlm.nih.gov/geo/series/GSE303nnn/GSE303591/suppl/
+https://ftp.ncbi.nlm.nih.gov/geo/series/GSE305nnn/GSE305716/suppl/
+https://www.sciencedirect.com/science/article/pii/S2211124723008355

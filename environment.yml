@@ -1,0 +1,29 @@
+name: degora
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - pandas
+  - numpy
+  - scipy
+  - pyarrow
+  - openpyxl
+  - matplotlib
+  - pytest
+  # R base runtime (required for comparator scripts)
+  - r-base=4.3
+  # CRAN packages available on conda-forge (comparators)
+  - r-robustrankaggreg  # RobustRankAggreg: rank-aggregation comparator
+  # rpy2: Python/R bridge used to invoke R comparators from Python
+  - rpy2
+  - pip:
+      - -e ./outputs/code
+  # ------------------------------------------------------------
+  # Bioconductor packages NOT available as conda packages:
+  #   - metaRNASeq  (meta-analysis comparator)
+  # After activating this environment, install via R:
+  #   Rscript -e "if (!requireNamespace('BiocManager', quietly=TRUE))
+  #                 install.packages('BiocManager');
+  #               BiocManager::install('metaRNASeq')"
+  # ------------------------------------------------------------

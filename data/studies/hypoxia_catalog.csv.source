@@ -1,0 +1,14 @@
+Manual catalog update for iteration 3: added include_in_analysis eligibility flag, excluded parser/tutorial smoke-test rows, and added HYP006-HYP008 derived DEG inputs.
+
+Iteration 6: appended HYP009-HYP011 from GEO GSE132624 downloaded edgeR QLF full/near-full 24 h 1% O2 tables. Candidate inspection and categorical exclusions are recorded in `data/studies/curation/iter6_candidate_ledger.csv`.
+
+Iteration 7: appended HYP012 from GEO GSE70544 Cuffdiff Gencode Normoxia-vs-Hypoxia output and HYP013 from GEO GSE108676 after NCBI ESummary RefSeq-to-symbol mapping. Candidate inspection and categorical exclusions are recorded in `data/studies/curation/iter7_candidate_ledger.csv`.
+
+Iteration 8: appended HYP014 from GEO GSE311800 P1_Tested full hypoxia-vs-normoxia sheet. Candidate scan and categorical decisions are recorded in `data/studies/curation/iter8_geo_query_scan.csv` and `data/studies/curation/iter8_candidate_ledger.csv`.
+
+Iteration 9: appended HYP015 from GEO GSE293238 full DESeq2 processed workbook and HYP016 from GEO GSE273808 full/near-full hypoxia-vs-normoxia LFC/p-value table after decimal-comma conversion. Candidate inspection, HYP003 provenance audit, and categorical exclusions are recorded in `data/studies/curation/iter9_candidate_ledger.csv`; V2/V7 readiness inventories are recorded in `data/studies/curation/iter9_v2_raw_count_inventory.csv` and `data/studies/curation/iter9_v7_degpipeline_inventory.csv`.
+
+Iteration 11: appended HYP017 from GEO GSE255352 full O(normoxia)-vs-H(hypoxia) DESeq2 table with a sign-flipped H-vs-O derived input. Hardened HYP003 package/raw provenance caveat and HYP016 processed-contrast/no-adjusted-p-value limitation. Candidate inspection and categorical exclusions are recorded in `data/studies/curation/iter11_hypoxia_candidate_ledger.csv`.
+
+Iteration 12: appended HYP018 from GEO GSE313740 near-full processed workbook, using one T3-versus-baseline simulated high-altitude hypobaric hypoxia contrast and carrying the unresolved pipeline limitation explicitly. Candidate inspection and categorical exclusions are recorded in `data/studies/curation/iter12_hypoxia_candidate_ledger.csv`.
+Iteration 13: appended HYP019 from GEO GSE225253, using the HK-2 24 h hypoxia-versus-normoxia full DESeq2 workbook. The companion 786-0 workbook from the same GEO source family is retained in the iteration-13 ledger as eligible-but-not-active to avoid source-family inflation. Rerun instructions are recorded in `outputs/results/iter-13/rerun_instructions.md`.

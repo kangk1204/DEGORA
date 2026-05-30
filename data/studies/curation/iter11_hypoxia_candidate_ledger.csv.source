@@ -1,0 +1,3 @@
+Manual iter11 hypoxia S0 candidate ledger built from GEO/NCBI supplementary-file inspection and repository provenance audit.
+Inputs include GSE255352, GSE289258, GSE301479, legacy HYP003 GSE89831/TFEA.ChIP files, and HYP016 GSE273808 files; checksums are recorded in the ledger.
+No DEGORA scoring, HIF target, p-value policy, source-weight, or raw-count V2 changes were made.

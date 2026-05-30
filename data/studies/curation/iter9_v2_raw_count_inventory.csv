@@ -1,0 +1,9 @@
+candidate_id,source,local_path,data_type,usable_for_v2,split_unit,reason
+V2-001,GSE89831,data/deg/raw/iter9/GSE89831_RAW.tar,per-sample processed/count-like TXT files,candidate,paper_id:GSE89831,"Primary GEO has paired normoxia/hypoxia total RNA sample files; not S0 DEG evidence, but may be raw/processed input for matched reanalysis if counts are interpretable."
+V2-002,GSE232797,data/deg/raw/iter7/GSE232797_data_RNAseq.csv.gz,count matrix,candidate,paper_id:GSE232797,Iteration-7 ledger found normoxia/hypoxia siNC count matrix with no DE stats; reserve for preregistered V2 only.
+V2-003,GSE236163,data/deg/raw/iter9/GSE236163_3_countDFeByg.txt.gz,count matrix,candidate,paper_id:GSE236163,Normoxia/hypoxia sample columns present; no DEG stats for S0.
+V2-004,GSE288708,data/deg/raw/iter9/GSE288708_all_sample_deseq.csv.gz,count matrix,candidate,paper_id:GSE288708,Sample-count matrix with hypoxia/normoxia-like groups; metadata/design needs confirmation before V2.
+V2-005,GSE231992,data/deg/raw/iter9/GSE231992_Partek_RNA-seq_BMDM_hypo_normo.txt.gz,processed expression matrix,defer,paper_id:GSE231992,Hypoxia sample expression values but not raw counts; V2 matched DE pipeline may not be valid.
+V2-006,GSE71401,not_downloaded_this_iteration,processed/raw read-count files in iter8 scan,candidate,paper_id:GSE71401,Scan lists processed and raw read-count files for tumor hypoxia; inspect later if V2 subset remains short.
+V2-007,GSE101526,not_downloaded_this_iteration,HTSeq count matrix in iter8 scan,candidate,paper_id:GSE101526,Scan lists HTSeq counts for normoxia/hypoxia with perturbation arms; design complexity must be resolved before V2.
+V2-008,GSE280308,not_downloaded_this_iteration,counts and FPKM files in iter8 scan,candidate,paper_id:GSE280308,Scan lists normoxia/hypoxia transcriptomics counts; not downloaded because iteration-9 priority was S0 full DEG.

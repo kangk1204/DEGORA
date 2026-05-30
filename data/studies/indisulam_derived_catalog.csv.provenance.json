@@ -1,0 +1,34 @@
+{
+  "artifact_path": "data/studies/indisulam_derived_catalog.csv",
+  "artifact_sha256": "ac4d1270d822fddf6e41ad49160949c6037b615484bf49d76eefe44a21d23a4f",
+  "artifact_size_bytes": 1894,
+  "command": "PYTHONPATH=outputs/code python outputs/code/scripts/write_indisulam_derived_deg.py --raw-dir data/deg/raw/indisulam --catalog data/studies/indisulam_derived_catalog.csv --gold data/studies/gold/indisulam_anchor_panel.csv --output-dir outputs/results/indisulam-pilot",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "data/deg/raw/indisulam/GSE223011_Nijhuis_KURAMOCHI_VC_INDISULAM_humanCounts.tsv.xlsx",
+      "sha256": "e6c335b003624bda13699badd3687ebaea1d4857c7d8a85e8a2eb4d2727efb49",
+      "size_bytes": 10189377
+    },
+    {
+      "exists": true,
+      "path": "data/deg/raw/indisulam/GSE268568_RawCount_Matrix_ann.txt.gz",
+      "sha256": "a6e9176ab043557b2872956511937f67c2ec647700d46a9dd4a567468404f1f8",
+      "size_bytes": 6711649
+    },
+    {
+      "exists": true,
+      "path": "data/deg/raw/ifn/hgnc_complete_set.txt",
+      "sha256": "fd691bb739d2f6558f0f768e1dc315b673d36e4b7540d2fcdd060be36ffa5692",
+      "size_bytes": 16735022
+    }
+  ],
+  "metadata": {
+    "as_published_author_deg_validation": false,
+    "claim_scope": "exploratory_cross_source_pilot",
+    "derived_count_pilot": true,
+    "generator": "indisulam-derived-catalog",
+    "microarray_admissibility": "Microarray contrasts are admissible as a separate secondary evidence tier only when a direct Indisulam/E7070 treatment contrast has raw array data, a normalized expression matrix suitable for limma, or a full author DEG table with gene-level logFC and p-value.",
+    "primary_min_studies": 2
+  }
+}

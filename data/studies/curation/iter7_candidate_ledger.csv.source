@@ -1,0 +1,1 @@
+Manual iteration-7 curation ledger created from GEO FTP supplement scans, downloaded `.source` files, NCBI ESummary mapping output, and pandas parser inspections on 2026-05-25. Active rows HYP012-HYP013 were appended to `data/studies/hypoxia_catalog.csv`; deferred/excluded rows preserve categorical decisions before the iteration-7 rerun.

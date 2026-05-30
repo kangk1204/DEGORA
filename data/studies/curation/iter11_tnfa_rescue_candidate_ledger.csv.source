@@ -1,0 +1,9 @@
+command: python - <<'PY'  # generated from iter10 TNF ledger plus NCBI GEO ESearch/ESummary accession review; see shell history in worker-2 task 10
+inputs:
+  - data/studies/curation/iter10_tnfa_candidate_ledger.csv
+  - NCBI GEO/GDS ESearch query: ("TNF" OR "TNF-alpha" OR "tumor necrosis factor") AND "RNA-seq" AND "Homo sapiens"; retmax=60; relevance sorted; accessed 2026-05-25
+  - Required surfaces for prior deferred/promising rows: GEO series page, GEO supplementary-file surface, publisher/article landing page, PubMed/PMC/Europe PMC supplement mirrors where identifiable
+outputs:
+  - data/studies/curation/iter11_tnfa_rescue_candidate_ledger.csv
+sha256: 3e09262c7810f233680fae4dca2970c3e53963d2a57fb3e2a0136bebb75d414f
+notes: Iter11 TNF-alpha rescue ledger intentionally records no active rows unless a full/near-full as-published direct TNF-alpha-vs-control DEG table was verified. IFN, LPS, infection, UVB, TGF-beta, TNF-receptor/TRAF pathway-only, cytokine-cocktail, and indirect inflammatory hits are excluded from active TNF-only evidence.

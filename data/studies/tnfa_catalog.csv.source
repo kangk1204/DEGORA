@@ -1,0 +1,6 @@
+TNF-alpha/NF-kB catalog initialized for iter-10 worker-1 lane.
+Schema follows approved PRD fields. Rows are curation-decision records; status=deferred/excluded rows are not active analysis inputs.
+No active TNF-alpha rows were accepted because direct TNF-alpha-vs-untreated full/near-full as-published DEG table availability was not verified for five independent source-family units.
+Candidate evidence and exclusion/defer reasons are in data/studies/curation/iter10_tnfa_candidate_ledger.csv.
+Gold panel lock was created separately at data/studies/gold/tnfa_nfkb_targets.csv before any TNF result generation.
+Command: python inline writer run by OMX worker-1 on 2026-05-25.

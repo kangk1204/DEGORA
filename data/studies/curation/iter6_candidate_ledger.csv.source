@@ -1,0 +1,1 @@
+Manual iteration-6 curation ledger created from downloaded `.source` files plus pandas/openpyxl parser inspections on 2026-05-25. Active rows HYP009-HYP011 were appended to `data/studies/hypoxia_catalog.csv`; deferred/excluded rows preserve categorical decisions before the iteration-6 rerun.

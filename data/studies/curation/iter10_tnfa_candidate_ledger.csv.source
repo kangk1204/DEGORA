@@ -1,0 +1,6 @@
+Candidate ledger for iter-10 TNF-alpha/NF-kB curation scarcity gate.
+Search method: NCBI E-utilities db=gds queries for TNF alpha/TNF-alpha, untreated/stimulated, RNA-seq, DESeq2, plus manual review of returned GEO summaries.
+Selection policy: high-signal candidates were logged only when the title/summary/search context suggested TNF-alpha, NF-kB, inflammatory cytokine, or closely adjacent endothelial/immune RNA-seq biology.
+Activation policy: no candidate was activated unless direct TNF-alpha stimulation versus untreated/control, bulk RNA-seq, 2013+ date, human/mouse species, and full/near-full as-published DEG table availability could all be verified.
+Outcome: 20 candidates reviewed; 0 active rows. This triggers the predeclared scarcity/blocker report rather than silent IFN/LPS/domain switching.
+Command: python inline writer run by OMX worker-1 on 2026-05-25.

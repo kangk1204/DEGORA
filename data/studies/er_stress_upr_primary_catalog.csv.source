@@ -1,0 +1,1 @@
+PYTHONPATH=outputs/code python outputs/code/scripts/write_er_stress_benchmark.py --raw-dir data/deg/raw/er_stress --catalog data/studies/er_stress_upr_catalog.csv --primary-catalog data/studies/er_stress_upr_primary_catalog.csv --gold data/studies/gold/er_stress_upr_gold_panel.csv --output-dir outputs/results/er-stress-benchmark

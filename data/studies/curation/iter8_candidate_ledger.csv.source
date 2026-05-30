@@ -1,0 +1,1 @@
+Manual iteration-8 curation ledger created from `iter8_geo_query_scan.csv`, downloaded `.source` files, NCBI GEO/GDS summaries, and pandas/openpyxl parser inspections on 2026-05-25. Active row HYP014 was appended to `data/studies/hypoxia_catalog.csv`; deferred/excluded rows preserve categorical decisions before the iteration-8 rerun.

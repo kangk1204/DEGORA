@@ -1,0 +1,30 @@
+name: degora
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check-and-paper-package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - name: Install package and test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r outputs/code/requirements.txt
+          python -m pip install -e outputs/code
+      - name: Run code checks
+        run: make -C outputs/code check
+      - name: Validate manuscript package
+        # NOTE: This lightweight CI job validates committed manuscript artifacts
+        # and Python unit tests only.  The full R-based comparator regeneration
+        # (RobustRankAggreg, metaRNASeq via BiocManager, rpy2 bridge) requires
+        # a complete R + Bioconductor environment as specified in environment.yml
+        # and is NOT run here.  To reproduce comparator results locally, create
+        # the conda environment from environment.yml and run `make comparators`.
+        run: make -C outputs/code paper

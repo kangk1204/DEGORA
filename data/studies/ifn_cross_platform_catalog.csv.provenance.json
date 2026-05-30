@@ -1,0 +1,23 @@
+{
+  "artifact_path": "data/studies/ifn_cross_platform_catalog.csv",
+  "artifact_sha256": "f7577d21249ab43876c1c922f92ef337b6f2345f54390cd8a97e11c10324f70c",
+  "artifact_size_bytes": 5114,
+  "command": "PYTHONPATH=outputs/code python outputs/code/scripts/write_cross_platform_microarray_benchmarks.py --output-dir outputs/results/cross-platform-microarray",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "data/studies/ifn_derived_catalog.csv",
+      "sha256": "d29b9f12ffb70a7635b1a8bb1e25c407338a2ea27cd3d0852e2563386ff27e1a",
+      "size_bytes": 4394
+    },
+    {
+      "exists": true,
+      "path": "data/deg/raw/microarray_cross_platform/GSE71634_PBMC_IFNB_18h_vs_unstimulated_microarray_welch.csv",
+      "sha256": "abca8ee886bb3a9ae4199b6a9b099d21476ceecfc9696e2657b3fea984e23c71",
+      "size_bytes": 3890952
+    }
+  ],
+  "metadata": {
+    "generator": "cross-platform-catalog"
+  }
+}

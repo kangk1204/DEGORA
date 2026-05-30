@@ -1,0 +1,1 @@
+PYTHONPATH=outputs/code python outputs/code/scripts/write_indisulam_derived_deg.py --raw-dir data/deg/raw/indisulam --catalog data/studies/indisulam_derived_catalog.csv --gold data/studies/gold/indisulam_anchor_panel.csv --output-dir outputs/results/indisulam-pilot

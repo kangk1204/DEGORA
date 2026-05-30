@@ -1,0 +1,29 @@
+{
+  "artifact_path": "data/studies/ifn_derived_catalog.csv",
+  "artifact_sha256": "d29b9f12ffb70a7635b1a8bb1e25c407338a2ea27cd3d0852e2563386ff27e1a",
+  "artifact_size_bytes": 4394,
+  "command": "PYTHONPATH=outputs/code python outputs/code/scripts/write_ifn_derived_deg.py --raw-dir data/deg/raw/ifn --catalog data/studies/ifn_derived_catalog.csv --gold data/studies/gold/ifn_gold_panel.csv --summary outputs/results/ifn-pilot/ifn_derived_deg_summary.json",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "data/deg/raw/ifn/GSE147507_RawReadCounts_Human.tsv.gz",
+      "sha256": "9a5db6347ee8737c6a2b9dc00a093cd4ed64b20a606e676b380673200de444a5",
+      "size_bytes": 1939825
+    },
+    {
+      "exists": true,
+      "path": "data/deg/raw/ifn/GSE221804_raw_counts_WT_IFNa.csv.gz",
+      "sha256": "d81a6be869558aa4cf17a4af1b277bf68d65a02c245fed9b3a8060b9dd70e191",
+      "size_bytes": 1160317
+    },
+    {
+      "exists": true,
+      "path": "data/deg/raw/ifn/hgnc_complete_set.txt",
+      "sha256": "fd691bb739d2f6558f0f768e1dc315b673d36e4b7540d2fcdd060be36ffa5692",
+      "size_bytes": 16735022
+    }
+  ],
+  "metadata": {
+    "generator": "ifn-derived-catalog"
+  }
+}

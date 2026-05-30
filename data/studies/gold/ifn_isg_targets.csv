@@ -1,0 +1,21 @@
+gene_symbol,expected_direction,panel_role,locked_at,evidence_basis,notes
+ISG15,up,canonical_ISG,2026-05-26,Pre-output compact type I/II interferon-stimulated gene panel for IFN response pilot.,Used only for pilot recall diagnostics; not tuned after looking at DEGORA output.
+IFIT1,up,canonical_ISG,2026-05-26,Pre-output compact type I/II interferon-stimulated gene panel for IFN response pilot.,Used only for pilot recall diagnostics; not tuned after looking at DEGORA output.
+IFIT2,up,canonical_ISG,2026-05-26,Pre-output compact type I/II interferon-stimulated gene panel for IFN response pilot.,Used only for pilot recall diagnostics; not tuned after looking at DEGORA output.
+IFIT3,up,canonical_ISG,2026-05-26,Pre-output compact type I/II interferon-stimulated gene panel for IFN response pilot.,Used only for pilot recall diagnostics; not tuned after looking at DEGORA output.
+IFI6,up,canonical_ISG,2026-05-26,Pre-output compact type I/II interferon-stimulated gene panel for IFN response pilot.,Used only for pilot recall diagnostics; not tuned after looking at DEGORA output.
+IFI27,up,canonical_ISG,2026-05-26,Pre-output compact type I/II interferon-stimulated gene panel for IFN response pilot.,Used only for pilot recall diagnostics; not tuned after looking at DEGORA output.
+IFI44,up,canonical_ISG,2026-05-26,Pre-output compact type I/II interferon-stimulated gene panel for IFN response pilot.,Used only for pilot recall diagnostics; not tuned after looking at DEGORA output.
+IFI44L,up,canonical_ISG,2026-05-26,Pre-output compact type I/II interferon-stimulated gene panel for IFN response pilot.,Used only for pilot recall diagnostics; not tuned after looking at DEGORA output.
+MX1,up,canonical_ISG,2026-05-26,Pre-output compact type I/II interferon-stimulated gene panel for IFN response pilot.,Used only for pilot recall diagnostics; not tuned after looking at DEGORA output.
+MX2,up,canonical_ISG,2026-05-26,Pre-output compact type I/II interferon-stimulated gene panel for IFN response pilot.,Used only for pilot recall diagnostics; not tuned after looking at DEGORA output.
+OAS1,up,canonical_ISG,2026-05-26,Pre-output compact type I/II interferon-stimulated gene panel for IFN response pilot.,Used only for pilot recall diagnostics; not tuned after looking at DEGORA output.
+OAS2,up,canonical_ISG,2026-05-26,Pre-output compact type I/II interferon-stimulated gene panel for IFN response pilot.,Used only for pilot recall diagnostics; not tuned after looking at DEGORA output.
+OAS3,up,canonical_ISG,2026-05-26,Pre-output compact type I/II interferon-stimulated gene panel for IFN response pilot.,Used only for pilot recall diagnostics; not tuned after looking at DEGORA output.
+OASL,up,canonical_ISG,2026-05-26,Pre-output compact type I/II interferon-stimulated gene panel for IFN response pilot.,Used only for pilot recall diagnostics; not tuned after looking at DEGORA output.
+RSAD2,up,canonical_ISG,2026-05-26,Pre-output compact type I/II interferon-stimulated gene panel for IFN response pilot.,Used only for pilot recall diagnostics; not tuned after looking at DEGORA output.
+IFIH1,up,canonical_ISG,2026-05-26,Pre-output compact type I/II interferon-stimulated gene panel for IFN response pilot.,Used only for pilot recall diagnostics; not tuned after looking at DEGORA output.
+DDX58,up,canonical_ISG,2026-05-26,Pre-output compact type I/II interferon-stimulated gene panel for IFN response pilot.,Used only for pilot recall diagnostics; not tuned after looking at DEGORA output.
+IRF7,up,canonical_ISG,2026-05-26,Pre-output compact type I/II interferon-stimulated gene panel for IFN response pilot.,Used only for pilot recall diagnostics; not tuned after looking at DEGORA output.
+STAT1,up,canonical_ISG,2026-05-26,Pre-output compact type I/II interferon-stimulated gene panel for IFN response pilot.,Used only for pilot recall diagnostics; not tuned after looking at DEGORA output.
+STAT2,up,canonical_ISG,2026-05-26,Pre-output compact type I/II interferon-stimulated gene panel for IFN response pilot.,Used only for pilot recall diagnostics; not tuned after looking at DEGORA output.
