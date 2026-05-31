@@ -84,3 +84,6 @@ outputs/figures/manuscript/**/*.db
 outputs/figures/manuscript/**/*.html
 outputs/figures/manuscript/DEGORA_ATLAS/degora_atlas_gene_index.csv
 outputs/figures/manuscript/DEGORA_ATLAS/degora_atlas_source_data.xlsx
+
+# Vendored external comparator tool (MAIC); cloned on demand by the maic-comparator make target.
+outputs/code/vendor/

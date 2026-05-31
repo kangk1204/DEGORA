@@ -149,6 +149,7 @@ def _resource_feature_comparison() -> pd.DataFrame:
         "ARCHS4": ["partial", "yes (GSM)", "no", "no", "no", "no", "no", "yes", "yes", "no"],
         "Enrichr / SigCom LINCS": ["partial", "partial", "yes", "no", "no", "no", "no", "yes", "yes", "no"],
         "Open Targets Platform": ["yes", "yes", "no", "yes (datatype score)", "no", "no", "no", "yes", "yes", "no"],
+        "MAIC (Wang 2022, CLI)": ["partial (contributor lists)", "no", "no", "no", "no", "no", "yes (local CLI)", "no", "yes (TSV)", "no"],
     }
     rows = []
     for resource, values in resources.items():

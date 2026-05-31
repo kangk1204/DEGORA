@@ -1,8 +1,8 @@
 {
   "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/heat_shock_gold_comparator_summary.csv",
-  "artifact_sha256": "f9268e065731449fa99206c28b27ba44a77cdf3fbe00132c8e96792195be8065",
-  "artifact_size_bytes": 12607,
-  "command": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_gold_comparator_summary.py --baseline-dir outputs/results/heat-shock-benchmark/baselines --gold data/studies/gold/heat_shock_hsf1_gold_panel.csv --gold-gene-column gene_symbol --degora-score-csv outputs/results/heat-shock-benchmark/degora_gene_scores.csv --degora-score-label v1_2_source_unit_mean --title 'Heat shock locked gold-panel comparator summary' --output-csv outputs/results/heat-shock-benchmark/heat_shock_gold_comparator_summary.csv --output-md outputs/results/heat-shock-benchmark/heat_shock_gold_comparator_summary.md",
+  "artifact_sha256": "8e76eededb21929cde9f4a57ba1cba1831becbf19f57eb088bb9d9bf91fb2003",
+  "artifact_size_bytes": 13454,
+  "command": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_gold_comparator_summary.py --baseline-dir outputs/results/heat-shock-benchmark/baselines --gold data/studies/gold/heat_shock_hsf1_gold_panel.csv --gold-gene-column gene_symbol --degora-score-csv outputs/results/heat-shock-benchmark/degora_gene_scores.csv --degora-score-label quality_weighted_default --title 'Heat shock locked gold-panel comparator summary' --output-csv outputs/results/heat-shock-benchmark/heat_shock_gold_comparator_summary.csv --output-md outputs/results/heat-shock-benchmark/heat_shock_gold_comparator_summary.md",
   "inputs": [
     {
       "exists": true,

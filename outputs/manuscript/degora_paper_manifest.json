@@ -3,8 +3,8 @@
     {
       "exists": true,
       "path": "outputs/manuscript/main.md",
-      "sha256": "8739c5e27e70476904a98aaca7fe7ac64498c0060d0760e95773b45b608b7601",
-      "size_bytes": 42330
+      "sha256": "ae328249cb7d95eeb1b35e52222c52f517d150bae73cbdc1a7f8c85d5b5a368c",
+      "size_bytes": 43462
     },
     {
       "exists": true,
@@ -15,8 +15,8 @@
     {
       "exists": true,
       "path": "outputs/tables/manuscript/Table1_core_benchmark_summary.csv",
-      "sha256": "e3e0baabd96cecee5a431ca867dfe34e4bab3733433b79e6437c62c8f7731ed7",
-      "size_bytes": 2026
+      "sha256": "682dc68cbdb0ae6360ce3e7292c3422347ed3fe459af3c16b929d3196ab24499",
+      "size_bytes": 2029
     },
     {
       "exists": true,
@@ -69,7 +69,7 @@
   ],
   "command": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_manuscript_package.py --manuscript outputs/manuscript/main.md --tables-dir outputs/tables/manuscript --figures-dir outputs/figures/manuscript --output-dir outputs/manuscript",
   "failures": [],
-  "generated_at": "2026-05-31T09:43:01.417186+00:00",
+  "generated_at": "2026-05-31T10:11:25.820325+00:00",
   "manuscript": "outputs/manuscript/main.md",
   "pre_submission_tasks": [
     "final source-study and GEO accession citation audit",

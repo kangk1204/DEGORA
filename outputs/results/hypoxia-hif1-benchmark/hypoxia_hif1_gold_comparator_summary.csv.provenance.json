@@ -1,8 +1,8 @@
 {
   "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_gold_comparator_summary.csv",
-  "artifact_sha256": "7e1d863ce41d6323cd935a128f6f2836fdad31af641152ab91cd0170dc3e8b36",
-  "artifact_size_bytes": 13285,
-  "command": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_gold_comparator_summary.py --baseline-dir outputs/results/hypoxia-hif1-benchmark/baselines --gold data/studies/gold/hypoxia_hif1_gold_panel.csv --gold-gene-column gene_symbol --degora-score-csv outputs/results/hypoxia-hif1-benchmark/degora_gene_scores.csv --degora-score-label v1_2_source_unit_mean --title 'Hypoxia/HIF locked gold-panel comparator summary' --output-csv outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_gold_comparator_summary.csv --output-md outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_gold_comparator_summary.md",
+  "artifact_sha256": "98d08099815b9a321cbbd4a51898d71a5509edb26530c5c728a119d60c4fe810",
+  "artifact_size_bytes": 14196,
+  "command": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_gold_comparator_summary.py --baseline-dir outputs/results/hypoxia-hif1-benchmark/baselines --gold data/studies/gold/hypoxia_hif1_gold_panel.csv --gold-gene-column gene_symbol --degora-score-csv outputs/results/hypoxia-hif1-benchmark/degora_gene_scores.csv --degora-score-label quality_weighted_default --title 'Hypoxia/HIF locked gold-panel comparator summary' --output-csv outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_gold_comparator_summary.csv --output-md outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_gold_comparator_summary.md",
   "inputs": [
     {
       "exists": true,

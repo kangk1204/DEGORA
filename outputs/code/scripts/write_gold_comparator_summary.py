@@ -360,6 +360,7 @@ def build_summary(
         "unweighted_stouffer": 4,
         "fisher": 5,
         "rank_product_approx": 6,
+        "maic": 6.5,
         "sign_vote": 7,
         "metavolcanor": 8,
         "robustrankaggreg": 9,

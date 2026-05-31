@@ -47,7 +47,7 @@ TNFA_GATE_OUTPUT ?=
 TNFA_SCARCITY_CANDIDATE_THRESHOLD ?= 20
 ROOT_PYTHON := cd $(PROJECT_ROOT) && env PYTHONPATH=outputs/code $(PYTHON)
 
-.PHONY: check slice diagnose rank-plane baseline baseline-preflight score-db resource-package microarray-deg serve degora-template degora-demo degora-validate degora-run tnfa-gate publication-gate rerun-readiness benchmark expanded-gold-panels prior-art-tables gold-summaries deep-metrics manuscript-tables figs paper
+.PHONY: check slice diagnose rank-plane baseline baseline-preflight score-db resource-package microarray-deg serve degora-template degora-demo degora-validate degora-run tnfa-gate publication-gate rerun-readiness benchmark expanded-gold-panels prior-art-tables gold-summaries deep-metrics manuscript-tables figs paper maic-comparator
 
 check: unit typecheck lint provenance-check
 
@@ -125,6 +125,20 @@ gold-summaries:
 	$(ROOT_PYTHON) outputs/code/scripts/write_gold_comparator_summary.py --baseline-dir outputs/results/er-stress-cross-platform/baselines --gold data/studies/gold/er_stress_upr_gold_panel.csv --degora-score-csv outputs/results/er-stress-cross-platform/degora_gene_scores.csv --title "ER stress locked gold-panel comparator summary" --output-csv outputs/results/er-stress-cross-platform/er_stress_cross_platform_gold_comparator_summary.csv --output-md outputs/results/er-stress-cross-platform/er_stress_cross_platform_gold_comparator_summary.md
 	$(ROOT_PYTHON) outputs/code/scripts/write_gold_comparator_summary.py --baseline-dir outputs/results/heat-shock-benchmark/baselines --gold data/studies/gold/heat_shock_hsf1_gold_panel.csv --degora-score-csv outputs/results/heat-shock-benchmark/degora_gene_scores.csv --title "Heat shock locked gold-panel comparator summary" --output-csv outputs/results/heat-shock-benchmark/heat_shock_gold_comparator_summary.csv --output-md outputs/results/heat-shock-benchmark/heat_shock_gold_comparator_summary.md
 	$(ROOT_PYTHON) outputs/code/scripts/write_gold_comparator_summary.py --baseline-dir outputs/results/hypoxia-hif1-benchmark/baselines --gold data/studies/gold/hypoxia_hif1_gold_panel.csv --degora-score-csv outputs/results/hypoxia-hif1-benchmark/degora_gene_scores.csv --title "Hypoxia/HIF locked gold-panel comparator summary" --output-csv outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_gold_comparator_summary.csv --output-md outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_gold_comparator_summary.md
+
+# Adds MAIC (Meta-Analysis by Information Content; github.com/baillielab/maic) as a
+# same-evidence comparator for the four manuscript topics. Clones MAIC on demand and writes a
+# maic row into each corpus's baselines + gold comparator summary. Run AFTER `baseline` (it
+# appends to baseline_manifest.csv) and BEFORE `gold-summaries`. Kept out of the default `paper`
+# chain because it requires network (clone) and the vendored tool; the committed gold summaries
+# already include the maic row.
+maic-comparator:
+	@test -f $(PROJECT_ROOT)/outputs/code/vendor/maic/maic.py || git clone https://github.com/baillielab/maic.git $(PROJECT_ROOT)/outputs/code/vendor/maic
+	-cd $(PROJECT_ROOT)/outputs/code/vendor/maic && git checkout fb26061
+	$(ROOT_PYTHON) outputs/code/scripts/run_maic_comparator.py --harmonized data/deg/harmonized/ifn-pilot_harmonized.csv --baseline-dir outputs/results/ifn-pilot/baselines --corpus ifn-pilot --min-studies 1
+	$(ROOT_PYTHON) outputs/code/scripts/run_maic_comparator.py --harmonized data/deg/harmonized/er-stress-cross-platform_harmonized.csv --baseline-dir outputs/results/er-stress-cross-platform/baselines --corpus er-stress-cross-platform --min-studies 1
+	$(ROOT_PYTHON) outputs/code/scripts/run_maic_comparator.py --harmonized data/deg/harmonized/heat-shock-benchmark_harmonized.csv --baseline-dir outputs/results/heat-shock-benchmark/baselines --corpus heat-shock-benchmark --min-studies 1
+	$(ROOT_PYTHON) outputs/code/scripts/run_maic_comparator.py --harmonized data/deg/harmonized/hypoxia-hif1-benchmark_harmonized.csv --baseline-dir outputs/results/hypoxia-hif1-benchmark/baselines --corpus hypoxia-hif1-benchmark --min-studies 1
 
 deep-metrics:
 	$(ROOT_PYTHON) outputs/code/scripts/write_benchmark_deep_metrics.py --corpus ifn-pilot --baseline-dir outputs/results/ifn-pilot/baselines --harmonized data/deg/harmonized/ifn-pilot_harmonized.csv --gold data/studies/gold/ifn_gold_panel.csv --degora-score-csv outputs/results/ifn-pilot/degora_gene_scores.csv --output-dir outputs/results/ifn-pilot/deep-metrics --title "IFN pilot deep benchmark metrics"

@@ -1,32 +1,32 @@
 {
   "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/tables/manuscript/Table1_core_benchmark_summary.md",
-  "artifact_sha256": "645d440ffdb62ff71bde28a58ea045816fb88353a2410489c3d32fb5dddf4894",
-  "artifact_size_bytes": 2342,
+  "artifact_sha256": "597c092b6cffdc337b1fed89e44dfa41d348c6ae19329f66709cc40e058eee70",
+  "artifact_size_bytes": 2345,
   "command": "PYTHONPATH=outputs/code python outputs/code/scripts/write_manuscript_tables.py --output-dir outputs/tables/manuscript",
   "inputs": [
     {
       "exists": true,
       "path": "/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/ifn_gold_comparator_summary.csv",
-      "sha256": "4546cd95fe98f54078d8b95b83d3ed468c4c0ac05f1daf38e5bcc0fc5629155f",
-      "size_bytes": 13014
+      "sha256": "d5542bb0668a57a299cbcc8b95373695b9d77ea4b0bc94dae27382f2ff6efbcf",
+      "size_bytes": 13473
     },
     {
       "exists": true,
       "path": "/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-cross-platform/er_stress_cross_platform_gold_comparator_summary.csv",
-      "sha256": "df2e913ef94eae66511371447523c364de96e32af2b55e7e8d9bbab674554be7",
-      "size_bytes": 11680
+      "sha256": "bdcb2d6f324d1be3b47f2b81ac464bfd8b056ac073fe51db55a3b8f8d5751cf8",
+      "size_bytes": 12672
     },
     {
       "exists": true,
       "path": "/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/heat_shock_gold_comparator_summary.csv",
-      "sha256": "f9268e065731449fa99206c28b27ba44a77cdf3fbe00132c8e96792195be8065",
-      "size_bytes": 12607
+      "sha256": "8e76eededb21929cde9f4a57ba1cba1831becbf19f57eb088bb9d9bf91fb2003",
+      "size_bytes": 13454
     },
     {
       "exists": true,
       "path": "/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_gold_comparator_summary.csv",
-      "sha256": "7e1d863ce41d6323cd935a128f6f2836fdad31af641152ab91cd0170dc3e8b36",
-      "size_bytes": 13285
+      "sha256": "98d08099815b9a321cbbd4a51898d71a5509edb26530c5c728a119d60c4fe810",
+      "size_bytes": 14196
     },
     {
       "exists": true,
