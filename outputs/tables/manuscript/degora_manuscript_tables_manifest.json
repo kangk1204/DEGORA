@@ -1,0 +1,30 @@
+{
+  "command": "PYTHONPATH=outputs/code python outputs/code/scripts/write_manuscript_tables.py --output-dir outputs/tables/manuscript",
+  "generated_at": "deterministic",
+  "inputs": [
+    "outputs/results/ifn-pilot/ifn_gold_comparator_summary.csv",
+    "outputs/results/er-stress-cross-platform/er_stress_cross_platform_gold_comparator_summary.csv",
+    "outputs/results/heat-shock-benchmark/heat_shock_gold_comparator_summary.csv",
+    "outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_gold_comparator_summary.csv",
+    "outputs/results/cross-platform-microarray/cross_platform_benchmark_summary.csv"
+  ],
+  "known_limitations": [
+    "Tables summarize locked-panel recall with exact uncertainty and list-level enrichment; they do not convert DEGORA scores into calibrated posterior probabilities.",
+    "Direction-aware benchmark panels remain dominated by up-regulated canonical markers, so down-direction performance requires expanded gold panels."
+  ],
+  "outputs": [
+    "outputs/tables/manuscript/Figure_Index.csv",
+    "outputs/tables/manuscript/Figure_Index.md",
+    "outputs/tables/manuscript/Table1_core_benchmark_summary.csv",
+    "outputs/tables/manuscript/Table1_core_benchmark_summary.md",
+    "outputs/tables/manuscript/Table2_cross_platform_summary.csv",
+    "outputs/tables/manuscript/Table2_cross_platform_summary.md",
+    "outputs/tables/manuscript/Supplementary_Table_Index.csv",
+    "outputs/tables/manuscript/Supplementary_Table_Index.md",
+    "outputs/tables/manuscript/Supplementary_Table8_resource_feature_comparison.csv",
+    "outputs/tables/manuscript/Supplementary_Table8_resource_feature_comparison.md",
+    "outputs/tables/manuscript/degora_manuscript_tables.xlsx",
+    "outputs/tables/manuscript/degora_manuscript_tables_manifest.json"
+  ],
+  "script": "outputs/code/scripts/write_manuscript_tables.py"
+}

@@ -1,0 +1,10 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/cross-platform-microarray/cross_platform_marker_rank_shifts.csv",
+  "artifact_sha256": "4884ca840f939d709179acfd88b6b391a38c506f891a206566109e6e3652d00a",
+  "artifact_size_bytes": 9064,
+  "command": "PYTHONPATH=outputs/code python outputs/code/scripts/write_cross_platform_microarray_benchmarks.py --output-dir outputs/results/cross-platform-microarray",
+  "inputs": [],
+  "metadata": {
+    "generator": "cross-platform-marker-rank-shifts"
+  }
+}

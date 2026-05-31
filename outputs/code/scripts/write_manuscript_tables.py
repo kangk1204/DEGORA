@@ -34,7 +34,7 @@ def _fixed_degora_rows() -> pd.DataFrame:
         if degora.empty:
             degora = frame.loc[frame["method_id"].eq("degora_deg_score")].copy()
         best_other = (
-            frame.loc[~frame["method_id"].isin(["degora_deg_score", "degora_quality_weighted_score"]) & frame["run_status"].eq("ok")]
+            frame.loc[~frame["method_id"].isin(["degora_deg_score", "degora_quality_weighted_score", "degora_slice"]) & frame["run_status"].eq("ok")]
             .sort_values(["recall_at_100", "recall_at_50", "recall_at_10"], ascending=False)
             .head(1)
         )

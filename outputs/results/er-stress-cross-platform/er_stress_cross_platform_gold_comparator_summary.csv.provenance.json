@@ -1,0 +1,28 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-cross-platform/er_stress_cross_platform_gold_comparator_summary.csv",
+  "artifact_sha256": "df2e913ef94eae66511371447523c364de96e32af2b55e7e8d9bbab674554be7",
+  "artifact_size_bytes": 11680,
+  "command": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_gold_comparator_summary.py --baseline-dir outputs/results/er-stress-cross-platform/baselines --gold data/studies/gold/er_stress_upr_gold_panel.csv --gold-gene-column gene_symbol --degora-score-csv outputs/results/er-stress-cross-platform/degora_gene_scores.csv --degora-score-label v1_2_source_unit_mean --title 'ER stress locked gold-panel comparator summary' --output-csv outputs/results/er-stress-cross-platform/er_stress_cross_platform_gold_comparator_summary.csv --output-md outputs/results/er-stress-cross-platform/er_stress_cross_platform_gold_comparator_summary.md",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-cross-platform/baselines"
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/studies/gold/er_stress_upr_gold_panel.csv",
+      "sha256": "11e074a2ec14eb444e7237b0b222c79b1dd3e83ebdf3dd39261dd16f5f3d3fc3",
+      "size_bytes": 9104
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-cross-platform/degora_gene_scores.csv",
+      "sha256": "88d48b317ec0647a09a256e9fad210ca20a0606cad35cb1c7013a7065d1a7117",
+      "size_bytes": 11111987
+    }
+  ],
+  "metadata": {
+    "generator": "gold-comparator-summary",
+    "gold": "data/studies/gold/er_stress_upr_gold_panel.csv"
+  }
+}

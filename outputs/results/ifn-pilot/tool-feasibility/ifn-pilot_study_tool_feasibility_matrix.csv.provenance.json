@@ -1,0 +1,18 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/tool-feasibility/ifn-pilot_study_tool_feasibility_matrix.csv",
+  "artifact_sha256": "0caa2c6adff698079e41b5223a1a85e94ab5155664bf5af60ba6ef686d9a14c3",
+  "artifact_size_bytes": 3564,
+  "command": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_study_tool_feasibility_matrix.py --harmonized outputs/results/ifn-pilot/slice_harmonized.csv --corpus ifn-pilot --output-csv outputs/results/ifn-pilot/tool-feasibility/ifn-pilot_study_tool_feasibility_matrix.csv --output-md outputs/results/ifn-pilot/tool-feasibility/ifn-pilot_study_tool_feasibility_matrix.md",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/slice_harmonized.csv",
+      "sha256": "d8d71a755afc5e66b763e84b6a0f01f1de5fed68d667e41b7bab3c996bed171d",
+      "size_bytes": 50271689
+    }
+  ],
+  "metadata": {
+    "corpus": "ifn-pilot",
+    "generator": "study-tool-feasibility"
+  }
+}

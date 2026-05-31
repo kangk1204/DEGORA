@@ -1,0 +1,1 @@
+PYTHONPATH=outputs/code python outputs/code/scripts/write_ifn_derived_deg.py --raw-dir data/deg/raw/ifn --catalog data/studies/ifn_derived_catalog.csv --gold data/studies/gold/ifn_gold_panel.csv --summary outputs/results/ifn-pilot/ifn_derived_deg_summary.json

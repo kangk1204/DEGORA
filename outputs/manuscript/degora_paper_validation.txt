@@ -1,0 +1,9 @@
+DEGORA paper package validation
+generated_at=2026-05-31T08:04:49.156619+00:00
+failures=0
+warnings=1
+
+Failures:
+
+Warnings:
+- pre-submission packaging still pending per the manuscript (dataset-level GEO citations, Zenodo DOI deposit, and/or reference-style finalization)

@@ -1,0 +1,34 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/deep-metrics/hypoxia-hif1-benchmark_piper_advantage_metrics.csv",
+  "artifact_sha256": "46862c8754f3eef166567e80305d9dcacc774a3b845994555c5baa9c765f7ffa",
+  "artifact_size_bytes": 772,
+  "command": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_benchmark_deep_metrics.py --corpus hypoxia-hif1-benchmark --baseline-dir outputs/results/hypoxia-hif1-benchmark/baselines --harmonized data/deg/harmonized/hypoxia-hif1-benchmark_harmonized.csv --gold data/studies/gold/hypoxia_hif1_gold_panel.csv --gold-gene-column gene_symbol --piper-score-csv outputs/results/hypoxia-hif1-benchmark/piper_gene_scores.csv --output-dir outputs/results/hypoxia-hif1-benchmark/deep-metrics --title 'Hypoxia deep benchmark metrics' --min-studies 2 --max-k 1000 --n-bootstrap 0 --bootstrap-methods piper_quality_weighted_score weighted_stouffer fisher --seed 1729",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/baselines"
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/harmonized/hypoxia-hif1-benchmark_harmonized.csv",
+      "sha256": "4bdcc157b381c7e132a0e566544195bfd050e764fecd1d44bac13fbfa5822cc5",
+      "size_bytes": 231141077
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/studies/gold/hypoxia_hif1_gold_panel.csv",
+      "sha256": "a0fdbe9b65db282c397d74f47797f0e20d5db96d5ac99080af3894f33ddcc6da",
+      "size_bytes": 4759
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/piper_gene_scores.csv",
+      "sha256": "46e114707c2cbfc60f18bc85fd37c2964b2c83da4ff46c8929c1949c6ad6076d",
+      "size_bytes": 25235086
+    }
+  ],
+  "metadata": {
+    "corpus": "hypoxia-hif1-benchmark",
+    "generator": "benchmark-deep-metrics"
+  }
+}

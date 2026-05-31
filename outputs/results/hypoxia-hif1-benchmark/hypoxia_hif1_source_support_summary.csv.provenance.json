@@ -1,0 +1,40 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_source_support_summary.csv",
+  "artifact_sha256": "21b51867cc5ccd90298c86635343433807b008ee38da7cb64053b0f224b93741",
+  "artifact_size_bytes": 2558,
+  "command": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_source_support_report.py --score-csv outputs/results/hypoxia-hif1-benchmark/piper_gene_scores.csv --gold data/studies/gold/hypoxia_hif1_gold_panel.csv --gold-gene-column gene_symbol --rank-column piper_rank --direction-column consensus_direction --top-n 20 --cutoffs 10 20 50 100 --min-source-units 2 --min-sign-concordance 1.0 --title 'Hypoxia / HIF1 Source-Support Report' --output-summary-csv outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_source_support_summary.csv --output-top-tsv outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_source_support_top_genes.tsv --output-json outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_source_support_report.json --output-md outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_source_support_report.md",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/piper_gene_scores.csv",
+      "sha256": "a07cb0dbe310cab2acb2a6ca933826ed080235c5126fb9686d9869798b82b6f0",
+      "size_bytes": 19674614
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/studies/gold/hypoxia_hif1_gold_panel.csv",
+      "sha256": "a0fdbe9b65db282c397d74f47797f0e20d5db96d5ac99080af3894f33ddcc6da",
+      "size_bytes": 4759
+    }
+  ],
+  "metadata": {
+    "cutoffs": [
+      10,
+      20,
+      50,
+      100
+    ],
+    "direction_column": "consensus_direction",
+    "generator": "source-support-report",
+    "gold_path": "data/studies/gold/hypoxia_hif1_gold_panel.csv",
+    "marker_panel": "",
+    "min_sign_concordance": 1.0,
+    "min_source_units": 2,
+    "n_interpretive_markers": 0,
+    "n_locked_gold": 20,
+    "n_scored_genes": 33865,
+    "rank_column": "piper_rank",
+    "score_csv": "outputs/results/hypoxia-hif1-benchmark/piper_gene_scores.csv",
+    "top_n": 20
+  }
+}

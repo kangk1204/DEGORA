@@ -1,0 +1,13 @@
+{
+  "active_corpus": "GSE84450 DTT author table + GSE102505/GSE296996/GSE245918 human tunicamycin count-derived contrasts + GSE103667 thapsigargin normalized matrix",
+  "benchmark_topic": "ER stress / unfolded protein response",
+  "claim_scope": "gold_panel_prioritization_in_a_prelocked_er_stress_upr_benchmark",
+  "deferred_sources": [
+    "GSE84989 sample-label metadata not locked"
+  ],
+  "gold_panel": "data/studies/gold/er_stress_upr_gold_panel.csv",
+  "gold_panel_locked_before_scoring": true,
+  "primary_min_studies": 2,
+  "score_interpretation": "prioritization_index_not_calibrated_probability",
+  "time_course_policy": "Related time points or cell-line contrasts from one accession share a paper_id/source-unit and are mean-aggregated by the primary score; no max-signal source-unit selection is used."
+}

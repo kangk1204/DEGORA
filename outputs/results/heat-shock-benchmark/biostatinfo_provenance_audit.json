@@ -1,0 +1,1031 @@
+{
+  "iteration_records": [
+    {
+      "artifact_count": 47,
+      "artifacts": [
+        {
+          "artifact": "outputs/results/ifn-pilot/baselines/awmeta_feasibility_report.json",
+          "source": "outputs/results/ifn-pilot/baselines/awmeta_feasibility_report.json.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=ifn-pilot HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/ifn-pilot_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/baselines"
+        },
+        {
+          "artifact": "outputs/results/ifn-pilot/baselines/baseline_failure_ledger.csv",
+          "source": "outputs/results/ifn-pilot/baselines/baseline_failure_ledger.csv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=ifn-pilot HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/ifn-pilot_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/baselines"
+        },
+        {
+          "artifact": "outputs/results/ifn-pilot/baselines/baseline_manifest.csv",
+          "source": "outputs/results/ifn-pilot/baselines/baseline_manifest.csv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=ifn-pilot HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/ifn-pilot_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/baselines"
+        },
+        {
+          "artifact": "outputs/results/ifn-pilot/baselines/baseline_parity_matrix.csv",
+          "source": "outputs/results/ifn-pilot/baselines/baseline_parity_matrix.csv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=ifn-pilot HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/ifn-pilot_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/baselines"
+        },
+        {
+          "artifact": "outputs/results/ifn-pilot/baselines/hstouffer_feasibility_report.json",
+          "source": "outputs/results/ifn-pilot/baselines/hstouffer_feasibility_report.json.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=ifn-pilot HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/ifn-pilot_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/baselines"
+        },
+        {
+          "artifact": "outputs/results/ifn-pilot/baselines/ifn-pilot_fisher_default.tsv",
+          "source": "outputs/results/ifn-pilot/baselines/ifn-pilot_fisher_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=ifn-pilot HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/ifn-pilot_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/baselines"
+        },
+        {
+          "artifact": "outputs/results/ifn-pilot/baselines/ifn-pilot_metavolcanor_default.tsv",
+          "source": "outputs/results/ifn-pilot/baselines/ifn-pilot_metavolcanor_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=ifn-pilot HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/ifn-pilot_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/baselines"
+        },
+        {
+          "artifact": "outputs/results/ifn-pilot/baselines/ifn-pilot_piper_slice_locked.tsv",
+          "source": "outputs/results/ifn-pilot/baselines/ifn-pilot_piper_slice_locked.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=ifn-pilot HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/ifn-pilot_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/baselines"
+        },
+        {
+          "artifact": "outputs/results/ifn-pilot/baselines/ifn-pilot_rank_product_approx_default.tsv",
+          "source": "outputs/results/ifn-pilot/baselines/ifn-pilot_rank_product_approx_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=ifn-pilot HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/ifn-pilot_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/baselines"
+        },
+        {
+          "artifact": "outputs/results/ifn-pilot/baselines/ifn-pilot_robustrankaggreg_default.tsv",
+          "source": "outputs/results/ifn-pilot/baselines/ifn-pilot_robustrankaggreg_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=ifn-pilot HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/ifn-pilot_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/baselines"
+        },
+        {
+          "artifact": "outputs/results/ifn-pilot/baselines/ifn-pilot_sign_vote_default.tsv",
+          "source": "outputs/results/ifn-pilot/baselines/ifn-pilot_sign_vote_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=ifn-pilot HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/ifn-pilot_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/baselines"
+        },
+        {
+          "artifact": "outputs/results/ifn-pilot/baselines/ifn-pilot_unweighted_stouffer_default.tsv",
+          "source": "outputs/results/ifn-pilot/baselines/ifn-pilot_unweighted_stouffer_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=ifn-pilot HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/ifn-pilot_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/baselines"
+        },
+        {
+          "artifact": "outputs/results/ifn-pilot/baselines/ifn-pilot_weighted_stouffer_default.tsv",
+          "source": "outputs/results/ifn-pilot/baselines/ifn-pilot_weighted_stouffer_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=ifn-pilot HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/ifn-pilot_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/baselines"
+        },
+        {
+          "artifact": "outputs/results/ifn-pilot/baselines/ifn_fisher_default.tsv",
+          "source": "outputs/results/ifn-pilot/baselines/ifn_fisher_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=ifn HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/ifn-pilot_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/baselines"
+        },
+        {
+          "artifact": "outputs/results/ifn-pilot/baselines/ifn_metavolcanor_default.tsv",
+          "source": "outputs/results/ifn-pilot/baselines/ifn_metavolcanor_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=ifn HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/ifn-pilot_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/baselines"
+        },
+        {
+          "artifact": "outputs/results/ifn-pilot/baselines/ifn_piper_slice_locked.tsv",
+          "source": "outputs/results/ifn-pilot/baselines/ifn_piper_slice_locked.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=ifn HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/ifn-pilot_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/baselines"
+        },
+        {
+          "artifact": "outputs/results/ifn-pilot/baselines/ifn_rank_product_approx_default.tsv",
+          "source": "outputs/results/ifn-pilot/baselines/ifn_rank_product_approx_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=ifn HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/ifn-pilot_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/baselines"
+        },
+        {
+          "artifact": "outputs/results/ifn-pilot/baselines/ifn_robustrankaggreg_default.tsv",
+          "source": "outputs/results/ifn-pilot/baselines/ifn_robustrankaggreg_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=ifn HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/ifn-pilot_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/baselines"
+        },
+        {
+          "artifact": "outputs/results/ifn-pilot/baselines/ifn_sign_vote_default.tsv",
+          "source": "outputs/results/ifn-pilot/baselines/ifn_sign_vote_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=ifn HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/ifn-pilot_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/baselines"
+        },
+        {
+          "artifact": "outputs/results/ifn-pilot/baselines/ifn_unweighted_stouffer_default.tsv",
+          "source": "outputs/results/ifn-pilot/baselines/ifn_unweighted_stouffer_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=ifn HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/ifn-pilot_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/baselines"
+        },
+        {
+          "artifact": "outputs/results/ifn-pilot/baselines/ifn_weighted_stouffer_default.tsv",
+          "source": "outputs/results/ifn-pilot/baselines/ifn_weighted_stouffer_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=ifn HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/ifn-pilot_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/baselines"
+        },
+        {
+          "artifact": "outputs/results/ifn-pilot/baselines/r_preflight_report.json",
+          "source": "outputs/results/ifn-pilot/baselines/r_preflight_report.json.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=ifn-pilot HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/ifn-pilot_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/baselines"
+        },
+        {
+          "artifact": "outputs/results/ifn-pilot/gse147507_author_ifnb_author_top50.tsv",
+          "source": "outputs/results/ifn-pilot/gse147507_author_ifnb_author_top50.tsv.source",
+          "source_exists": true,
+          "source_first_line": "PYTHONPATH=outputs/code python outputs/code/scripts/compare_ifn_author_deg.py --author-xlsx data/deg/raw/ifn/GSE147507_BlancoMelo_Cell2020_mmc2_NHBE_DESeq2.xlsx --piper-score-csv outputs/results/ifn-pilot/piper_gene_scores.csv --derived-deg data/deg/raw/ifn/GSE147507_IFNB_4h_vs_mock_derived_logcpm_welch.csv --derived-deg data/deg/raw/ifn/GSE147507_IFNB_6h_vs_mock_derived_logcpm_welch.csv --derived-deg data/deg/raw/ifn/GSE147507_IFNB_12h_vs_mock_derived_logcpm_welch.csv --author-output-csv data/deg/raw/ifn/GSE147507_BlancoMelo_Cell2020_NHBE_IFNB_author_DESeq2.csv --piper-top-output-tsv outputs/results/ifn-pilot/gse147507_author_ifnb_piper_top50.tsv --author-top-output-tsv outputs/results/ifn-pilot/gse147507_author_ifnb_author_top50.tsv --availability-output-tsv outputs/results/ifn-pilot/ifn_author_deg_availability.tsv --summary-output-json outputs/results/ifn-pilot/gse147507_author_ifnb_piper_overlap_summary.json"
+        },
+        {
+          "artifact": "outputs/results/ifn-pilot/gse147507_author_ifnb_piper_overlap_summary.json",
+          "source": "outputs/results/ifn-pilot/gse147507_author_ifnb_piper_overlap_summary.json.source",
+          "source_exists": true,
+          "source_first_line": "PYTHONPATH=outputs/code python outputs/code/scripts/compare_ifn_author_deg.py --author-xlsx data/deg/raw/ifn/GSE147507_BlancoMelo_Cell2020_mmc2_NHBE_DESeq2.xlsx --piper-score-csv outputs/results/ifn-pilot/piper_gene_scores.csv --derived-deg data/deg/raw/ifn/GSE147507_IFNB_4h_vs_mock_derived_logcpm_welch.csv --derived-deg data/deg/raw/ifn/GSE147507_IFNB_6h_vs_mock_derived_logcpm_welch.csv --derived-deg data/deg/raw/ifn/GSE147507_IFNB_12h_vs_mock_derived_logcpm_welch.csv --author-output-csv data/deg/raw/ifn/GSE147507_BlancoMelo_Cell2020_NHBE_IFNB_author_DESeq2.csv --piper-top-output-tsv outputs/results/ifn-pilot/gse147507_author_ifnb_piper_top50.tsv --author-top-output-tsv outputs/results/ifn-pilot/gse147507_author_ifnb_author_top50.tsv --availability-output-tsv outputs/results/ifn-pilot/ifn_author_deg_availability.tsv --summary-output-json outputs/results/ifn-pilot/gse147507_author_ifnb_piper_overlap_summary.json"
+        },
+        {
+          "artifact": "outputs/results/ifn-pilot/gse147507_author_ifnb_piper_top50.tsv",
+          "source": "outputs/results/ifn-pilot/gse147507_author_ifnb_piper_top50.tsv.source",
+          "source_exists": true,
+          "source_first_line": "PYTHONPATH=outputs/code python outputs/code/scripts/compare_ifn_author_deg.py --author-xlsx data/deg/raw/ifn/GSE147507_BlancoMelo_Cell2020_mmc2_NHBE_DESeq2.xlsx --piper-score-csv outputs/results/ifn-pilot/piper_gene_scores.csv --derived-deg data/deg/raw/ifn/GSE147507_IFNB_4h_vs_mock_derived_logcpm_welch.csv --derived-deg data/deg/raw/ifn/GSE147507_IFNB_6h_vs_mock_derived_logcpm_welch.csv --derived-deg data/deg/raw/ifn/GSE147507_IFNB_12h_vs_mock_derived_logcpm_welch.csv --author-output-csv data/deg/raw/ifn/GSE147507_BlancoMelo_Cell2020_NHBE_IFNB_author_DESeq2.csv --piper-top-output-tsv outputs/results/ifn-pilot/gse147507_author_ifnb_piper_top50.tsv --author-top-output-tsv outputs/results/ifn-pilot/gse147507_author_ifnb_author_top50.tsv --availability-output-tsv outputs/results/ifn-pilot/ifn_author_deg_availability.tsv --summary-output-json outputs/results/ifn-pilot/gse147507_author_ifnb_piper_overlap_summary.json"
+        },
+        {
+          "artifact": "outputs/results/ifn-pilot/ifn_author_deg_availability.tsv",
+          "source": "outputs/results/ifn-pilot/ifn_author_deg_availability.tsv.source",
+          "source_exists": true,
+          "source_first_line": "PYTHONPATH=outputs/code python outputs/code/scripts/compare_ifn_author_deg.py --author-xlsx data/deg/raw/ifn/GSE147507_BlancoMelo_Cell2020_mmc2_NHBE_DESeq2.xlsx --piper-score-csv outputs/results/ifn-pilot/piper_gene_scores.csv --derived-deg data/deg/raw/ifn/GSE147507_IFNB_4h_vs_mock_derived_logcpm_welch.csv --derived-deg data/deg/raw/ifn/GSE147507_IFNB_6h_vs_mock_derived_logcpm_welch.csv --derived-deg data/deg/raw/ifn/GSE147507_IFNB_12h_vs_mock_derived_logcpm_welch.csv --author-output-csv data/deg/raw/ifn/GSE147507_BlancoMelo_Cell2020_NHBE_IFNB_author_DESeq2.csv --piper-top-output-tsv outputs/results/ifn-pilot/gse147507_author_ifnb_piper_top50.tsv --author-top-output-tsv outputs/results/ifn-pilot/gse147507_author_ifnb_author_top50.tsv --availability-output-tsv outputs/results/ifn-pilot/ifn_author_deg_availability.tsv --summary-output-json outputs/results/ifn-pilot/gse147507_author_ifnb_piper_overlap_summary.json"
+        },
+        {
+          "artifact": "outputs/results/ifn-pilot/ifn_derived_deg_summary.json",
+          "source": "outputs/results/ifn-pilot/ifn_derived_deg_summary.json.source",
+          "source_exists": true,
+          "source_first_line": "PYTHONPATH=outputs/code python outputs/code/scripts/write_ifn_derived_deg.py --raw-dir data/deg/raw/ifn --catalog data/studies/ifn_derived_catalog.csv --gold data/studies/gold/ifn_gold_panel.csv --summary outputs/results/ifn-pilot/ifn_derived_deg_summary.json"
+        },
+        {
+          "artifact": "outputs/results/ifn-pilot/ifn_gold_comparator_summary.csv",
+          "source": "outputs/results/ifn-pilot/ifn_gold_comparator_summary.csv.source",
+          "source_exists": true,
+          "source_first_line": "PYTHONPATH=outputs/code python outputs/code/scripts/write_gold_comparator_summary.py --baseline-dir outputs/results/ifn-pilot/baselines --gold data/studies/gold/ifn_gold_panel.csv --gold-gene-column gene_symbol --piper-score-csv outputs/results/ifn-pilot/piper_gene_scores.csv --piper-score-label v1_2_source_unit_mean --title 'IFN Gold-Panel Comparator Summary' --output-csv outputs/results/ifn-pilot/ifn_gold_comparator_summary.csv --output-md outputs/results/ifn-pilot/ifn_gold_comparator_summary.md"
+        },
+        {
+          "artifact": "outputs/results/ifn-pilot/ifn_gold_comparator_summary.md",
+          "source": "outputs/results/ifn-pilot/ifn_gold_comparator_summary.md.source",
+          "source_exists": true,
+          "source_first_line": "PYTHONPATH=outputs/code python outputs/code/scripts/write_gold_comparator_summary.py --baseline-dir outputs/results/ifn-pilot/baselines --gold data/studies/gold/ifn_gold_panel.csv --gold-gene-column gene_symbol --piper-score-csv outputs/results/ifn-pilot/piper_gene_scores.csv --piper-score-label v1_2_source_unit_mean --title 'IFN Gold-Panel Comparator Summary' --output-csv outputs/results/ifn-pilot/ifn_gold_comparator_summary.csv --output-md outputs/results/ifn-pilot/ifn_gold_comparator_summary.md"
+        },
+        {
+          "artifact": "outputs/results/ifn-pilot/ifn_gold_gene_ranks.tsv",
+          "source": "outputs/results/ifn-pilot/ifn_gold_gene_ranks.tsv.source",
+          "source_exists": true,
+          "source_first_line": "PYTHONPATH=outputs/code python outputs/code/scripts/summarize_ifn_pilot.py --score-csv outputs/results/ifn-pilot/piper_gene_scores.csv --gold data/studies/gold/ifn_isg_targets.csv --output-json outputs/results/ifn-pilot/ifn_pilot_summary.json --output-tsv outputs/results/ifn-pilot/ifn_gold_gene_ranks.tsv"
+        },
+        {
+          "artifact": "outputs/results/ifn-pilot/ifn_pilot_summary.json",
+          "source": "outputs/results/ifn-pilot/ifn_pilot_summary.json.source",
+          "source_exists": true,
+          "source_first_line": "PYTHONPATH=outputs/code python outputs/code/scripts/summarize_ifn_pilot.py --score-csv outputs/results/ifn-pilot/piper_gene_scores.csv --gold data/studies/gold/ifn_isg_targets.csv --output-json outputs/results/ifn-pilot/ifn_pilot_summary.json --output-tsv outputs/results/ifn-pilot/ifn_gold_gene_ranks.tsv"
+        },
+        {
+          "artifact": "outputs/results/ifn-pilot/ifn_source_support_report.json",
+          "source": "outputs/results/ifn-pilot/ifn_source_support_report.json.source",
+          "source_exists": true,
+          "source_first_line": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_source_support_report.py --score-csv outputs/results/ifn-pilot/piper_gene_scores.csv --gold data/studies/gold/ifn_gold_panel.csv --marker-panel data/studies/interpretive/ifn_type_i_marker_panel.csv --gold-gene-column gene_symbol --rank-column piper_rank --direction-column consensus_direction --top-n 10 --cutoffs 10 20 50 100 --min-source-units 2 --min-sign-concordance 1.0 --title 'IFN PIPER Source-Support Report' --output-summary-csv outputs/results/ifn-pilot/ifn_source_support_summary.csv --output-top-tsv outputs/results/ifn-pilot/ifn_source_support_top_genes.tsv --output-json outputs/results/ifn-pilot/ifn_source_support_report.json --output-md outputs/results/ifn-pilot/ifn_source_support_report.md"
+        },
+        {
+          "artifact": "outputs/results/ifn-pilot/ifn_source_support_report.md",
+          "source": "outputs/results/ifn-pilot/ifn_source_support_report.md.source",
+          "source_exists": true,
+          "source_first_line": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_source_support_report.py --score-csv outputs/results/ifn-pilot/piper_gene_scores.csv --gold data/studies/gold/ifn_gold_panel.csv --marker-panel data/studies/interpretive/ifn_type_i_marker_panel.csv --gold-gene-column gene_symbol --rank-column piper_rank --direction-column consensus_direction --top-n 10 --cutoffs 10 20 50 100 --min-source-units 2 --min-sign-concordance 1.0 --title 'IFN PIPER Source-Support Report' --output-summary-csv outputs/results/ifn-pilot/ifn_source_support_summary.csv --output-top-tsv outputs/results/ifn-pilot/ifn_source_support_top_genes.tsv --output-json outputs/results/ifn-pilot/ifn_source_support_report.json --output-md outputs/results/ifn-pilot/ifn_source_support_report.md"
+        },
+        {
+          "artifact": "outputs/results/ifn-pilot/ifn_source_support_summary.csv",
+          "source": "outputs/results/ifn-pilot/ifn_source_support_summary.csv.source",
+          "source_exists": true,
+          "source_first_line": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_source_support_report.py --score-csv outputs/results/ifn-pilot/piper_gene_scores.csv --gold data/studies/gold/ifn_gold_panel.csv --marker-panel data/studies/interpretive/ifn_type_i_marker_panel.csv --gold-gene-column gene_symbol --rank-column piper_rank --direction-column consensus_direction --top-n 10 --cutoffs 10 20 50 100 --min-source-units 2 --min-sign-concordance 1.0 --title 'IFN PIPER Source-Support Report' --output-summary-csv outputs/results/ifn-pilot/ifn_source_support_summary.csv --output-top-tsv outputs/results/ifn-pilot/ifn_source_support_top_genes.tsv --output-json outputs/results/ifn-pilot/ifn_source_support_report.json --output-md outputs/results/ifn-pilot/ifn_source_support_report.md"
+        },
+        {
+          "artifact": "outputs/results/ifn-pilot/ifn_source_support_top_genes.tsv",
+          "source": "outputs/results/ifn-pilot/ifn_source_support_top_genes.tsv.source",
+          "source_exists": true,
+          "source_first_line": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_source_support_report.py --score-csv outputs/results/ifn-pilot/piper_gene_scores.csv --gold data/studies/gold/ifn_gold_panel.csv --marker-panel data/studies/interpretive/ifn_type_i_marker_panel.csv --gold-gene-column gene_symbol --rank-column piper_rank --direction-column consensus_direction --top-n 10 --cutoffs 10 20 50 100 --min-source-units 2 --min-sign-concordance 1.0 --title 'IFN PIPER Source-Support Report' --output-summary-csv outputs/results/ifn-pilot/ifn_source_support_summary.csv --output-top-tsv outputs/results/ifn-pilot/ifn_source_support_top_genes.tsv --output-json outputs/results/ifn-pilot/ifn_source_support_report.json --output-md outputs/results/ifn-pilot/ifn_source_support_report.md"
+        },
+        {
+          "artifact": "outputs/results/ifn-pilot/piper_gene_scores.csv",
+          "source": "outputs/results/ifn-pilot/piper_gene_scores.csv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code score-db SCORE_HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/ifn-pilot_harmonized.csv CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/ifn_derived_catalog.csv OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot SCORE_DB=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/piper_scores.db SCORE_MIN_STUDIES=2"
+        },
+        {
+          "artifact": "outputs/results/ifn-pilot/piper_score_db_summary.json",
+          "source": "outputs/results/ifn-pilot/piper_score_db_summary.json.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code score-db SCORE_HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/ifn-pilot_harmonized.csv CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/ifn_derived_catalog.csv OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot SCORE_DB=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/piper_scores.db SCORE_MIN_STUDIES=2"
+        },
+        {
+          "artifact": "outputs/results/ifn-pilot/piper_score_metadata.json",
+          "source": "outputs/results/ifn-pilot/piper_score_metadata.json.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code score-db SCORE_HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/ifn-pilot_harmonized.csv CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/ifn_derived_catalog.csv OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot SCORE_DB=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/piper_scores.db SCORE_MIN_STUDIES=2"
+        },
+        {
+          "artifact": "outputs/results/ifn-pilot/piper_score_resource_package_summary.json",
+          "source": "outputs/results/ifn-pilot/piper_score_resource_package_summary.json.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code resource-package RESOURCE_SCORE_CSV=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/piper_gene_scores.csv RESOURCE_SCORE_DB=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/piper_scores.db RESOURCE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot RESOURCE_TOP_N=20 RESOURCE_API_URL="
+        },
+        {
+          "artifact": "outputs/results/ifn-pilot/piper_score_resource_top_genes.tsv",
+          "source": "outputs/results/ifn-pilot/piper_score_resource_top_genes.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code resource-package RESOURCE_SCORE_CSV=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/piper_gene_scores.csv RESOURCE_SCORE_DB=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/piper_scores.db RESOURCE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot RESOURCE_TOP_N=20 RESOURCE_API_URL="
+        },
+        {
+          "artifact": "outputs/results/ifn-pilot/piper_score_source_family_collapse_top_genes.tsv",
+          "source": "outputs/results/ifn-pilot/piper_score_source_family_collapse_top_genes.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code resource-package RESOURCE_SCORE_CSV=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/piper_gene_scores.csv RESOURCE_SCORE_DB=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/piper_scores.db RESOURCE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot RESOURCE_TOP_N=20 RESOURCE_API_URL="
+        },
+        {
+          "artifact": "outputs/results/ifn-pilot/piper_scores.db",
+          "source": "outputs/results/ifn-pilot/piper_scores.db.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code score-db SCORE_HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/ifn-pilot_harmonized.csv CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/ifn_derived_catalog.csv OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot SCORE_DB=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/piper_scores.db SCORE_MIN_STUDIES=2"
+        },
+        {
+          "artifact": "outputs/results/ifn-pilot/piper_source_quality_diagnostics.json",
+          "source": "outputs/results/ifn-pilot/piper_source_quality_diagnostics.json.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code score-db SCORE_HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/ifn-pilot_harmonized.csv CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/ifn_derived_catalog.csv OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot SCORE_DB=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/piper_scores.db SCORE_MIN_STUDIES=2"
+        },
+        {
+          "artifact": "outputs/results/ifn-pilot/piper_source_quality_diagnostics.tsv",
+          "source": "outputs/results/ifn-pilot/piper_source_quality_diagnostics.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code score-db SCORE_HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/ifn-pilot_harmonized.csv CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/ifn_derived_catalog.csv OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot SCORE_DB=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/piper_scores.db SCORE_MIN_STUDIES=2"
+        },
+        {
+          "artifact": "outputs/results/ifn-pilot/slice_consensus.csv",
+          "source": "outputs/results/ifn-pilot/slice_consensus.csv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code slice CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/ifn_derived_catalog.csv OUTDIR=outputs/results/ifn-pilot HARMONIZED_DIR=data/deg/harmonized SLICE_MIN_STUDIES=2"
+        },
+        {
+          "artifact": "outputs/results/ifn-pilot/slice_harmonized.csv",
+          "source": "outputs/results/ifn-pilot/slice_harmonized.csv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code slice CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/ifn_derived_catalog.csv OUTDIR=outputs/results/ifn-pilot HARMONIZED_DIR=data/deg/harmonized SLICE_MIN_STUDIES=2"
+        },
+        {
+          "artifact": "outputs/results/ifn-pilot/slice_metrics.json",
+          "source": "outputs/results/ifn-pilot/slice_metrics.json.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code slice CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/ifn_derived_catalog.csv OUTDIR=outputs/results/ifn-pilot HARMONIZED_DIR=data/deg/harmonized SLICE_MIN_STUDIES=2"
+        }
+      ],
+      "empty_source": [],
+      "exists": true,
+      "iteration_dir": "outputs/results/ifn-pilot",
+      "missing_source": [],
+      "passed": true
+    },
+    {
+      "artifact_count": 37,
+      "artifacts": [
+        {
+          "artifact": "outputs/results/er-stress-benchmark-primary/baselines/awmeta_feasibility_report.json",
+          "source": "outputs/results/er-stress-benchmark-primary/baselines/awmeta_feasibility_report.json.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=er-stress-benchmark-primary HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/er-stress-benchmark-primary_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary/baselines"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark-primary/baselines/baseline_failure_ledger.csv",
+          "source": "outputs/results/er-stress-benchmark-primary/baselines/baseline_failure_ledger.csv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=er-stress-benchmark-primary HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/er-stress-benchmark-primary_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary/baselines"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark-primary/baselines/baseline_manifest.csv",
+          "source": "outputs/results/er-stress-benchmark-primary/baselines/baseline_manifest.csv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=er-stress-benchmark-primary HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/er-stress-benchmark-primary_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary/baselines"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark-primary/baselines/baseline_parity_matrix.csv",
+          "source": "outputs/results/er-stress-benchmark-primary/baselines/baseline_parity_matrix.csv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=er-stress-benchmark-primary HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/er-stress-benchmark-primary_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary/baselines"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark-primary/baselines/er-stress-benchmark-primary_fisher_default.tsv",
+          "source": "outputs/results/er-stress-benchmark-primary/baselines/er-stress-benchmark-primary_fisher_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=er-stress-benchmark-primary HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/er-stress-benchmark-primary_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary/baselines"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark-primary/baselines/er-stress-benchmark-primary_metavolcanor_default.tsv",
+          "source": "outputs/results/er-stress-benchmark-primary/baselines/er-stress-benchmark-primary_metavolcanor_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=er-stress-benchmark-primary HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/er-stress-benchmark-primary_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary/baselines"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark-primary/baselines/er-stress-benchmark-primary_piper_slice_locked.tsv",
+          "source": "outputs/results/er-stress-benchmark-primary/baselines/er-stress-benchmark-primary_piper_slice_locked.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=er-stress-benchmark-primary HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/er-stress-benchmark-primary_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary/baselines"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark-primary/baselines/er-stress-benchmark-primary_rank_product_approx_default.tsv",
+          "source": "outputs/results/er-stress-benchmark-primary/baselines/er-stress-benchmark-primary_rank_product_approx_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=er-stress-benchmark-primary HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/er-stress-benchmark-primary_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary/baselines"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark-primary/baselines/er-stress-benchmark-primary_robustrankaggreg_default.tsv",
+          "source": "outputs/results/er-stress-benchmark-primary/baselines/er-stress-benchmark-primary_robustrankaggreg_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=er-stress-benchmark-primary HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/er-stress-benchmark-primary_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary/baselines"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark-primary/baselines/er-stress-benchmark-primary_sign_vote_default.tsv",
+          "source": "outputs/results/er-stress-benchmark-primary/baselines/er-stress-benchmark-primary_sign_vote_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=er-stress-benchmark-primary HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/er-stress-benchmark-primary_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary/baselines"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark-primary/baselines/er-stress-benchmark-primary_unweighted_stouffer_default.tsv",
+          "source": "outputs/results/er-stress-benchmark-primary/baselines/er-stress-benchmark-primary_unweighted_stouffer_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=er-stress-benchmark-primary HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/er-stress-benchmark-primary_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary/baselines"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark-primary/baselines/er-stress-benchmark-primary_weighted_stouffer_default.tsv",
+          "source": "outputs/results/er-stress-benchmark-primary/baselines/er-stress-benchmark-primary_weighted_stouffer_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=er-stress-benchmark-primary HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/er-stress-benchmark-primary_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary/baselines"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark-primary/baselines/er_stress_upr_primary_fisher_default.tsv",
+          "source": "outputs/results/er-stress-benchmark-primary/baselines/er_stress_upr_primary_fisher_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=er_stress_upr_primary HARMONIZED=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary/slice_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary/baselines"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark-primary/baselines/er_stress_upr_primary_metavolcanor_default.tsv",
+          "source": "outputs/results/er-stress-benchmark-primary/baselines/er_stress_upr_primary_metavolcanor_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=er_stress_upr_primary HARMONIZED=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary/slice_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary/baselines"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark-primary/baselines/er_stress_upr_primary_piper_slice_locked.tsv",
+          "source": "outputs/results/er-stress-benchmark-primary/baselines/er_stress_upr_primary_piper_slice_locked.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=er_stress_upr_primary HARMONIZED=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary/slice_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary/baselines"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark-primary/baselines/er_stress_upr_primary_rank_product_approx_default.tsv",
+          "source": "outputs/results/er-stress-benchmark-primary/baselines/er_stress_upr_primary_rank_product_approx_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=er_stress_upr_primary HARMONIZED=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary/slice_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary/baselines"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark-primary/baselines/er_stress_upr_primary_robustrankaggreg_default.tsv",
+          "source": "outputs/results/er-stress-benchmark-primary/baselines/er_stress_upr_primary_robustrankaggreg_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=er_stress_upr_primary HARMONIZED=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary/slice_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary/baselines"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark-primary/baselines/er_stress_upr_primary_sign_vote_default.tsv",
+          "source": "outputs/results/er-stress-benchmark-primary/baselines/er_stress_upr_primary_sign_vote_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=er_stress_upr_primary HARMONIZED=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary/slice_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary/baselines"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark-primary/baselines/er_stress_upr_primary_unweighted_stouffer_default.tsv",
+          "source": "outputs/results/er-stress-benchmark-primary/baselines/er_stress_upr_primary_unweighted_stouffer_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=er_stress_upr_primary HARMONIZED=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary/slice_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary/baselines"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark-primary/baselines/er_stress_upr_primary_weighted_stouffer_default.tsv",
+          "source": "outputs/results/er-stress-benchmark-primary/baselines/er_stress_upr_primary_weighted_stouffer_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=er_stress_upr_primary HARMONIZED=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary/slice_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary/baselines"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark-primary/baselines/hstouffer_feasibility_report.json",
+          "source": "outputs/results/er-stress-benchmark-primary/baselines/hstouffer_feasibility_report.json.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=er-stress-benchmark-primary HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/er-stress-benchmark-primary_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary/baselines"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark-primary/baselines/r_preflight_report.json",
+          "source": "outputs/results/er-stress-benchmark-primary/baselines/r_preflight_report.json.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=er-stress-benchmark-primary HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/er-stress-benchmark-primary_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary/baselines"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark-primary/er_stress_primary_gold_comparator_summary.csv",
+          "source": "outputs/results/er-stress-benchmark-primary/er_stress_primary_gold_comparator_summary.csv.source",
+          "source_exists": true,
+          "source_first_line": "PYTHONPATH=outputs/code python outputs/code/scripts/write_gold_comparator_summary.py --baseline-dir outputs/results/er-stress-benchmark-primary/baselines --gold data/studies/gold/er_stress_upr_gold_panel.csv --gold-gene-column gene_symbol --piper-score-csv outputs/results/er-stress-benchmark-primary/piper_gene_scores.csv --piper-score-label v1_2_source_unit_mean --title 'ER Stress/UPR Primary Gold-Panel Comparator Summary' --output-csv outputs/results/er-stress-benchmark-primary/er_stress_primary_gold_comparator_summary.csv --output-md outputs/results/er-stress-benchmark-primary/er_stress_primary_gold_comparator_summary.md"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark-primary/er_stress_primary_gold_comparator_summary.md",
+          "source": "outputs/results/er-stress-benchmark-primary/er_stress_primary_gold_comparator_summary.md.source",
+          "source_exists": true,
+          "source_first_line": "PYTHONPATH=outputs/code python outputs/code/scripts/write_gold_comparator_summary.py --baseline-dir outputs/results/er-stress-benchmark-primary/baselines --gold data/studies/gold/er_stress_upr_gold_panel.csv --gold-gene-column gene_symbol --piper-score-csv outputs/results/er-stress-benchmark-primary/piper_gene_scores.csv --piper-score-label v1_2_source_unit_mean --title 'ER Stress/UPR Primary Gold-Panel Comparator Summary' --output-csv outputs/results/er-stress-benchmark-primary/er_stress_primary_gold_comparator_summary.csv --output-md outputs/results/er-stress-benchmark-primary/er_stress_primary_gold_comparator_summary.md"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark-primary/er_stress_primary_source_support_report.json",
+          "source": "outputs/results/er-stress-benchmark-primary/er_stress_primary_source_support_report.json.source",
+          "source_exists": true,
+          "source_first_line": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_source_support_report.py --score-csv outputs/results/er-stress-benchmark-primary/piper_gene_scores.csv --gold data/studies/gold/er_stress_upr_gold_panel.csv --marker-panel data/studies/interpretive/er_stress_upr_marker_panel.csv --gold-gene-column gene_symbol --rank-column piper_rank --direction-column consensus_direction --top-n 10 --cutoffs 10 20 50 100 --min-source-units 2 --min-sign-concordance 1.0 --title 'ER Stress/UPR Primary Source-Support Report' --output-summary-csv outputs/results/er-stress-benchmark-primary/er_stress_primary_source_support_summary.csv --output-top-tsv outputs/results/er-stress-benchmark-primary/er_stress_primary_source_support_top_genes.tsv --output-json outputs/results/er-stress-benchmark-primary/er_stress_primary_source_support_report.json --output-md outputs/results/er-stress-benchmark-primary/er_stress_primary_source_support_report.md"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark-primary/er_stress_primary_source_support_report.md",
+          "source": "outputs/results/er-stress-benchmark-primary/er_stress_primary_source_support_report.md.source",
+          "source_exists": true,
+          "source_first_line": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_source_support_report.py --score-csv outputs/results/er-stress-benchmark-primary/piper_gene_scores.csv --gold data/studies/gold/er_stress_upr_gold_panel.csv --marker-panel data/studies/interpretive/er_stress_upr_marker_panel.csv --gold-gene-column gene_symbol --rank-column piper_rank --direction-column consensus_direction --top-n 10 --cutoffs 10 20 50 100 --min-source-units 2 --min-sign-concordance 1.0 --title 'ER Stress/UPR Primary Source-Support Report' --output-summary-csv outputs/results/er-stress-benchmark-primary/er_stress_primary_source_support_summary.csv --output-top-tsv outputs/results/er-stress-benchmark-primary/er_stress_primary_source_support_top_genes.tsv --output-json outputs/results/er-stress-benchmark-primary/er_stress_primary_source_support_report.json --output-md outputs/results/er-stress-benchmark-primary/er_stress_primary_source_support_report.md"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark-primary/er_stress_primary_source_support_summary.csv",
+          "source": "outputs/results/er-stress-benchmark-primary/er_stress_primary_source_support_summary.csv.source",
+          "source_exists": true,
+          "source_first_line": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_source_support_report.py --score-csv outputs/results/er-stress-benchmark-primary/piper_gene_scores.csv --gold data/studies/gold/er_stress_upr_gold_panel.csv --marker-panel data/studies/interpretive/er_stress_upr_marker_panel.csv --gold-gene-column gene_symbol --rank-column piper_rank --direction-column consensus_direction --top-n 10 --cutoffs 10 20 50 100 --min-source-units 2 --min-sign-concordance 1.0 --title 'ER Stress/UPR Primary Source-Support Report' --output-summary-csv outputs/results/er-stress-benchmark-primary/er_stress_primary_source_support_summary.csv --output-top-tsv outputs/results/er-stress-benchmark-primary/er_stress_primary_source_support_top_genes.tsv --output-json outputs/results/er-stress-benchmark-primary/er_stress_primary_source_support_report.json --output-md outputs/results/er-stress-benchmark-primary/er_stress_primary_source_support_report.md"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark-primary/er_stress_primary_source_support_top_genes.tsv",
+          "source": "outputs/results/er-stress-benchmark-primary/er_stress_primary_source_support_top_genes.tsv.source",
+          "source_exists": true,
+          "source_first_line": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_source_support_report.py --score-csv outputs/results/er-stress-benchmark-primary/piper_gene_scores.csv --gold data/studies/gold/er_stress_upr_gold_panel.csv --marker-panel data/studies/interpretive/er_stress_upr_marker_panel.csv --gold-gene-column gene_symbol --rank-column piper_rank --direction-column consensus_direction --top-n 10 --cutoffs 10 20 50 100 --min-source-units 2 --min-sign-concordance 1.0 --title 'ER Stress/UPR Primary Source-Support Report' --output-summary-csv outputs/results/er-stress-benchmark-primary/er_stress_primary_source_support_summary.csv --output-top-tsv outputs/results/er-stress-benchmark-primary/er_stress_primary_source_support_top_genes.tsv --output-json outputs/results/er-stress-benchmark-primary/er_stress_primary_source_support_report.json --output-md outputs/results/er-stress-benchmark-primary/er_stress_primary_source_support_report.md"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark-primary/piper_gene_scores.csv",
+          "source": "outputs/results/er-stress-benchmark-primary/piper_gene_scores.csv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code score-db SCORE_HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/er-stress-benchmark-primary_harmonized.csv CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/er_stress_upr_primary_catalog.csv OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary SCORE_DB=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary/piper_scores.db SCORE_MIN_STUDIES=2 EXTRA_METADATA=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/er_stress_score_metadata_extra.json"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark-primary/piper_score_db_summary.json",
+          "source": "outputs/results/er-stress-benchmark-primary/piper_score_db_summary.json.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code score-db SCORE_HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/er-stress-benchmark-primary_harmonized.csv CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/er_stress_upr_primary_catalog.csv OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary SCORE_DB=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary/piper_scores.db SCORE_MIN_STUDIES=2 EXTRA_METADATA=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/er_stress_score_metadata_extra.json"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark-primary/piper_score_metadata.json",
+          "source": "outputs/results/er-stress-benchmark-primary/piper_score_metadata.json.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code score-db SCORE_HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/er-stress-benchmark-primary_harmonized.csv CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/er_stress_upr_primary_catalog.csv OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary SCORE_DB=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary/piper_scores.db SCORE_MIN_STUDIES=2 EXTRA_METADATA=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/er_stress_score_metadata_extra.json"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark-primary/piper_scores.db",
+          "source": "outputs/results/er-stress-benchmark-primary/piper_scores.db.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code score-db SCORE_HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/er-stress-benchmark-primary_harmonized.csv CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/er_stress_upr_primary_catalog.csv OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary SCORE_DB=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary/piper_scores.db SCORE_MIN_STUDIES=2 EXTRA_METADATA=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/er_stress_score_metadata_extra.json"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark-primary/piper_source_quality_diagnostics.json",
+          "source": "outputs/results/er-stress-benchmark-primary/piper_source_quality_diagnostics.json.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code score-db SCORE_HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/er-stress-benchmark-primary_harmonized.csv CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/er_stress_upr_primary_catalog.csv OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary SCORE_DB=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary/piper_scores.db SCORE_MIN_STUDIES=2 EXTRA_METADATA=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/er_stress_score_metadata_extra.json"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark-primary/piper_source_quality_diagnostics.tsv",
+          "source": "outputs/results/er-stress-benchmark-primary/piper_source_quality_diagnostics.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code score-db SCORE_HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/er-stress-benchmark-primary_harmonized.csv CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/er_stress_upr_primary_catalog.csv OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary SCORE_DB=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary/piper_scores.db SCORE_MIN_STUDIES=2 EXTRA_METADATA=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/er_stress_score_metadata_extra.json"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark-primary/slice_consensus.csv",
+          "source": "outputs/results/er-stress-benchmark-primary/slice_consensus.csv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code slice CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/er_stress_upr_primary_catalog.csv OUTDIR=outputs/results/er-stress-benchmark-primary HARMONIZED_DIR=data/deg/harmonized SLICE_MIN_STUDIES=2"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark-primary/slice_harmonized.csv",
+          "source": "outputs/results/er-stress-benchmark-primary/slice_harmonized.csv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code slice CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/er_stress_upr_primary_catalog.csv OUTDIR=outputs/results/er-stress-benchmark-primary HARMONIZED_DIR=data/deg/harmonized SLICE_MIN_STUDIES=2"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark-primary/slice_metrics.json",
+          "source": "outputs/results/er-stress-benchmark-primary/slice_metrics.json.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code slice CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/er_stress_upr_primary_catalog.csv OUTDIR=outputs/results/er-stress-benchmark-primary HARMONIZED_DIR=data/deg/harmonized SLICE_MIN_STUDIES=2"
+        }
+      ],
+      "empty_source": [],
+      "exists": true,
+      "iteration_dir": "outputs/results/er-stress-benchmark-primary",
+      "missing_source": [],
+      "passed": true
+    },
+    {
+      "artifact_count": 45,
+      "artifacts": [
+        {
+          "artifact": "outputs/results/er-stress-benchmark/baselines/awmeta_feasibility_report.json",
+          "source": "outputs/results/er-stress-benchmark/baselines/awmeta_feasibility_report.json.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=er-stress-benchmark HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/er-stress-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark/baselines/baseline_failure_ledger.csv",
+          "source": "outputs/results/er-stress-benchmark/baselines/baseline_failure_ledger.csv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=er-stress-benchmark HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/er-stress-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark/baselines/baseline_manifest.csv",
+          "source": "outputs/results/er-stress-benchmark/baselines/baseline_manifest.csv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=er-stress-benchmark HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/er-stress-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark/baselines/baseline_parity_matrix.csv",
+          "source": "outputs/results/er-stress-benchmark/baselines/baseline_parity_matrix.csv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=er-stress-benchmark HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/er-stress-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark/baselines/er-stress-benchmark_fisher_default.tsv",
+          "source": "outputs/results/er-stress-benchmark/baselines/er-stress-benchmark_fisher_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=er-stress-benchmark HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/er-stress-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark/baselines/er-stress-benchmark_metavolcanor_default.tsv",
+          "source": "outputs/results/er-stress-benchmark/baselines/er-stress-benchmark_metavolcanor_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=er-stress-benchmark HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/er-stress-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark/baselines/er-stress-benchmark_piper_slice_locked.tsv",
+          "source": "outputs/results/er-stress-benchmark/baselines/er-stress-benchmark_piper_slice_locked.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=er-stress-benchmark HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/er-stress-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark/baselines/er-stress-benchmark_rank_product_approx_default.tsv",
+          "source": "outputs/results/er-stress-benchmark/baselines/er-stress-benchmark_rank_product_approx_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=er-stress-benchmark HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/er-stress-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark/baselines/er-stress-benchmark_robustrankaggreg_default.tsv",
+          "source": "outputs/results/er-stress-benchmark/baselines/er-stress-benchmark_robustrankaggreg_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=er-stress-benchmark HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/er-stress-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark/baselines/er-stress-benchmark_sign_vote_default.tsv",
+          "source": "outputs/results/er-stress-benchmark/baselines/er-stress-benchmark_sign_vote_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=er-stress-benchmark HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/er-stress-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark/baselines/er-stress-benchmark_unweighted_stouffer_default.tsv",
+          "source": "outputs/results/er-stress-benchmark/baselines/er-stress-benchmark_unweighted_stouffer_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=er-stress-benchmark HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/er-stress-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark/baselines/er-stress-benchmark_weighted_stouffer_default.tsv",
+          "source": "outputs/results/er-stress-benchmark/baselines/er-stress-benchmark_weighted_stouffer_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=er-stress-benchmark HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/er-stress-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark/baselines/er_stress_upr_fisher_default.tsv",
+          "source": "outputs/results/er-stress-benchmark/baselines/er_stress_upr_fisher_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=er_stress_upr HARMONIZED=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/slice_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark/baselines/er_stress_upr_metavolcanor_default.tsv",
+          "source": "outputs/results/er-stress-benchmark/baselines/er_stress_upr_metavolcanor_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=er_stress_upr HARMONIZED=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/slice_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark/baselines/er_stress_upr_piper_slice_locked.tsv",
+          "source": "outputs/results/er-stress-benchmark/baselines/er_stress_upr_piper_slice_locked.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=er_stress_upr HARMONIZED=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/slice_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark/baselines/er_stress_upr_rank_product_approx_default.tsv",
+          "source": "outputs/results/er-stress-benchmark/baselines/er_stress_upr_rank_product_approx_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=er_stress_upr HARMONIZED=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/slice_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark/baselines/er_stress_upr_robustrankaggreg_default.tsv",
+          "source": "outputs/results/er-stress-benchmark/baselines/er_stress_upr_robustrankaggreg_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=er_stress_upr HARMONIZED=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/slice_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark/baselines/er_stress_upr_sign_vote_default.tsv",
+          "source": "outputs/results/er-stress-benchmark/baselines/er_stress_upr_sign_vote_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=er_stress_upr HARMONIZED=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/slice_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark/baselines/er_stress_upr_unweighted_stouffer_default.tsv",
+          "source": "outputs/results/er-stress-benchmark/baselines/er_stress_upr_unweighted_stouffer_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=er_stress_upr HARMONIZED=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/slice_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark/baselines/er_stress_upr_weighted_stouffer_default.tsv",
+          "source": "outputs/results/er-stress-benchmark/baselines/er_stress_upr_weighted_stouffer_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=er_stress_upr HARMONIZED=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/slice_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark/baselines/hstouffer_feasibility_report.json",
+          "source": "outputs/results/er-stress-benchmark/baselines/hstouffer_feasibility_report.json.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=er-stress-benchmark HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/er-stress-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark/baselines/r_preflight_report.json",
+          "source": "outputs/results/er-stress-benchmark/baselines/r_preflight_report.json.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=er-stress-benchmark HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/er-stress-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark/er_stress_benchmark_preparation_summary.json",
+          "source": "outputs/results/er-stress-benchmark/er_stress_benchmark_preparation_summary.json.source",
+          "source_exists": true,
+          "source_first_line": "PYTHONPATH=outputs/code python outputs/code/scripts/write_er_stress_benchmark.py --raw-dir data/deg/raw/er_stress --catalog data/studies/er_stress_upr_catalog.csv --primary-catalog data/studies/er_stress_upr_primary_catalog.csv --gold data/studies/gold/er_stress_upr_gold_panel.csv --output-dir outputs/results/er-stress-benchmark"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark/er_stress_benchmark_preparation_summary.md",
+          "source": "outputs/results/er-stress-benchmark/er_stress_benchmark_preparation_summary.md.source",
+          "source_exists": true,
+          "source_first_line": "PYTHONPATH=outputs/code python outputs/code/scripts/write_er_stress_benchmark.py --raw-dir data/deg/raw/er_stress --catalog data/studies/er_stress_upr_catalog.csv --primary-catalog data/studies/er_stress_upr_primary_catalog.csv --gold data/studies/gold/er_stress_upr_gold_panel.csv --output-dir outputs/results/er-stress-benchmark"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark/er_stress_benchmark_report.json",
+          "source": "outputs/results/er-stress-benchmark/er_stress_benchmark_report.json.source",
+          "source_exists": true,
+          "source_first_line": "PYTHONPATH=outputs/code python outputs/code/scripts/write_er_stress_benchmark_report.py --primary-summary outputs/results/er-stress-benchmark-primary/er_stress_primary_gold_comparator_summary.csv --full-summary outputs/results/er-stress-benchmark/er_stress_gold_comparator_summary.csv --output-json outputs/results/er-stress-benchmark/er_stress_benchmark_report.json --output-md outputs/results/er-stress-benchmark/er_stress_benchmark_report.md"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark/er_stress_benchmark_report.md",
+          "source": "outputs/results/er-stress-benchmark/er_stress_benchmark_report.md.source",
+          "source_exists": true,
+          "source_first_line": "PYTHONPATH=outputs/code python outputs/code/scripts/write_er_stress_benchmark_report.py --primary-summary outputs/results/er-stress-benchmark-primary/er_stress_primary_gold_comparator_summary.csv --full-summary outputs/results/er-stress-benchmark/er_stress_gold_comparator_summary.csv --output-json outputs/results/er-stress-benchmark/er_stress_benchmark_report.json --output-md outputs/results/er-stress-benchmark/er_stress_benchmark_report.md"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark/er_stress_full_source_support_report.json",
+          "source": "outputs/results/er-stress-benchmark/er_stress_full_source_support_report.json.source",
+          "source_exists": true,
+          "source_first_line": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_source_support_report.py --score-csv outputs/results/er-stress-benchmark/piper_gene_scores.csv --gold data/studies/gold/er_stress_upr_gold_panel.csv --marker-panel data/studies/interpretive/er_stress_upr_marker_panel.csv --gold-gene-column gene_symbol --rank-column piper_rank --direction-column consensus_direction --top-n 10 --cutoffs 10 20 50 100 --min-source-units 2 --min-sign-concordance 1.0 --title 'ER Stress/UPR Full Source-Support Report' --output-summary-csv outputs/results/er-stress-benchmark/er_stress_full_source_support_summary.csv --output-top-tsv outputs/results/er-stress-benchmark/er_stress_full_source_support_top_genes.tsv --output-json outputs/results/er-stress-benchmark/er_stress_full_source_support_report.json --output-md outputs/results/er-stress-benchmark/er_stress_full_source_support_report.md"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark/er_stress_full_source_support_report.md",
+          "source": "outputs/results/er-stress-benchmark/er_stress_full_source_support_report.md.source",
+          "source_exists": true,
+          "source_first_line": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_source_support_report.py --score-csv outputs/results/er-stress-benchmark/piper_gene_scores.csv --gold data/studies/gold/er_stress_upr_gold_panel.csv --marker-panel data/studies/interpretive/er_stress_upr_marker_panel.csv --gold-gene-column gene_symbol --rank-column piper_rank --direction-column consensus_direction --top-n 10 --cutoffs 10 20 50 100 --min-source-units 2 --min-sign-concordance 1.0 --title 'ER Stress/UPR Full Source-Support Report' --output-summary-csv outputs/results/er-stress-benchmark/er_stress_full_source_support_summary.csv --output-top-tsv outputs/results/er-stress-benchmark/er_stress_full_source_support_top_genes.tsv --output-json outputs/results/er-stress-benchmark/er_stress_full_source_support_report.json --output-md outputs/results/er-stress-benchmark/er_stress_full_source_support_report.md"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark/er_stress_full_source_support_summary.csv",
+          "source": "outputs/results/er-stress-benchmark/er_stress_full_source_support_summary.csv.source",
+          "source_exists": true,
+          "source_first_line": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_source_support_report.py --score-csv outputs/results/er-stress-benchmark/piper_gene_scores.csv --gold data/studies/gold/er_stress_upr_gold_panel.csv --marker-panel data/studies/interpretive/er_stress_upr_marker_panel.csv --gold-gene-column gene_symbol --rank-column piper_rank --direction-column consensus_direction --top-n 10 --cutoffs 10 20 50 100 --min-source-units 2 --min-sign-concordance 1.0 --title 'ER Stress/UPR Full Source-Support Report' --output-summary-csv outputs/results/er-stress-benchmark/er_stress_full_source_support_summary.csv --output-top-tsv outputs/results/er-stress-benchmark/er_stress_full_source_support_top_genes.tsv --output-json outputs/results/er-stress-benchmark/er_stress_full_source_support_report.json --output-md outputs/results/er-stress-benchmark/er_stress_full_source_support_report.md"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark/er_stress_full_source_support_top_genes.tsv",
+          "source": "outputs/results/er-stress-benchmark/er_stress_full_source_support_top_genes.tsv.source",
+          "source_exists": true,
+          "source_first_line": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_source_support_report.py --score-csv outputs/results/er-stress-benchmark/piper_gene_scores.csv --gold data/studies/gold/er_stress_upr_gold_panel.csv --marker-panel data/studies/interpretive/er_stress_upr_marker_panel.csv --gold-gene-column gene_symbol --rank-column piper_rank --direction-column consensus_direction --top-n 10 --cutoffs 10 20 50 100 --min-source-units 2 --min-sign-concordance 1.0 --title 'ER Stress/UPR Full Source-Support Report' --output-summary-csv outputs/results/er-stress-benchmark/er_stress_full_source_support_summary.csv --output-top-tsv outputs/results/er-stress-benchmark/er_stress_full_source_support_top_genes.tsv --output-json outputs/results/er-stress-benchmark/er_stress_full_source_support_report.json --output-md outputs/results/er-stress-benchmark/er_stress_full_source_support_report.md"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark/er_stress_gold_comparator_summary.csv",
+          "source": "outputs/results/er-stress-benchmark/er_stress_gold_comparator_summary.csv.source",
+          "source_exists": true,
+          "source_first_line": "PYTHONPATH=outputs/code python outputs/code/scripts/write_gold_comparator_summary.py --baseline-dir outputs/results/er-stress-benchmark/baselines --gold data/studies/gold/er_stress_upr_gold_panel.csv --gold-gene-column gene_symbol --piper-score-csv outputs/results/er-stress-benchmark/piper_gene_scores.csv --piper-score-label v1_2_source_unit_mean --title 'ER Stress/UPR Full Sensitivity Gold-Panel Comparator Summary' --output-csv outputs/results/er-stress-benchmark/er_stress_gold_comparator_summary.csv --output-md outputs/results/er-stress-benchmark/er_stress_gold_comparator_summary.md"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark/er_stress_gold_comparator_summary.md",
+          "source": "outputs/results/er-stress-benchmark/er_stress_gold_comparator_summary.md.source",
+          "source_exists": true,
+          "source_first_line": "PYTHONPATH=outputs/code python outputs/code/scripts/write_gold_comparator_summary.py --baseline-dir outputs/results/er-stress-benchmark/baselines --gold data/studies/gold/er_stress_upr_gold_panel.csv --gold-gene-column gene_symbol --piper-score-csv outputs/results/er-stress-benchmark/piper_gene_scores.csv --piper-score-label v1_2_source_unit_mean --title 'ER Stress/UPR Full Sensitivity Gold-Panel Comparator Summary' --output-csv outputs/results/er-stress-benchmark/er_stress_gold_comparator_summary.csv --output-md outputs/results/er-stress-benchmark/er_stress_gold_comparator_summary.md"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark/er_stress_score_metadata_extra.json",
+          "source": "outputs/results/er-stress-benchmark/er_stress_score_metadata_extra.json.source",
+          "source_exists": true,
+          "source_first_line": "PYTHONPATH=outputs/code python outputs/code/scripts/write_er_stress_benchmark.py --raw-dir data/deg/raw/er_stress --catalog data/studies/er_stress_upr_catalog.csv --primary-catalog data/studies/er_stress_upr_primary_catalog.csv --gold data/studies/gold/er_stress_upr_gold_panel.csv --output-dir outputs/results/er-stress-benchmark"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark/er_stress_source_availability.json",
+          "source": "outputs/results/er-stress-benchmark/er_stress_source_availability.json.source",
+          "source_exists": true,
+          "source_first_line": "PYTHONPATH=outputs/code python outputs/code/scripts/write_er_stress_benchmark.py --raw-dir data/deg/raw/er_stress --catalog data/studies/er_stress_upr_catalog.csv --primary-catalog data/studies/er_stress_upr_primary_catalog.csv --gold data/studies/gold/er_stress_upr_gold_panel.csv --output-dir outputs/results/er-stress-benchmark"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark/er_stress_source_availability.tsv",
+          "source": "outputs/results/er-stress-benchmark/er_stress_source_availability.tsv.source",
+          "source_exists": true,
+          "source_first_line": "PYTHONPATH=outputs/code python outputs/code/scripts/write_er_stress_benchmark.py --raw-dir data/deg/raw/er_stress --catalog data/studies/er_stress_upr_catalog.csv --primary-catalog data/studies/er_stress_upr_primary_catalog.csv --gold data/studies/gold/er_stress_upr_gold_panel.csv --output-dir outputs/results/er-stress-benchmark"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark/piper_gene_scores.csv",
+          "source": "outputs/results/er-stress-benchmark/piper_gene_scores.csv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code score-db SCORE_HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/er-stress-benchmark_harmonized.csv CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/er_stress_upr_catalog.csv OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark SCORE_DB=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/piper_scores.db SCORE_MIN_STUDIES=2 EXTRA_METADATA=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/er_stress_score_metadata_extra.json"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark/piper_score_db_summary.json",
+          "source": "outputs/results/er-stress-benchmark/piper_score_db_summary.json.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code score-db SCORE_HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/er-stress-benchmark_harmonized.csv CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/er_stress_upr_catalog.csv OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark SCORE_DB=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/piper_scores.db SCORE_MIN_STUDIES=2 EXTRA_METADATA=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/er_stress_score_metadata_extra.json"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark/piper_score_metadata.json",
+          "source": "outputs/results/er-stress-benchmark/piper_score_metadata.json.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code score-db SCORE_HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/er-stress-benchmark_harmonized.csv CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/er_stress_upr_catalog.csv OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark SCORE_DB=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/piper_scores.db SCORE_MIN_STUDIES=2 EXTRA_METADATA=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/er_stress_score_metadata_extra.json"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark/piper_scores.db",
+          "source": "outputs/results/er-stress-benchmark/piper_scores.db.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code score-db SCORE_HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/er-stress-benchmark_harmonized.csv CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/er_stress_upr_catalog.csv OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark SCORE_DB=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/piper_scores.db SCORE_MIN_STUDIES=2 EXTRA_METADATA=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/er_stress_score_metadata_extra.json"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark/piper_source_quality_diagnostics.json",
+          "source": "outputs/results/er-stress-benchmark/piper_source_quality_diagnostics.json.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code score-db SCORE_HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/er-stress-benchmark_harmonized.csv CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/er_stress_upr_catalog.csv OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark SCORE_DB=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/piper_scores.db SCORE_MIN_STUDIES=2 EXTRA_METADATA=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/er_stress_score_metadata_extra.json"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark/piper_source_quality_diagnostics.tsv",
+          "source": "outputs/results/er-stress-benchmark/piper_source_quality_diagnostics.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code score-db SCORE_HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/er-stress-benchmark_harmonized.csv CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/er_stress_upr_catalog.csv OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark SCORE_DB=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/piper_scores.db SCORE_MIN_STUDIES=2 EXTRA_METADATA=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/er_stress_score_metadata_extra.json"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark/slice_consensus.csv",
+          "source": "outputs/results/er-stress-benchmark/slice_consensus.csv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code slice CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/er_stress_upr_catalog.csv OUTDIR=outputs/results/er-stress-benchmark HARMONIZED_DIR=data/deg/harmonized SLICE_MIN_STUDIES=2"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark/slice_harmonized.csv",
+          "source": "outputs/results/er-stress-benchmark/slice_harmonized.csv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code slice CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/er_stress_upr_catalog.csv OUTDIR=outputs/results/er-stress-benchmark HARMONIZED_DIR=data/deg/harmonized SLICE_MIN_STUDIES=2"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark/slice_metrics.json",
+          "source": "outputs/results/er-stress-benchmark/slice_metrics.json.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code slice CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/er_stress_upr_catalog.csv OUTDIR=outputs/results/er-stress-benchmark HARMONIZED_DIR=data/deg/harmonized SLICE_MIN_STUDIES=2"
+        },
+        {
+          "artifact": "outputs/results/er-stress-benchmark/source_support_provenance_audit.json",
+          "source": "outputs/results/er-stress-benchmark/source_support_provenance_audit.json.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code provenance-check RESULTS_ROOT=/home/keunsoo/projects/09_PIPER/outputs/results OUTPUT=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/source_support_provenance_audit.json ITERATIONS=ifn-pilot,er-stress-benchmark-primary,er-stress-benchmark"
+        }
+      ],
+      "empty_source": [],
+      "exists": true,
+      "iteration_dir": "outputs/results/er-stress-benchmark",
+      "missing_source": [],
+      "passed": true
+    },
+    {
+      "artifact_count": 34,
+      "artifacts": [
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/baselines/awmeta_feasibility_report.json",
+          "source": "outputs/results/heat-shock-benchmark/baselines/awmeta_feasibility_report.json.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=heat_shock_hsf1 HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/heat-shock-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/baselines/baseline_failure_ledger.csv",
+          "source": "outputs/results/heat-shock-benchmark/baselines/baseline_failure_ledger.csv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=heat_shock_hsf1 HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/heat-shock-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/baselines/baseline_manifest.csv",
+          "source": "outputs/results/heat-shock-benchmark/baselines/baseline_manifest.csv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=heat_shock_hsf1 HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/heat-shock-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/baselines/baseline_parity_matrix.csv",
+          "source": "outputs/results/heat-shock-benchmark/baselines/baseline_parity_matrix.csv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=heat_shock_hsf1 HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/heat-shock-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/baselines/heat_shock_hsf1_fisher_default.tsv",
+          "source": "outputs/results/heat-shock-benchmark/baselines/heat_shock_hsf1_fisher_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=heat_shock_hsf1 HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/heat-shock-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/baselines/heat_shock_hsf1_metavolcanor_default.tsv",
+          "source": "outputs/results/heat-shock-benchmark/baselines/heat_shock_hsf1_metavolcanor_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=heat_shock_hsf1 HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/heat-shock-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/baselines/heat_shock_hsf1_piper_slice_locked.tsv",
+          "source": "outputs/results/heat-shock-benchmark/baselines/heat_shock_hsf1_piper_slice_locked.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=heat_shock_hsf1 HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/heat-shock-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/baselines/heat_shock_hsf1_rank_product_approx_default.tsv",
+          "source": "outputs/results/heat-shock-benchmark/baselines/heat_shock_hsf1_rank_product_approx_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=heat_shock_hsf1 HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/heat-shock-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/baselines/heat_shock_hsf1_robustrankaggreg_default.tsv",
+          "source": "outputs/results/heat-shock-benchmark/baselines/heat_shock_hsf1_robustrankaggreg_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=heat_shock_hsf1 HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/heat-shock-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/baselines/heat_shock_hsf1_sign_vote_default.tsv",
+          "source": "outputs/results/heat-shock-benchmark/baselines/heat_shock_hsf1_sign_vote_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=heat_shock_hsf1 HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/heat-shock-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/baselines/heat_shock_hsf1_unweighted_stouffer_default.tsv",
+          "source": "outputs/results/heat-shock-benchmark/baselines/heat_shock_hsf1_unweighted_stouffer_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=heat_shock_hsf1 HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/heat-shock-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/baselines/heat_shock_hsf1_weighted_stouffer_default.tsv",
+          "source": "outputs/results/heat-shock-benchmark/baselines/heat_shock_hsf1_weighted_stouffer_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=heat_shock_hsf1 HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/heat-shock-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/baselines/hstouffer_feasibility_report.json",
+          "source": "outputs/results/heat-shock-benchmark/baselines/hstouffer_feasibility_report.json.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=heat_shock_hsf1 HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/heat-shock-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/baselines/r_preflight_report.json",
+          "source": "outputs/results/heat-shock-benchmark/baselines/r_preflight_report.json.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=heat_shock_hsf1 HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/heat-shock-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/heat_shock_benchmark_preparation_summary.json",
+          "source": "outputs/results/heat-shock-benchmark/heat_shock_benchmark_preparation_summary.json.source",
+          "source_exists": true,
+          "source_first_line": "PYTHONPATH=outputs/code python outputs/code/scripts/write_heat_shock_benchmark.py --raw-dir data/deg/raw/heat_shock --catalog data/studies/heat_shock_hsf1_catalog.csv --gold data/studies/gold/heat_shock_hsf1_gold_panel.csv --output-dir outputs/results/heat-shock-benchmark"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/heat_shock_benchmark_preparation_summary.md",
+          "source": "outputs/results/heat-shock-benchmark/heat_shock_benchmark_preparation_summary.md.source",
+          "source_exists": true,
+          "source_first_line": "PYTHONPATH=outputs/code python outputs/code/scripts/write_heat_shock_benchmark.py --raw-dir data/deg/raw/heat_shock --catalog data/studies/heat_shock_hsf1_catalog.csv --gold data/studies/gold/heat_shock_hsf1_gold_panel.csv --output-dir outputs/results/heat-shock-benchmark"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/heat_shock_gold_comparator_summary.csv",
+          "source": "outputs/results/heat-shock-benchmark/heat_shock_gold_comparator_summary.csv.source",
+          "source_exists": true,
+          "source_first_line": "PYTHONPATH=outputs/code python outputs/code/scripts/write_gold_comparator_summary.py --baseline-dir outputs/results/heat-shock-benchmark/baselines --gold data/studies/gold/heat_shock_hsf1_gold_panel.csv --gold-gene-column gene_symbol --piper-score-csv outputs/results/heat-shock-benchmark/piper_gene_scores.csv --piper-score-label v1_2_source_unit_mean --title 'Heat Shock / HSF1 Gold-Panel Comparator Summary' --output-csv outputs/results/heat-shock-benchmark/heat_shock_gold_comparator_summary.csv --output-md outputs/results/heat-shock-benchmark/heat_shock_gold_comparator_summary.md"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/heat_shock_gold_comparator_summary.md",
+          "source": "outputs/results/heat-shock-benchmark/heat_shock_gold_comparator_summary.md.source",
+          "source_exists": true,
+          "source_first_line": "PYTHONPATH=outputs/code python outputs/code/scripts/write_gold_comparator_summary.py --baseline-dir outputs/results/heat-shock-benchmark/baselines --gold data/studies/gold/heat_shock_hsf1_gold_panel.csv --gold-gene-column gene_symbol --piper-score-csv outputs/results/heat-shock-benchmark/piper_gene_scores.csv --piper-score-label v1_2_source_unit_mean --title 'Heat Shock / HSF1 Gold-Panel Comparator Summary' --output-csv outputs/results/heat-shock-benchmark/heat_shock_gold_comparator_summary.csv --output-md outputs/results/heat-shock-benchmark/heat_shock_gold_comparator_summary.md"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/heat_shock_score_metadata_extra.json",
+          "source": "outputs/results/heat-shock-benchmark/heat_shock_score_metadata_extra.json.source",
+          "source_exists": true,
+          "source_first_line": "PYTHONPATH=outputs/code python outputs/code/scripts/write_heat_shock_benchmark.py --raw-dir data/deg/raw/heat_shock --catalog data/studies/heat_shock_hsf1_catalog.csv --gold data/studies/gold/heat_shock_hsf1_gold_panel.csv --output-dir outputs/results/heat-shock-benchmark"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/heat_shock_source_availability.json",
+          "source": "outputs/results/heat-shock-benchmark/heat_shock_source_availability.json.source",
+          "source_exists": true,
+          "source_first_line": "PYTHONPATH=outputs/code python outputs/code/scripts/write_heat_shock_benchmark.py --raw-dir data/deg/raw/heat_shock --catalog data/studies/heat_shock_hsf1_catalog.csv --gold data/studies/gold/heat_shock_hsf1_gold_panel.csv --output-dir outputs/results/heat-shock-benchmark"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/heat_shock_source_availability.tsv",
+          "source": "outputs/results/heat-shock-benchmark/heat_shock_source_availability.tsv.source",
+          "source_exists": true,
+          "source_first_line": "PYTHONPATH=outputs/code python outputs/code/scripts/write_heat_shock_benchmark.py --raw-dir data/deg/raw/heat_shock --catalog data/studies/heat_shock_hsf1_catalog.csv --gold data/studies/gold/heat_shock_hsf1_gold_panel.csv --output-dir outputs/results/heat-shock-benchmark"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/heat_shock_source_support_report.json",
+          "source": "outputs/results/heat-shock-benchmark/heat_shock_source_support_report.json.source",
+          "source_exists": true,
+          "source_first_line": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_source_support_report.py --score-csv outputs/results/heat-shock-benchmark/piper_gene_scores.csv --gold data/studies/gold/heat_shock_hsf1_gold_panel.csv --gold-gene-column gene_symbol --rank-column piper_rank --direction-column consensus_direction --top-n 20 --cutoffs 10 20 50 100 --min-source-units 2 --min-sign-concordance 1.0 --title 'Heat Shock / HSF1 Source-Support Report' --output-summary-csv outputs/results/heat-shock-benchmark/heat_shock_source_support_summary.csv --output-top-tsv outputs/results/heat-shock-benchmark/heat_shock_source_support_top_genes.tsv --output-json outputs/results/heat-shock-benchmark/heat_shock_source_support_report.json --output-md outputs/results/heat-shock-benchmark/heat_shock_source_support_report.md"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/heat_shock_source_support_report.md",
+          "source": "outputs/results/heat-shock-benchmark/heat_shock_source_support_report.md.source",
+          "source_exists": true,
+          "source_first_line": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_source_support_report.py --score-csv outputs/results/heat-shock-benchmark/piper_gene_scores.csv --gold data/studies/gold/heat_shock_hsf1_gold_panel.csv --gold-gene-column gene_symbol --rank-column piper_rank --direction-column consensus_direction --top-n 20 --cutoffs 10 20 50 100 --min-source-units 2 --min-sign-concordance 1.0 --title 'Heat Shock / HSF1 Source-Support Report' --output-summary-csv outputs/results/heat-shock-benchmark/heat_shock_source_support_summary.csv --output-top-tsv outputs/results/heat-shock-benchmark/heat_shock_source_support_top_genes.tsv --output-json outputs/results/heat-shock-benchmark/heat_shock_source_support_report.json --output-md outputs/results/heat-shock-benchmark/heat_shock_source_support_report.md"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/heat_shock_source_support_summary.csv",
+          "source": "outputs/results/heat-shock-benchmark/heat_shock_source_support_summary.csv.source",
+          "source_exists": true,
+          "source_first_line": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_source_support_report.py --score-csv outputs/results/heat-shock-benchmark/piper_gene_scores.csv --gold data/studies/gold/heat_shock_hsf1_gold_panel.csv --gold-gene-column gene_symbol --rank-column piper_rank --direction-column consensus_direction --top-n 20 --cutoffs 10 20 50 100 --min-source-units 2 --min-sign-concordance 1.0 --title 'Heat Shock / HSF1 Source-Support Report' --output-summary-csv outputs/results/heat-shock-benchmark/heat_shock_source_support_summary.csv --output-top-tsv outputs/results/heat-shock-benchmark/heat_shock_source_support_top_genes.tsv --output-json outputs/results/heat-shock-benchmark/heat_shock_source_support_report.json --output-md outputs/results/heat-shock-benchmark/heat_shock_source_support_report.md"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/heat_shock_source_support_top_genes.tsv",
+          "source": "outputs/results/heat-shock-benchmark/heat_shock_source_support_top_genes.tsv.source",
+          "source_exists": true,
+          "source_first_line": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_source_support_report.py --score-csv outputs/results/heat-shock-benchmark/piper_gene_scores.csv --gold data/studies/gold/heat_shock_hsf1_gold_panel.csv --gold-gene-column gene_symbol --rank-column piper_rank --direction-column consensus_direction --top-n 20 --cutoffs 10 20 50 100 --min-source-units 2 --min-sign-concordance 1.0 --title 'Heat Shock / HSF1 Source-Support Report' --output-summary-csv outputs/results/heat-shock-benchmark/heat_shock_source_support_summary.csv --output-top-tsv outputs/results/heat-shock-benchmark/heat_shock_source_support_top_genes.tsv --output-json outputs/results/heat-shock-benchmark/heat_shock_source_support_report.json --output-md outputs/results/heat-shock-benchmark/heat_shock_source_support_report.md"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/piper_gene_scores.csv",
+          "source": "outputs/results/heat-shock-benchmark/piper_gene_scores.csv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code score-db SCORE_HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/heat-shock-benchmark_harmonized.csv CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/heat_shock_hsf1_catalog.csv OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark SCORE_DB=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/piper_scores.db SCORE_MIN_STUDIES=2 EXTRA_METADATA=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/heat_shock_score_metadata_extra.json"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/piper_score_db_summary.json",
+          "source": "outputs/results/heat-shock-benchmark/piper_score_db_summary.json.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code score-db SCORE_HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/heat-shock-benchmark_harmonized.csv CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/heat_shock_hsf1_catalog.csv OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark SCORE_DB=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/piper_scores.db SCORE_MIN_STUDIES=2 EXTRA_METADATA=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/heat_shock_score_metadata_extra.json"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/piper_score_metadata.json",
+          "source": "outputs/results/heat-shock-benchmark/piper_score_metadata.json.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code score-db SCORE_HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/heat-shock-benchmark_harmonized.csv CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/heat_shock_hsf1_catalog.csv OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark SCORE_DB=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/piper_scores.db SCORE_MIN_STUDIES=2 EXTRA_METADATA=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/heat_shock_score_metadata_extra.json"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/piper_scores.db",
+          "source": "outputs/results/heat-shock-benchmark/piper_scores.db.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code score-db SCORE_HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/heat-shock-benchmark_harmonized.csv CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/heat_shock_hsf1_catalog.csv OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark SCORE_DB=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/piper_scores.db SCORE_MIN_STUDIES=2 EXTRA_METADATA=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/heat_shock_score_metadata_extra.json"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/piper_source_quality_diagnostics.json",
+          "source": "outputs/results/heat-shock-benchmark/piper_source_quality_diagnostics.json.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code score-db SCORE_HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/heat-shock-benchmark_harmonized.csv CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/heat_shock_hsf1_catalog.csv OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark SCORE_DB=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/piper_scores.db SCORE_MIN_STUDIES=2 EXTRA_METADATA=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/heat_shock_score_metadata_extra.json"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/piper_source_quality_diagnostics.tsv",
+          "source": "outputs/results/heat-shock-benchmark/piper_source_quality_diagnostics.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code score-db SCORE_HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/heat-shock-benchmark_harmonized.csv CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/heat_shock_hsf1_catalog.csv OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark SCORE_DB=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/piper_scores.db SCORE_MIN_STUDIES=2 EXTRA_METADATA=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/heat_shock_score_metadata_extra.json"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/slice_consensus.csv",
+          "source": "outputs/results/heat-shock-benchmark/slice_consensus.csv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code slice CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/heat_shock_hsf1_catalog.csv OUTDIR=outputs/results/heat-shock-benchmark HARMONIZED_DIR=data/deg/harmonized SLICE_MIN_STUDIES=2"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/slice_harmonized.csv",
+          "source": "outputs/results/heat-shock-benchmark/slice_harmonized.csv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code slice CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/heat_shock_hsf1_catalog.csv OUTDIR=outputs/results/heat-shock-benchmark HARMONIZED_DIR=data/deg/harmonized SLICE_MIN_STUDIES=2"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/slice_metrics.json",
+          "source": "outputs/results/heat-shock-benchmark/slice_metrics.json.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code slice CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/heat_shock_hsf1_catalog.csv OUTDIR=outputs/results/heat-shock-benchmark HARMONIZED_DIR=data/deg/harmonized SLICE_MIN_STUDIES=2"
+        }
+      ],
+      "empty_source": [],
+      "exists": true,
+      "iteration_dir": "outputs/results/heat-shock-benchmark",
+      "missing_source": [],
+      "passed": true
+    }
+  ],
+  "iterations": [
+    "ifn-pilot",
+    "er-stress-benchmark-primary",
+    "er-stress-benchmark",
+    "heat-shock-benchmark"
+  ],
+  "passed": true,
+  "results_root": "outputs/results",
+  "schema_version": "1.0"
+}

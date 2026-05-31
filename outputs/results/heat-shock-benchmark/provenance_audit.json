@@ -1,0 +1,224 @@
+{
+  "iteration_records": [
+    {
+      "artifact_count": 34,
+      "artifacts": [
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/baselines/awmeta_feasibility_report.json",
+          "source": "outputs/results/heat-shock-benchmark/baselines/awmeta_feasibility_report.json.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=heat_shock_hsf1 HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/heat-shock-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/baselines/baseline_failure_ledger.csv",
+          "source": "outputs/results/heat-shock-benchmark/baselines/baseline_failure_ledger.csv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=heat_shock_hsf1 HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/heat-shock-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/baselines/baseline_manifest.csv",
+          "source": "outputs/results/heat-shock-benchmark/baselines/baseline_manifest.csv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=heat_shock_hsf1 HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/heat-shock-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/baselines/baseline_parity_matrix.csv",
+          "source": "outputs/results/heat-shock-benchmark/baselines/baseline_parity_matrix.csv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=heat_shock_hsf1 HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/heat-shock-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/baselines/heat_shock_hsf1_fisher_default.tsv",
+          "source": "outputs/results/heat-shock-benchmark/baselines/heat_shock_hsf1_fisher_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=heat_shock_hsf1 HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/heat-shock-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/baselines/heat_shock_hsf1_metavolcanor_default.tsv",
+          "source": "outputs/results/heat-shock-benchmark/baselines/heat_shock_hsf1_metavolcanor_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=heat_shock_hsf1 HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/heat-shock-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/baselines/heat_shock_hsf1_piper_slice_locked.tsv",
+          "source": "outputs/results/heat-shock-benchmark/baselines/heat_shock_hsf1_piper_slice_locked.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=heat_shock_hsf1 HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/heat-shock-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/baselines/heat_shock_hsf1_rank_product_approx_default.tsv",
+          "source": "outputs/results/heat-shock-benchmark/baselines/heat_shock_hsf1_rank_product_approx_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=heat_shock_hsf1 HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/heat-shock-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/baselines/heat_shock_hsf1_robustrankaggreg_default.tsv",
+          "source": "outputs/results/heat-shock-benchmark/baselines/heat_shock_hsf1_robustrankaggreg_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=heat_shock_hsf1 HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/heat-shock-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/baselines/heat_shock_hsf1_sign_vote_default.tsv",
+          "source": "outputs/results/heat-shock-benchmark/baselines/heat_shock_hsf1_sign_vote_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=heat_shock_hsf1 HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/heat-shock-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/baselines/heat_shock_hsf1_unweighted_stouffer_default.tsv",
+          "source": "outputs/results/heat-shock-benchmark/baselines/heat_shock_hsf1_unweighted_stouffer_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=heat_shock_hsf1 HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/heat-shock-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/baselines/heat_shock_hsf1_weighted_stouffer_default.tsv",
+          "source": "outputs/results/heat-shock-benchmark/baselines/heat_shock_hsf1_weighted_stouffer_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=heat_shock_hsf1 HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/heat-shock-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/baselines/hstouffer_feasibility_report.json",
+          "source": "outputs/results/heat-shock-benchmark/baselines/hstouffer_feasibility_report.json.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=heat_shock_hsf1 HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/heat-shock-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/baselines/r_preflight_report.json",
+          "source": "outputs/results/heat-shock-benchmark/baselines/r_preflight_report.json.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=heat_shock_hsf1 HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/heat-shock-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/heat_shock_benchmark_preparation_summary.json",
+          "source": "outputs/results/heat-shock-benchmark/heat_shock_benchmark_preparation_summary.json.source",
+          "source_exists": true,
+          "source_first_line": "PYTHONPATH=outputs/code python outputs/code/scripts/write_heat_shock_benchmark.py --raw-dir data/deg/raw/heat_shock --catalog data/studies/heat_shock_hsf1_catalog.csv --gold data/studies/gold/heat_shock_hsf1_gold_panel.csv --output-dir outputs/results/heat-shock-benchmark"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/heat_shock_benchmark_preparation_summary.md",
+          "source": "outputs/results/heat-shock-benchmark/heat_shock_benchmark_preparation_summary.md.source",
+          "source_exists": true,
+          "source_first_line": "PYTHONPATH=outputs/code python outputs/code/scripts/write_heat_shock_benchmark.py --raw-dir data/deg/raw/heat_shock --catalog data/studies/heat_shock_hsf1_catalog.csv --gold data/studies/gold/heat_shock_hsf1_gold_panel.csv --output-dir outputs/results/heat-shock-benchmark"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/heat_shock_gold_comparator_summary.csv",
+          "source": "outputs/results/heat-shock-benchmark/heat_shock_gold_comparator_summary.csv.source",
+          "source_exists": true,
+          "source_first_line": "PYTHONPATH=outputs/code python outputs/code/scripts/write_gold_comparator_summary.py --baseline-dir outputs/results/heat-shock-benchmark/baselines --gold data/studies/gold/heat_shock_hsf1_gold_panel.csv --gold-gene-column gene_symbol --piper-score-csv outputs/results/heat-shock-benchmark/piper_gene_scores.csv --piper-score-label v1_2_source_unit_mean --title 'Heat Shock / HSF1 Gold-Panel Comparator Summary' --output-csv outputs/results/heat-shock-benchmark/heat_shock_gold_comparator_summary.csv --output-md outputs/results/heat-shock-benchmark/heat_shock_gold_comparator_summary.md"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/heat_shock_gold_comparator_summary.md",
+          "source": "outputs/results/heat-shock-benchmark/heat_shock_gold_comparator_summary.md.source",
+          "source_exists": true,
+          "source_first_line": "PYTHONPATH=outputs/code python outputs/code/scripts/write_gold_comparator_summary.py --baseline-dir outputs/results/heat-shock-benchmark/baselines --gold data/studies/gold/heat_shock_hsf1_gold_panel.csv --gold-gene-column gene_symbol --piper-score-csv outputs/results/heat-shock-benchmark/piper_gene_scores.csv --piper-score-label v1_2_source_unit_mean --title 'Heat Shock / HSF1 Gold-Panel Comparator Summary' --output-csv outputs/results/heat-shock-benchmark/heat_shock_gold_comparator_summary.csv --output-md outputs/results/heat-shock-benchmark/heat_shock_gold_comparator_summary.md"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/heat_shock_score_metadata_extra.json",
+          "source": "outputs/results/heat-shock-benchmark/heat_shock_score_metadata_extra.json.source",
+          "source_exists": true,
+          "source_first_line": "PYTHONPATH=outputs/code python outputs/code/scripts/write_heat_shock_benchmark.py --raw-dir data/deg/raw/heat_shock --catalog data/studies/heat_shock_hsf1_catalog.csv --gold data/studies/gold/heat_shock_hsf1_gold_panel.csv --output-dir outputs/results/heat-shock-benchmark"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/heat_shock_source_availability.json",
+          "source": "outputs/results/heat-shock-benchmark/heat_shock_source_availability.json.source",
+          "source_exists": true,
+          "source_first_line": "PYTHONPATH=outputs/code python outputs/code/scripts/write_heat_shock_benchmark.py --raw-dir data/deg/raw/heat_shock --catalog data/studies/heat_shock_hsf1_catalog.csv --gold data/studies/gold/heat_shock_hsf1_gold_panel.csv --output-dir outputs/results/heat-shock-benchmark"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/heat_shock_source_availability.tsv",
+          "source": "outputs/results/heat-shock-benchmark/heat_shock_source_availability.tsv.source",
+          "source_exists": true,
+          "source_first_line": "PYTHONPATH=outputs/code python outputs/code/scripts/write_heat_shock_benchmark.py --raw-dir data/deg/raw/heat_shock --catalog data/studies/heat_shock_hsf1_catalog.csv --gold data/studies/gold/heat_shock_hsf1_gold_panel.csv --output-dir outputs/results/heat-shock-benchmark"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/heat_shock_source_support_report.json",
+          "source": "outputs/results/heat-shock-benchmark/heat_shock_source_support_report.json.source",
+          "source_exists": true,
+          "source_first_line": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_source_support_report.py --score-csv outputs/results/heat-shock-benchmark/piper_gene_scores.csv --gold data/studies/gold/heat_shock_hsf1_gold_panel.csv --gold-gene-column gene_symbol --rank-column piper_rank --direction-column consensus_direction --top-n 20 --cutoffs 10 20 50 100 --min-source-units 2 --min-sign-concordance 1.0 --title 'Heat Shock / HSF1 Source-Support Report' --output-summary-csv outputs/results/heat-shock-benchmark/heat_shock_source_support_summary.csv --output-top-tsv outputs/results/heat-shock-benchmark/heat_shock_source_support_top_genes.tsv --output-json outputs/results/heat-shock-benchmark/heat_shock_source_support_report.json --output-md outputs/results/heat-shock-benchmark/heat_shock_source_support_report.md"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/heat_shock_source_support_report.md",
+          "source": "outputs/results/heat-shock-benchmark/heat_shock_source_support_report.md.source",
+          "source_exists": true,
+          "source_first_line": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_source_support_report.py --score-csv outputs/results/heat-shock-benchmark/piper_gene_scores.csv --gold data/studies/gold/heat_shock_hsf1_gold_panel.csv --gold-gene-column gene_symbol --rank-column piper_rank --direction-column consensus_direction --top-n 20 --cutoffs 10 20 50 100 --min-source-units 2 --min-sign-concordance 1.0 --title 'Heat Shock / HSF1 Source-Support Report' --output-summary-csv outputs/results/heat-shock-benchmark/heat_shock_source_support_summary.csv --output-top-tsv outputs/results/heat-shock-benchmark/heat_shock_source_support_top_genes.tsv --output-json outputs/results/heat-shock-benchmark/heat_shock_source_support_report.json --output-md outputs/results/heat-shock-benchmark/heat_shock_source_support_report.md"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/heat_shock_source_support_summary.csv",
+          "source": "outputs/results/heat-shock-benchmark/heat_shock_source_support_summary.csv.source",
+          "source_exists": true,
+          "source_first_line": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_source_support_report.py --score-csv outputs/results/heat-shock-benchmark/piper_gene_scores.csv --gold data/studies/gold/heat_shock_hsf1_gold_panel.csv --gold-gene-column gene_symbol --rank-column piper_rank --direction-column consensus_direction --top-n 20 --cutoffs 10 20 50 100 --min-source-units 2 --min-sign-concordance 1.0 --title 'Heat Shock / HSF1 Source-Support Report' --output-summary-csv outputs/results/heat-shock-benchmark/heat_shock_source_support_summary.csv --output-top-tsv outputs/results/heat-shock-benchmark/heat_shock_source_support_top_genes.tsv --output-json outputs/results/heat-shock-benchmark/heat_shock_source_support_report.json --output-md outputs/results/heat-shock-benchmark/heat_shock_source_support_report.md"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/heat_shock_source_support_top_genes.tsv",
+          "source": "outputs/results/heat-shock-benchmark/heat_shock_source_support_top_genes.tsv.source",
+          "source_exists": true,
+          "source_first_line": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_source_support_report.py --score-csv outputs/results/heat-shock-benchmark/piper_gene_scores.csv --gold data/studies/gold/heat_shock_hsf1_gold_panel.csv --gold-gene-column gene_symbol --rank-column piper_rank --direction-column consensus_direction --top-n 20 --cutoffs 10 20 50 100 --min-source-units 2 --min-sign-concordance 1.0 --title 'Heat Shock / HSF1 Source-Support Report' --output-summary-csv outputs/results/heat-shock-benchmark/heat_shock_source_support_summary.csv --output-top-tsv outputs/results/heat-shock-benchmark/heat_shock_source_support_top_genes.tsv --output-json outputs/results/heat-shock-benchmark/heat_shock_source_support_report.json --output-md outputs/results/heat-shock-benchmark/heat_shock_source_support_report.md"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/piper_gene_scores.csv",
+          "source": "outputs/results/heat-shock-benchmark/piper_gene_scores.csv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code score-db SCORE_HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/heat-shock-benchmark_harmonized.csv CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/heat_shock_hsf1_catalog.csv OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark SCORE_DB=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/piper_scores.db SCORE_MIN_STUDIES=2"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/piper_score_db_summary.json",
+          "source": "outputs/results/heat-shock-benchmark/piper_score_db_summary.json.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code score-db SCORE_HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/heat-shock-benchmark_harmonized.csv CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/heat_shock_hsf1_catalog.csv OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark SCORE_DB=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/piper_scores.db SCORE_MIN_STUDIES=2"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/piper_score_metadata.json",
+          "source": "outputs/results/heat-shock-benchmark/piper_score_metadata.json.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code score-db SCORE_HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/heat-shock-benchmark_harmonized.csv CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/heat_shock_hsf1_catalog.csv OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark SCORE_DB=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/piper_scores.db SCORE_MIN_STUDIES=2"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/piper_scores.db",
+          "source": "outputs/results/heat-shock-benchmark/piper_scores.db.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code score-db SCORE_HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/heat-shock-benchmark_harmonized.csv CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/heat_shock_hsf1_catalog.csv OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark SCORE_DB=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/piper_scores.db SCORE_MIN_STUDIES=2"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/piper_source_quality_diagnostics.json",
+          "source": "outputs/results/heat-shock-benchmark/piper_source_quality_diagnostics.json.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code score-db SCORE_HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/heat-shock-benchmark_harmonized.csv CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/heat_shock_hsf1_catalog.csv OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark SCORE_DB=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/piper_scores.db SCORE_MIN_STUDIES=2"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/piper_source_quality_diagnostics.tsv",
+          "source": "outputs/results/heat-shock-benchmark/piper_source_quality_diagnostics.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code score-db SCORE_HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/heat-shock-benchmark_harmonized.csv CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/heat_shock_hsf1_catalog.csv OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark SCORE_DB=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/piper_scores.db SCORE_MIN_STUDIES=2"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/slice_consensus.csv",
+          "source": "outputs/results/heat-shock-benchmark/slice_consensus.csv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code slice CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/heat_shock_hsf1_catalog.csv OUTDIR=outputs/results/heat-shock-benchmark HARMONIZED_DIR=data/deg/harmonized SLICE_MIN_STUDIES=2"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/slice_harmonized.csv",
+          "source": "outputs/results/heat-shock-benchmark/slice_harmonized.csv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code slice CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/heat_shock_hsf1_catalog.csv OUTDIR=outputs/results/heat-shock-benchmark HARMONIZED_DIR=data/deg/harmonized SLICE_MIN_STUDIES=2"
+        },
+        {
+          "artifact": "outputs/results/heat-shock-benchmark/slice_metrics.json",
+          "source": "outputs/results/heat-shock-benchmark/slice_metrics.json.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code slice CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/heat_shock_hsf1_catalog.csv OUTDIR=outputs/results/heat-shock-benchmark HARMONIZED_DIR=data/deg/harmonized SLICE_MIN_STUDIES=2"
+        }
+      ],
+      "empty_source": [],
+      "exists": true,
+      "iteration_dir": "outputs/results/heat-shock-benchmark",
+      "missing_source": [],
+      "passed": true
+    }
+  ],
+  "iterations": [
+    "heat-shock-benchmark"
+  ],
+  "passed": true,
+  "results_root": "outputs/results",
+  "schema_version": "1.0"
+}

@@ -1,0 +1,88 @@
+{
+  "assay_type_counts": {
+    "RNA-seq": 5
+  },
+  "catalog_path": "/home/keunsoo/projects/09_PIPER/data/studies/heat_shock_hsf1_catalog.csv",
+  "excluded_catalog_rows": [],
+  "gene_symbol_collapse_warnings": [],
+  "gold_panel_gene_count": 0,
+  "gold_panel_reason": "catalog is not an Excel workbook with a GoldPanel sheet",
+  "gold_panel_source": "",
+  "gold_panel_status": "not_provided",
+  "min_studies": 2,
+  "n_active_catalog_rows": 5,
+  "n_catalog_rows": 5,
+  "n_consensus_genes": 14285,
+  "n_harmonized_rows": 69653,
+  "pipeline_counts": {
+    "logCPM_Welch_derived_from_NCBI_GEO_counts": 5
+  },
+  "pvalue_clipped_rows": 0,
+  "rank_universe_warnings": [],
+  "recall_at_100": {
+    "reason": "no locked topic-specific GoldPanel was provided; do not interpret hypoxia-specific recall for this run",
+    "status": "not_applicable"
+  },
+  "recall_at_50": {
+    "reason": "no locked topic-specific GoldPanel was provided; do not interpret hypoxia-specific recall for this run",
+    "status": "not_applicable"
+  },
+  "source_filter_summary": {
+    "HS_GSE124609_WI38_Senescent_HS_vs_Ctrl": {
+      "applied": false,
+      "column": null,
+      "keep": null,
+      "rows_after": 12988,
+      "rows_before": 12988
+    },
+    "HS_GSE124609_WI38_Young_HS_vs_Ctrl": {
+      "applied": false,
+      "column": null,
+      "keep": null,
+      "rows_after": 13159,
+      "rows_before": 13159
+    },
+    "HS_GSE132447_PrimaryNeurons_HS_3h_REC_vs_Untreated": {
+      "applied": false,
+      "column": null,
+      "keep": null,
+      "rows_after": 15612,
+      "rows_before": 15612
+    },
+    "HS_GSE164834_SW620_HS_1h_REC_1h_vs_Ctrl": {
+      "applied": false,
+      "column": null,
+      "keep": null,
+      "rows_after": 14015,
+      "rows_before": 14015
+    },
+    "HS_GSE164834_SW620_HS_1h_vs_Ctrl": {
+      "applied": false,
+      "column": null,
+      "keep": null,
+      "rows_after": 13879,
+      "rows_before": 13879
+    }
+  },
+  "source_input_files": [
+    "/home/keunsoo/projects/09_PIPER/data/deg/raw/heat_shock/GSE124609_WI38_Senescent_HS_vs_Ctrl_logcpm_welch.csv",
+    "/home/keunsoo/projects/09_PIPER/data/deg/raw/heat_shock/GSE124609_WI38_Young_HS_vs_Ctrl_logcpm_welch.csv",
+    "/home/keunsoo/projects/09_PIPER/data/deg/raw/heat_shock/GSE132447_PrimaryNeurons_HS_3h_REC_vs_Untreated_logcpm_welch.csv",
+    "/home/keunsoo/projects/09_PIPER/data/deg/raw/heat_shock/GSE164834_SW620_HS_1h_REC_1h_vs_Ctrl_logcpm_welch.csv",
+    "/home/keunsoo/projects/09_PIPER/data/deg/raw/heat_shock/GSE164834_SW620_HS_1h_vs_Ctrl_logcpm_welch.csv"
+  ],
+  "source_input_type_counts": {
+    "derived_count_table": 5
+  },
+  "study_row_counts": {
+    "HS_GSE124609_WI38_Senescent_HS_vs_Ctrl": 12988,
+    "HS_GSE124609_WI38_Young_HS_vs_Ctrl": 13159,
+    "HS_GSE132447_PrimaryNeurons_HS_3h_REC_vs_Untreated": 15612,
+    "HS_GSE164834_SW620_HS_1h_REC_1h_vs_Ctrl": 14015,
+    "HS_GSE164834_SW620_HS_1h_vs_Ctrl": 13879
+  },
+  "table_scope_counts": {
+    "full_results": 5
+  },
+  "warnings": []
+}

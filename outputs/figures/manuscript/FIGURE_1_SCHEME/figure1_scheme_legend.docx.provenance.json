@@ -1,0 +1,11 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/figures/manuscript/FIGURE_1_SCHEME/figure1_scheme_legend.docx",
+  "artifact_sha256": "0c36ec6bd89e88d7be467ffaf291efecc9d4b49271db0d690225bb1a4cf3bbd0",
+  "artifact_size_bytes": 1151,
+  "command": "PYTHONPATH=outputs/code python outputs/code/figures/make_degora_scheme_figure.py --output-dir outputs/figures/manuscript/FIGURE_1_SCHEME",
+  "inputs": [],
+  "metadata": {
+    "figure_id": "FIGURE_1_SCHEME",
+    "generator": "degora-scheme-figure"
+  }
+}

@@ -1,0 +1,1 @@
+make -C outputs/code slice CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/hypoxia_cross_platform_catalog.csv OUTDIR=outputs/results/hypoxia-cross-platform HARMONIZED_DIR=data/deg/harmonized SLICE_MIN_STUDIES=2

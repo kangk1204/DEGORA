@@ -1,0 +1,132 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/slice_consensus.csv",
+  "artifact_sha256": "ffe5991fb1b6ae054153902d87755e54ffa762bc565c6d4307a3e516657b6c38",
+  "artifact_size_bytes": 5788427,
+  "command": "make -C outputs/code slice CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/hypoxia_catalog.csv OUTDIR=../../outputs/results/hypoxia-hif1-benchmark HARMONIZED_DIR=../../data/deg/harmonized SLICE_MIN_STUDIES=2",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/studies/hypoxia_catalog.csv",
+      "sha256": "aba15000b3a625f0f17ad131c4b5a38ecb665e957a76a7caa902bfd65624dbf1",
+      "size_bytes": 12822
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/GSE76743_HUVEC_HYPOXIA_mRNA_DESeq2.txt.gz",
+      "sha256": "4f1ba756231b5e0c093b18edc165a0ae1094263c72b039fbbd911f5a5ae5effc",
+      "size_bytes": 695359
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/TFEA_hypoxia_symbol.csv",
+      "sha256": "215c187758113d68ead1bba7995e1d52f8ce92db6b2d7f6e2687c8ac162f1edc",
+      "size_bytes": 965253
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter11/GSE255352_HvsO_deg_signflipped.csv",
+      "sha256": "05f96c957421371187776e916128d81f91da5d9aa4d07826811c14517e7c170a",
+      "size_bytes": 9076135
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter12/GSE313740_processed_dataxGEO_14dic25.xlsx",
+      "sha256": "fee8056af91eaf60c5dd433ac7726e900a2bc821ab31cea95f0437e75ebb9903",
+      "size_bytes": 9035886
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter13/GSE225253_DESeq2_HK-2_hypoxia_vs_HK-2_normoxia_all.xlsx",
+      "sha256": "0f599c6eba9b59c0c7c86cfe535ccf7c71643ee3a6013bbe48b75147a77ca4f7",
+      "size_bytes": 1590067
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter15/GSE160491_siControl_hypoxia_vs_normoxia_signflipped.csv",
+      "sha256": "ffdac8f16c2a192c4cb24eafa9807282eecc875c3dbdbd0ea50772ec479a03bd",
+      "size_bytes": 4576048
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter15/GSE283446_TableS8.xlsx",
+      "sha256": "86e6f914d5bf47a1b7971d10c32986a4bfdcb47c302312104f2ba798ebc97109",
+      "size_bytes": 4499442
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter16/GSE296192_HCT116_hypoxia_vs_normoxia.csv",
+      "sha256": "e7ef870e08c588e6f96bb5e3e1398a941b32a69fd15a33f137c7cc5b5ce328da",
+      "size_bytes": 2817353
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter16/GSE296192_PC3_hypoxia_vs_normoxia.csv",
+      "sha256": "8554165f4de2c8aa46bcdc8ed12f9090eac25ea98d5a06a325d359914d3844cf",
+      "size_bytes": 2348247
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter3/bauer_2022_thp1_total_mrna_AH_vs_N.csv",
+      "sha256": "6607274d324351804d5324df7b75cfb33d68f2a82e9fe88931d3d30c6c47c646",
+      "size_bytes": 2720836
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter3/bauer_2022_thp1_total_mrna_CH_vs_N.csv",
+      "sha256": "f9abc7fd11aa26dc53c924ebe5f223bbe974467af22e806642b859b338442f60",
+      "size_bytes": 2694629
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter3/mendeley_z42wpkbb8k_hypoxia_vs_normoxia.csv",
+      "sha256": "38da91c87303b4fd39143c91f99d57d86566aab7f1eb504b728a09d1e7cceeda",
+      "size_bytes": 5943013
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter6/GSE132624_edgeR_501mel_24h.csv.gz",
+      "sha256": "f278cf9bf7a5def02f8df0b952f60246d4a771a34a73edfe9e2ea468da2ed32e",
+      "size_bytes": 613430
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter6/GSE132624_edgeR_IGR37_24h.csv.gz",
+      "sha256": "eb33e20d8e6d8af2fd143d2908d00499fc45326acd6276ba7c86982172fd24b4",
+      "size_bytes": 567055
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter6/GSE132624_edgeR_IGR39_24h.csv.gz",
+      "sha256": "1bbc1fc5150faf9fad35618dda2ab1bf496f9c090b334ca0c87306c8fdbbdebc",
+      "size_bytes": 604072
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter7/GSE108676_human_refseq_mapped_hypoxia_vs_normoxia.csv",
+      "sha256": "6e523a2b368ab19132b75bb65cf6ded89b149a1353a83b9f5117998f16185107",
+      "size_bytes": 1665630
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter7/GSE70544_Normoxia_vs_Hypoxia_Gencode_gene_exp.diff.txt.gz",
+      "sha256": "124b3f5fc2991096df382f68fb0ec539bbfea2cbe5ce3c080287023a240af346",
+      "size_bytes": 1033543
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter8/GSE311800_DEG_Results_All_Comparisons.xlsx",
+      "sha256": "9262e18b821cbcb9193a8f87ff67edd16636dc98a44773a42108ceb410226acf",
+      "size_bytes": 46870523
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter9/GSE293238_RNAseq_processed.xlsx",
+      "sha256": "691dff074e5399729a2bc6fba78a1d8b03f40fb5b977c947a0c900522c0bccd7",
+      "size_bytes": 10519865
+    }
+  ],
+  "metadata": {
+    "generator": "slice",
+    "min_studies": 2
+  }
+}

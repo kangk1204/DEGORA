@@ -1,0 +1,11 @@
+rank	gene_symbol	locked_gold	interpretive_marker	known_or_locked_marker	expected_direction	consensus_direction	direction_match	n_source_units	sign_concordance	source_support_pass	piper_score	priority_score	evidence_reliability_score	direction_confidence_index	quality_weighted_piper_score	source_units	marker_role	validation_role	evidence_basis	source_url	notes
+1	DDIT3	True	False	True	up	up	True	2.0	1.0	True	85.501935	78.992265	98.676313	0.949025	85.494561	GSE102505_glioma_TUN;GSE84450_DTT					
+2	PTX3	False	True	True	up	up	True	2.0	1.0	True	85.19236	78.553069	98.605563	0.947949	85.181251	GSE102505_glioma_TUN;GSE84450_DTT	contextual_er_stress_induced_inflammatory_gene	post_output_interpretive_only	A tunicamycin ER-stress model reported PTX3 induction; this is contextual support rather than canonical UPR-marker status.	https://pmc.ncbi.nlm.nih.gov/articles/PMC5156621/	Interpretive annotation only; not part of the locked ER stress gold panel.
+3	PPP1R15A	True	False	True	up	up	True	2.0	1.0	True	84.211206	77.230004	98.584157	0.950811	84.209825	GSE102505_glioma_TUN;GSE84450_DTT					
+4	HSP90B1	True	False	True	up	up	True	2.0	1.0	True	83.839548	76.747004	98.584777	0.951774	83.842681	GSE102505_glioma_TUN;GSE84450_DTT					
+5	HSPA5	True	False	True	up	up	True	2.0	1.0	True	83.814942	76.614599	98.575642	0.947731	83.785964	GSE102505_glioma_TUN;GSE84450_DTT					
+6	CRELD2	False	True	True	up	up	True	2.0	1.0	True	83.719961	76.485129	98.571459	0.947076	83.69136	GSE102505_glioma_TUN;GSE84450_DTT	er_stress_inducible_gene	post_output_interpretive_only	CRELD2 is described as an ER-stress-inducible gene and reviewed in relation to ER stress and UPR biology.	https://pmc.ncbi.nlm.nih.gov/articles/PMC10018036/;https://www.nature.com/articles/s41598-018-30362-4	Interpretive annotation only; not part of the locked ER stress gold panel.
+7	HAS2	False	False	False		down		2.0	1.0		83.643188	76.361497	98.44905	0.944074	83.605115	GSE102505_glioma_TUN;GSE84450_DTT					
+8	HERPUD1	True	False	True	up	up	True	2.0	1.0	True	83.525568	76.208451	98.484286	0.945207	83.491739	GSE102505_glioma_TUN;GSE84450_DTT					
+9	ATF3	True	False	True	up	up	True	2.0	1.0	True	83.202909	75.752695	98.438019	0.944199	83.161423	GSE102505_glioma_TUN;GSE84450_DTT					
+10	CHAC1	True	False	True	up	up	True	2.0	1.0	True	83.065686	75.570523	98.505832	0.948288	83.027067	GSE102505_glioma_TUN;GSE84450_DTT					

@@ -1,0 +1,3 @@
+source_unit_id	geo_accession	geo_full_deg_table	paper_full_deg_table	paper_table_scope	paper_table_scope_assessment	comparison_status	notes
+GSE147507_NHBE_IFNB	GSE147507	no	yes	full_results	full_results_likely	compared	Cell 2020 supplementary workbook mmc2 contains DESeq2_NHBECells IFNB_L2FC/padj_IFNB for hIFNB treatment 4-12hrs; it is not separated into the 4h/6h/12h contrasts used in the derived-count pilot.
+GSE221804_HUHWT_IFNA	GSE221804	no	no_full_ranked_table_found	not_available	not_available	not_compared	GEO provides raw count CSVs for HuhWT IFNa. The linked CMLS paper documents DESeq2 LRT and provides integrated gene-list supplements, but no full per-timepoint ranked IFNa DEG table matching this pilot.

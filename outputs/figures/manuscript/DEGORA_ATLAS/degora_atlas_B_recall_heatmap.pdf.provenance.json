@@ -1,0 +1,126 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/figures/manuscript/DEGORA_ATLAS/degora_atlas_B_recall_heatmap.pdf",
+  "artifact_sha256": "62b7367088addf64512ddb3d82a8487532b697d0db5abbe1d258daec05993642",
+  "artifact_size_bytes": 31585,
+  "command": "PYTHONPATH=outputs/code python outputs/code/figures/make_degora_atlas_dashboard.py --output-dir outputs/figures/manuscript/DEGORA_ATLAS --prior-art outputs/results/prior_art_coverage_summary.csv",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/prior_art_coverage_summary.csv",
+      "sha256": "fff1c4d965158b461ce65e6f976232f23010b9425cf9a0d7dc76a0f43fc366f4",
+      "size_bytes": 14827
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/degora_gene_scores.csv",
+      "sha256": "716bb4198404e315f60bf9f0c82735c02510e3e9970782c83938bf49e115865d",
+      "size_bytes": 7151954
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-cross-platform/degora_gene_scores.csv",
+      "sha256": "88d48b317ec0647a09a256e9fad210ca20a0606cad35cb1c7013a7065d1a7117",
+      "size_bytes": 11111987
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/degora_gene_scores.csv",
+      "sha256": "e093ef4e8ac20ee8f664b4daa9e7c5c3996140ff0f932b7b0a9e1abf26c17dd6",
+      "size_bytes": 10863694
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/degora_gene_scores.csv",
+      "sha256": "828bc53ae3e515e38c7243b156b4f252a0bb1b2c3bc7072a6c3c0202b8821f82",
+      "size_bytes": 25490764
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/ifn-cross-platform/degora_gene_scores.csv",
+      "sha256": "da3661f00ebab518f57ea9ff636b61af96a5090802105c1f9a9403fa6a91d5f6",
+      "size_bytes": 9698346
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-cross-platform/degora_gene_scores.csv",
+      "sha256": "7fb5099a28151013400797ba5362732c35a0cdd5bed2c1c1d668cea6fccdf795",
+      "size_bytes": 28447262
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/ifn_gold_comparator_summary.csv",
+      "sha256": "4546cd95fe98f54078d8b95b83d3ed468c4c0ac05f1daf38e5bcc0fc5629155f",
+      "size_bytes": 13014
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-cross-platform/er_stress_cross_platform_gold_comparator_summary.csv",
+      "sha256": "df2e913ef94eae66511371447523c364de96e32af2b55e7e8d9bbab674554be7",
+      "size_bytes": 11680
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/heat_shock_gold_comparator_summary.csv",
+      "sha256": "f9268e065731449fa99206c28b27ba44a77cdf3fbe00132c8e96792195be8065",
+      "size_bytes": 12607
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_gold_comparator_summary.csv",
+      "sha256": "7e1d863ce41d6323cd935a128f6f2836fdad31af641152ab91cd0170dc3e8b36",
+      "size_bytes": 13285
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/ifn-cross-platform/ifn_cross_platform_gold_comparator_summary.csv",
+      "sha256": "41b2c4dc7b6c00ce95ba89d472e61ea2e42cb0534928c22f5419022b0bc9b764",
+      "size_bytes": 11936
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-cross-platform/hypoxia_cross_platform_gold_comparator_summary.csv",
+      "sha256": "75672d8763f4e28cced81f1974b6a0dd3d118fba5453e1152a27f5a58033db0b",
+      "size_bytes": 13301
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/degora_score_metadata.json",
+      "sha256": "71e2d0b3cb599ad9fbd861982d68e6ab140fac1cd7b247a2d9d1bf0f1e6479e4",
+      "size_bytes": 8101
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-cross-platform/degora_score_metadata.json",
+      "sha256": "a068b80b29b919bf414f6dabe3953b1cbdd1313818c5cc2d0319e1e52b1f40c8",
+      "size_bytes": 9799
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/degora_score_metadata.json",
+      "sha256": "a166c610f22cd828cbdf123b7568006dcc77b80b0424695833d7567a35458087",
+      "size_bytes": 8865
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/degora_score_metadata.json",
+      "sha256": "be52a73378b895e2435ef76099f12a133903c85704742b902bae17338bed871b",
+      "size_bytes": 16940
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/ifn-cross-platform/degora_score_metadata.json",
+      "sha256": "ef299da048664436986902bdfffcb8288e42c3d9e534eff82397a5e40426ba22",
+      "size_bytes": 9086
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-cross-platform/degora_score_metadata.json",
+      "sha256": "9d3bcb7c8df5ab569d13c6f784ec34ff4da509657801dd11a0a6193da623093a",
+      "size_bytes": 18693
+    }
+  ],
+  "metadata": {
+    "figure_id": "DEGORA_ATLAS",
+    "generator": "degora-atlas-dashboard"
+  }
+}

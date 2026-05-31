@@ -1,0 +1,11 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/figures/manuscript/FIGURE_1_SCHEME/figure1_scheme.svg",
+  "artifact_sha256": "6a47ac44c72fcd3218ff665280fd7c2d123a8a99cb61053e908e95b63d8848b5",
+  "artifact_size_bytes": 20523,
+  "command": "PYTHONPATH=outputs/code python outputs/code/figures/make_degora_scheme_figure.py --output-dir outputs/figures/manuscript/FIGURE_1_SCHEME",
+  "inputs": [],
+  "metadata": {
+    "figure_id": "FIGURE_1_SCHEME",
+    "generator": "degora-scheme-figure"
+  }
+}

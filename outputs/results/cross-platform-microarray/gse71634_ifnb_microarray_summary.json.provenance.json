@@ -1,0 +1,28 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/cross-platform-microarray/gse71634_ifnb_microarray_summary.json",
+  "artifact_sha256": "9ecf2f8cc2a1b571984b0d25b6d96af1f13fe1caad9798dff3181cc5be5cb000",
+  "artifact_size_bytes": 1156,
+  "command": "PYTHONPATH=outputs/code python outputs/code/scripts/write_cross_platform_microarray_benchmarks.py --output-dir outputs/results/cross-platform-microarray",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/microarray_cross_platform/GSE71634_IFNB_PBMC_probe_gene_matrix.csv",
+      "sha256": "a8e6e0a478b5eff94feb4239b2a7b42fd5065e91a6ffaf3c3e3a164069013710",
+      "size_bytes": 11447473
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/microarray_cross_platform/GSE71634_PBMC_IFNB_18h_vs_unstimulated_microarray_welch.csv",
+      "sha256": "abca8ee886bb3a9ae4199b6a9b099d21476ceecfc9696e2657b3fea984e23c71",
+      "size_bytes": 3890952
+    }
+  ],
+  "metadata": {
+    "generator": "microarray-normalized-matrix-summary",
+    "normalization": "GEO_series_matrix_log2_transform",
+    "paper_id": "GSE71634_PBMC_IFNB",
+    "platform": "GPL10558",
+    "source_url": "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE71634",
+    "study_id": "IFN_GSE71634_PBMC_IFNB_18h"
+  }
+}

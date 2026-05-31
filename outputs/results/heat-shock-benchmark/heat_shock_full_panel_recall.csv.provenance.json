@@ -1,0 +1,28 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/heat_shock_full_panel_recall.csv",
+  "artifact_sha256": "0a05b23eb0b9c240e249725a9c10b3fde8a965488d8447ce4d4b84a37024ae49",
+  "artifact_size_bytes": 12784,
+  "command": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_gold_comparator_summary.py --baseline-dir outputs/results/heat-shock-benchmark/baselines --gold data/studies/gold/heat_shock_hsf1_gold_panel_full.csv --gold-gene-column gene_symbol --degora-score-csv outputs/results/heat-shock-benchmark/degora_gene_scores.csv --degora-score-label v1_2_source_unit_mean --title 'Heat shock FULL-EXPANDED supplementary panel recall' --output-csv outputs/results/heat-shock-benchmark/heat_shock_full_panel_recall.csv --output-md outputs/results/heat-shock-benchmark/heat_shock_full_panel_recall.md",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/baselines"
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/studies/gold/heat_shock_hsf1_gold_panel_full.csv",
+      "sha256": "d67244e1726a9e2c396d8a7c42d22001605af6a72dc4c3088e041171eb23662b",
+      "size_bytes": 11563
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/degora_gene_scores.csv",
+      "sha256": "e093ef4e8ac20ee8f664b4daa9e7c5c3996140ff0f932b7b0a9e1abf26c17dd6",
+      "size_bytes": 10863694
+    }
+  ],
+  "metadata": {
+    "generator": "gold-comparator-summary",
+    "gold": "data/studies/gold/heat_shock_hsf1_gold_panel_full.csv"
+  }
+}

@@ -1,0 +1,200 @@
+{
+  "iteration_records": [
+    {
+      "artifact_count": 30,
+      "artifacts": [
+        {
+          "artifact": "outputs/results/hypoxia-hif1-benchmark/baselines/awmeta_feasibility_report.json",
+          "source": "outputs/results/hypoxia-hif1-benchmark/baselines/awmeta_feasibility_report.json.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=hypoxia-hif1-benchmark HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/hypoxia-hif1-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/hypoxia-hif1-benchmark/baselines/baseline_failure_ledger.csv",
+          "source": "outputs/results/hypoxia-hif1-benchmark/baselines/baseline_failure_ledger.csv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=hypoxia-hif1-benchmark HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/hypoxia-hif1-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/hypoxia-hif1-benchmark/baselines/baseline_manifest.csv",
+          "source": "outputs/results/hypoxia-hif1-benchmark/baselines/baseline_manifest.csv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=hypoxia-hif1-benchmark HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/hypoxia-hif1-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/hypoxia-hif1-benchmark/baselines/baseline_parity_matrix.csv",
+          "source": "outputs/results/hypoxia-hif1-benchmark/baselines/baseline_parity_matrix.csv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=hypoxia-hif1-benchmark HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/hypoxia-hif1-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/hypoxia-hif1-benchmark/baselines/hstouffer_feasibility_report.json",
+          "source": "outputs/results/hypoxia-hif1-benchmark/baselines/hstouffer_feasibility_report.json.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=hypoxia-hif1-benchmark HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/hypoxia-hif1-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/hypoxia-hif1-benchmark/baselines/hypoxia-hif1-benchmark_fisher_default.tsv",
+          "source": "outputs/results/hypoxia-hif1-benchmark/baselines/hypoxia-hif1-benchmark_fisher_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=hypoxia-hif1-benchmark HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/hypoxia-hif1-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/hypoxia-hif1-benchmark/baselines/hypoxia-hif1-benchmark_metavolcanor_default.tsv",
+          "source": "outputs/results/hypoxia-hif1-benchmark/baselines/hypoxia-hif1-benchmark_metavolcanor_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=hypoxia-hif1-benchmark HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/hypoxia-hif1-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/hypoxia-hif1-benchmark/baselines/hypoxia-hif1-benchmark_piper_slice_locked.tsv",
+          "source": "outputs/results/hypoxia-hif1-benchmark/baselines/hypoxia-hif1-benchmark_piper_slice_locked.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=hypoxia-hif1-benchmark HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/hypoxia-hif1-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/hypoxia-hif1-benchmark/baselines/hypoxia-hif1-benchmark_rank_product_approx_default.tsv",
+          "source": "outputs/results/hypoxia-hif1-benchmark/baselines/hypoxia-hif1-benchmark_rank_product_approx_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=hypoxia-hif1-benchmark HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/hypoxia-hif1-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/hypoxia-hif1-benchmark/baselines/hypoxia-hif1-benchmark_robustrankaggreg_default.tsv",
+          "source": "outputs/results/hypoxia-hif1-benchmark/baselines/hypoxia-hif1-benchmark_robustrankaggreg_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=hypoxia-hif1-benchmark HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/hypoxia-hif1-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/hypoxia-hif1-benchmark/baselines/hypoxia-hif1-benchmark_sign_vote_default.tsv",
+          "source": "outputs/results/hypoxia-hif1-benchmark/baselines/hypoxia-hif1-benchmark_sign_vote_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=hypoxia-hif1-benchmark HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/hypoxia-hif1-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/hypoxia-hif1-benchmark/baselines/hypoxia-hif1-benchmark_unweighted_stouffer_default.tsv",
+          "source": "outputs/results/hypoxia-hif1-benchmark/baselines/hypoxia-hif1-benchmark_unweighted_stouffer_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=hypoxia-hif1-benchmark HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/hypoxia-hif1-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/hypoxia-hif1-benchmark/baselines/hypoxia-hif1-benchmark_weighted_stouffer_default.tsv",
+          "source": "outputs/results/hypoxia-hif1-benchmark/baselines/hypoxia-hif1-benchmark_weighted_stouffer_default.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=hypoxia-hif1-benchmark HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/hypoxia-hif1-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/hypoxia-hif1-benchmark/baselines/r_preflight_report.json",
+          "source": "outputs/results/hypoxia-hif1-benchmark/baselines/r_preflight_report.json.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code baseline CORPUS=hypoxia-hif1-benchmark HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/hypoxia-hif1-benchmark_harmonized.csv BASELINE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/baselines"
+        },
+        {
+          "artifact": "outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_benchmark_review.md",
+          "source": "outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_benchmark_review.md.source",
+          "source_exists": true,
+          "source_first_line": "Commands:"
+        },
+        {
+          "artifact": "outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_gold_comparator_summary.csv",
+          "source": "outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_gold_comparator_summary.csv.source",
+          "source_exists": true,
+          "source_first_line": "PYTHONPATH=outputs/code python outputs/code/scripts/write_gold_comparator_summary.py --baseline-dir outputs/results/hypoxia-hif1-benchmark/baselines --gold data/studies/gold/hypoxia_hif1_gold_panel.csv --gold-gene-column gene_symbol --piper-score-csv outputs/results/hypoxia-hif1-benchmark/piper_gene_scores.csv --piper-score-label v1_2_source_unit_mean --title 'Hypoxia / HIF1 Gold-Panel Comparator Summary' --output-csv outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_gold_comparator_summary.csv --output-md outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_gold_comparator_summary.md"
+        },
+        {
+          "artifact": "outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_gold_comparator_summary.md",
+          "source": "outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_gold_comparator_summary.md.source",
+          "source_exists": true,
+          "source_first_line": "PYTHONPATH=outputs/code python outputs/code/scripts/write_gold_comparator_summary.py --baseline-dir outputs/results/hypoxia-hif1-benchmark/baselines --gold data/studies/gold/hypoxia_hif1_gold_panel.csv --gold-gene-column gene_symbol --piper-score-csv outputs/results/hypoxia-hif1-benchmark/piper_gene_scores.csv --piper-score-label v1_2_source_unit_mean --title 'Hypoxia / HIF1 Gold-Panel Comparator Summary' --output-csv outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_gold_comparator_summary.csv --output-md outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_gold_comparator_summary.md"
+        },
+        {
+          "artifact": "outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_source_support_report.json",
+          "source": "outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_source_support_report.json.source",
+          "source_exists": true,
+          "source_first_line": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_source_support_report.py --score-csv outputs/results/hypoxia-hif1-benchmark/piper_gene_scores.csv --gold data/studies/gold/hypoxia_hif1_gold_panel.csv --gold-gene-column gene_symbol --rank-column piper_rank --direction-column consensus_direction --top-n 20 --cutoffs 10 20 50 100 --min-source-units 2 --min-sign-concordance 1.0 --title 'Hypoxia / HIF1 Source-Support Report' --output-summary-csv outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_source_support_summary.csv --output-top-tsv outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_source_support_top_genes.tsv --output-json outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_source_support_report.json --output-md outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_source_support_report.md"
+        },
+        {
+          "artifact": "outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_source_support_report.md",
+          "source": "outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_source_support_report.md.source",
+          "source_exists": true,
+          "source_first_line": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_source_support_report.py --score-csv outputs/results/hypoxia-hif1-benchmark/piper_gene_scores.csv --gold data/studies/gold/hypoxia_hif1_gold_panel.csv --gold-gene-column gene_symbol --rank-column piper_rank --direction-column consensus_direction --top-n 20 --cutoffs 10 20 50 100 --min-source-units 2 --min-sign-concordance 1.0 --title 'Hypoxia / HIF1 Source-Support Report' --output-summary-csv outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_source_support_summary.csv --output-top-tsv outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_source_support_top_genes.tsv --output-json outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_source_support_report.json --output-md outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_source_support_report.md"
+        },
+        {
+          "artifact": "outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_source_support_summary.csv",
+          "source": "outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_source_support_summary.csv.source",
+          "source_exists": true,
+          "source_first_line": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_source_support_report.py --score-csv outputs/results/hypoxia-hif1-benchmark/piper_gene_scores.csv --gold data/studies/gold/hypoxia_hif1_gold_panel.csv --gold-gene-column gene_symbol --rank-column piper_rank --direction-column consensus_direction --top-n 20 --cutoffs 10 20 50 100 --min-source-units 2 --min-sign-concordance 1.0 --title 'Hypoxia / HIF1 Source-Support Report' --output-summary-csv outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_source_support_summary.csv --output-top-tsv outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_source_support_top_genes.tsv --output-json outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_source_support_report.json --output-md outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_source_support_report.md"
+        },
+        {
+          "artifact": "outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_source_support_top_genes.tsv",
+          "source": "outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_source_support_top_genes.tsv.source",
+          "source_exists": true,
+          "source_first_line": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_source_support_report.py --score-csv outputs/results/hypoxia-hif1-benchmark/piper_gene_scores.csv --gold data/studies/gold/hypoxia_hif1_gold_panel.csv --gold-gene-column gene_symbol --rank-column piper_rank --direction-column consensus_direction --top-n 20 --cutoffs 10 20 50 100 --min-source-units 2 --min-sign-concordance 1.0 --title 'Hypoxia / HIF1 Source-Support Report' --output-summary-csv outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_source_support_summary.csv --output-top-tsv outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_source_support_top_genes.tsv --output-json outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_source_support_report.json --output-md outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_source_support_report.md"
+        },
+        {
+          "artifact": "outputs/results/hypoxia-hif1-benchmark/piper_gene_scores.csv",
+          "source": "outputs/results/hypoxia-hif1-benchmark/piper_gene_scores.csv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code score-db SCORE_HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/hypoxia-hif1-benchmark_harmonized.csv CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/hypoxia_catalog.csv OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark SCORE_DB=/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/piper_scores.db SCORE_MIN_STUDIES=2"
+        },
+        {
+          "artifact": "outputs/results/hypoxia-hif1-benchmark/piper_score_db_summary.json",
+          "source": "outputs/results/hypoxia-hif1-benchmark/piper_score_db_summary.json.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code score-db SCORE_HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/hypoxia-hif1-benchmark_harmonized.csv CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/hypoxia_catalog.csv OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark SCORE_DB=/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/piper_scores.db SCORE_MIN_STUDIES=2"
+        },
+        {
+          "artifact": "outputs/results/hypoxia-hif1-benchmark/piper_score_metadata.json",
+          "source": "outputs/results/hypoxia-hif1-benchmark/piper_score_metadata.json.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code score-db SCORE_HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/hypoxia-hif1-benchmark_harmonized.csv CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/hypoxia_catalog.csv OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark SCORE_DB=/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/piper_scores.db SCORE_MIN_STUDIES=2"
+        },
+        {
+          "artifact": "outputs/results/hypoxia-hif1-benchmark/piper_scores.db",
+          "source": "outputs/results/hypoxia-hif1-benchmark/piper_scores.db.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code score-db SCORE_HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/hypoxia-hif1-benchmark_harmonized.csv CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/hypoxia_catalog.csv OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark SCORE_DB=/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/piper_scores.db SCORE_MIN_STUDIES=2"
+        },
+        {
+          "artifact": "outputs/results/hypoxia-hif1-benchmark/piper_source_quality_diagnostics.json",
+          "source": "outputs/results/hypoxia-hif1-benchmark/piper_source_quality_diagnostics.json.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code score-db SCORE_HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/hypoxia-hif1-benchmark_harmonized.csv CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/hypoxia_catalog.csv OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark SCORE_DB=/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/piper_scores.db SCORE_MIN_STUDIES=2"
+        },
+        {
+          "artifact": "outputs/results/hypoxia-hif1-benchmark/piper_source_quality_diagnostics.tsv",
+          "source": "outputs/results/hypoxia-hif1-benchmark/piper_source_quality_diagnostics.tsv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code score-db SCORE_HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/hypoxia-hif1-benchmark_harmonized.csv CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/hypoxia_catalog.csv OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark SCORE_DB=/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/piper_scores.db SCORE_MIN_STUDIES=2"
+        },
+        {
+          "artifact": "outputs/results/hypoxia-hif1-benchmark/slice_consensus.csv",
+          "source": "outputs/results/hypoxia-hif1-benchmark/slice_consensus.csv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code slice CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/hypoxia_catalog.csv OUTDIR=outputs/results/hypoxia-hif1-benchmark HARMONIZED_DIR=data/deg/harmonized SLICE_MIN_STUDIES=2"
+        },
+        {
+          "artifact": "outputs/results/hypoxia-hif1-benchmark/slice_harmonized.csv",
+          "source": "outputs/results/hypoxia-hif1-benchmark/slice_harmonized.csv.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code slice CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/hypoxia_catalog.csv OUTDIR=outputs/results/hypoxia-hif1-benchmark HARMONIZED_DIR=data/deg/harmonized SLICE_MIN_STUDIES=2"
+        },
+        {
+          "artifact": "outputs/results/hypoxia-hif1-benchmark/slice_metrics.json",
+          "source": "outputs/results/hypoxia-hif1-benchmark/slice_metrics.json.source",
+          "source_exists": true,
+          "source_first_line": "make -C outputs/code slice CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/hypoxia_catalog.csv OUTDIR=outputs/results/hypoxia-hif1-benchmark HARMONIZED_DIR=data/deg/harmonized SLICE_MIN_STUDIES=2"
+        }
+      ],
+      "empty_source": [],
+      "exists": true,
+      "iteration_dir": "outputs/results/hypoxia-hif1-benchmark",
+      "missing_source": [],
+      "passed": true
+    }
+  ],
+  "iterations": [
+    "hypoxia-hif1-benchmark"
+  ],
+  "passed": true,
+  "results_root": "outputs/results",
+  "schema_version": "1.0"
+}

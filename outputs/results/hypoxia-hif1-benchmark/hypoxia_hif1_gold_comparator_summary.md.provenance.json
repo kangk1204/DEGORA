@@ -1,0 +1,28 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_gold_comparator_summary.md",
+  "artifact_sha256": "ed77d6bda4331b555aad64a0eee32c127d712c00df2b055785895f2ba8753a10",
+  "artifact_size_bytes": 3883,
+  "command": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_gold_comparator_summary.py --baseline-dir outputs/results/hypoxia-hif1-benchmark/baselines --gold data/studies/gold/hypoxia_hif1_gold_panel.csv --gold-gene-column gene_symbol --degora-score-csv outputs/results/hypoxia-hif1-benchmark/degora_gene_scores.csv --degora-score-label v1_2_source_unit_mean --title 'Hypoxia/HIF locked gold-panel comparator summary' --output-csv outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_gold_comparator_summary.csv --output-md outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_gold_comparator_summary.md",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/baselines"
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/studies/gold/hypoxia_hif1_gold_panel.csv",
+      "sha256": "f7a48c415be46210e9df7b9c7f532d26915c227a8abfe54e6afe2f79cc772ee9",
+      "size_bytes": 9871
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/degora_gene_scores.csv",
+      "sha256": "828bc53ae3e515e38c7243b156b4f252a0bb1b2c3bc7072a6c3c0202b8821f82",
+      "size_bytes": 25490764
+    }
+  ],
+  "metadata": {
+    "generator": "gold-comparator-summary",
+    "gold": "data/studies/gold/hypoxia_hif1_gold_panel.csv"
+  }
+}

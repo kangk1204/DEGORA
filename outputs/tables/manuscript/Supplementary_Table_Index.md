@@ -1,0 +1,10 @@
+| supplement | title | path | purpose |
+| --- | --- | --- | --- |
+| Supplementary Table 1 | Public-summary comparator input requirements | outputs/results/comparator_public_summary_input_requirements.csv | Detailed corpus-level runnable/blocked comparator and prior-art resource table. |
+| Supplementary Table 2 | Prior-art coverage summary | outputs/results/prior_art_coverage_summary.csv | One-row-per-method/resource summary for Related Work and reviewer response. |
+| Supplementary Table 3 | Cross-platform benchmark summary | outputs/results/cross-platform-microarray/cross_platform_benchmark_summary.csv | RNA-seq-only versus RNA-seq+microarray DEGORA recall comparison. |
+| Supplementary Table 4 | Cross-platform marker rank shifts | outputs/results/cross-platform-microarray/cross_platform_marker_rank_shifts.csv | Locked marker rank and top-percent changes after adding microarray evidence. |
+| Supplementary Table 5 | Cross-platform dataset sources | outputs/results/cross-platform-microarray/cross_platform_dataset_sources.csv | Microarray accessions, platforms, samples, and contrasts added to mixed benchmarks. |
+| Supplementary Table 6 | Source-unit feasibility matrices | outputs/results/*/tool-feasibility/*_study_tool_feasibility_matrix.csv | Per-source evidence for which SOTA tools require missing raw-expression or metadata inputs. |
+| Supplementary Table 7 | Statistical uncertainty and auxiliary reporting lanes | outputs/results/*/deep-metrics/*_deep_point_metrics.csv; outputs/results/*/degora_gene_scores.csv | Recall exact intervals, hypergeometric enrichment/FDR, background-negative AUROC/AUPRC, RE-Stouffer, RRA rho, direction posterior, and effect-size random-effects reporting fields. |
+| Supplementary Table 8 | Resource feature comparison versus public DEG/evidence portals | outputs/tables/manuscript/Supplementary_Table8_resource_feature_comparison.csv | DEGORA Evidence Explorer feature matrix against DEET, CREEDS/RummaGEO, ARCHS4, Enrichr/SigCom LINCS, and Open Targets on provenance, interactivity, and FAIR/offline-deployment dimensions. |

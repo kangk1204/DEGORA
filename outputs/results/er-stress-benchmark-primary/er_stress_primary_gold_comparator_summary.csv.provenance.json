@@ -1,0 +1,28 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary/er_stress_primary_gold_comparator_summary.csv",
+  "artifact_sha256": "2c2c1fc2d4c2864c58bb319003b75be7986cab637c800f85408f34b8930a2152",
+  "artifact_size_bytes": 12136,
+  "command": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_gold_comparator_summary.py --baseline-dir outputs/results/er-stress-benchmark-primary/baselines --gold data/studies/gold/er_stress_upr_gold_panel.csv --gold-gene-column gene_symbol --degora-score-csv outputs/results/er-stress-benchmark-primary/degora_gene_scores.csv --degora-score-label quality_weighted_default --title 'ER stress primary locked gold-panel comparator summary' --output-csv outputs/results/er-stress-benchmark-primary/er_stress_primary_gold_comparator_summary.csv --output-md outputs/results/er-stress-benchmark-primary/er_stress_primary_gold_comparator_summary.md",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary/baselines"
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/studies/gold/er_stress_upr_gold_panel.csv",
+      "sha256": "11e074a2ec14eb444e7237b0b222c79b1dd3e83ebdf3dd39261dd16f5f3d3fc3",
+      "size_bytes": 9104
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary/degora_gene_scores.csv",
+      "sha256": "278ea47e55f3cb8e4537a715422cdb64332fe82698daefc052181a0f8db90c04",
+      "size_bytes": 8958113
+    }
+  ],
+  "metadata": {
+    "generator": "gold-comparator-summary",
+    "gold": "data/studies/gold/er_stress_upr_gold_panel.csv"
+  }
+}

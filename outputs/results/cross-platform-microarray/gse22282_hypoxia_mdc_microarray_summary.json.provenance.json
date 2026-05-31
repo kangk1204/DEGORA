@@ -1,0 +1,28 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/cross-platform-microarray/gse22282_hypoxia_mdc_microarray_summary.json",
+  "artifact_sha256": "3239d6c0fc79711f2583d2d63f953f04618b2d14d8ade7d8dd730a9182107a54",
+  "artifact_size_bytes": 1147,
+  "command": "PYTHONPATH=outputs/code python outputs/code/scripts/write_cross_platform_microarray_benchmarks.py --output-dir outputs/results/cross-platform-microarray",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/microarray_cross_platform/GSE22282_hypoxia_mDC_probe_gene_matrix.csv",
+      "sha256": "a9d8e37341ebef08ee3180c2b43be4353262dd1373d7739a15f6a63bc3282809",
+      "size_bytes": 2938578
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/microarray_cross_platform/GSE22282_mDC_hypoxia_vs_normoxia_microarray_welch.csv",
+      "sha256": "d25188f831436a0174462e8a88e5ca5e215783d6e5980f1e35a9eb973e171425",
+      "size_bytes": 4045841
+    }
+  ],
+  "metadata": {
+    "generator": "microarray-normalized-matrix-summary",
+    "normalization": "GEO_series_matrix_MAS5_log2_transform",
+    "paper_id": "GSE22282_MDC_HYPOXIA",
+    "platform": "GPL570",
+    "source_url": "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE22282",
+    "study_id": "HYP_GSE22282_MDC_HYPOXIA"
+  }
+}

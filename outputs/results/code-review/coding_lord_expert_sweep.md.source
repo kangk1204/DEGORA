@@ -1,0 +1,10 @@
+python3 /tmp/kangs-codex-skills/skills/coding-lord/scripts/discover_expert_skills.py --format markdown
+rg --files outputs/code
+sed -n '1,260p' outputs/code/piper/aggregate.py
+sed -n '1,620p' outputs/code/piper/score_db.py
+sed -n '1,620p' outputs/code/piper/slice_runner.py
+sed -n '1,620p' outputs/code/tests/test_score_db.py
+sed -n '1,620p' outputs/code/tests/test_config_validation.py
+PYTHONPATH=outputs/code python3 -m pytest -q outputs/code/tests/test_score_db.py outputs/code/tests/test_config_validation.py outputs/code/tests/test_aggregate_metrics.py
+make -C outputs/code check
+git diff --check

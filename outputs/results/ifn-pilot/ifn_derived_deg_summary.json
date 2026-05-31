@@ -1,0 +1,119 @@
+{
+  "catalog": "data/studies/ifn_derived_catalog.csv",
+  "claim_guardrail": "Derived from public count matrices; not an as-published DEG-table validation corpus.",
+  "contrast_summaries": [
+    {
+      "output": "data/deg/raw/ifn/GSE147507_IFNB_4h_vs_mock_derived_logcpm_welch.csv",
+      "paper_id": "GSE147507_NHBE_IFNB",
+      "rows": 11252,
+      "study_id": "IFN_GSE147507_NHBE_IFNB_4h",
+      "top20_gold_hits": [
+        "IRF7",
+        "MX2",
+        "OAS2",
+        "RSAD2",
+        "STAT2"
+      ],
+      "top_gene": "DDX60"
+    },
+    {
+      "output": "data/deg/raw/ifn/GSE147507_IFNB_6h_vs_mock_derived_logcpm_welch.csv",
+      "paper_id": "GSE147507_NHBE_IFNB",
+      "rows": 11092,
+      "study_id": "IFN_GSE147507_NHBE_IFNB_6h",
+      "top20_gold_hits": [
+        "IFIH1",
+        "ISG15",
+        "MX2"
+      ],
+      "top_gene": "SAMD9"
+    },
+    {
+      "output": "data/deg/raw/ifn/GSE147507_IFNB_12h_vs_mock_derived_logcpm_welch.csv",
+      "paper_id": "GSE147507_NHBE_IFNB",
+      "rows": 11080,
+      "study_id": "IFN_GSE147507_NHBE_IFNB_12h",
+      "top20_gold_hits": [
+        "IFIT3",
+        "MX2",
+        "OASL",
+        "RSAD2"
+      ],
+      "top_gene": "CMPK2"
+    },
+    {
+      "output": "data/deg/raw/ifn/GSE221804_IFNA_2h_vs_un_derived_logcpm_welch.csv",
+      "paper_id": "GSE221804_HUHWT_IFNA",
+      "rows": 11822,
+      "study_id": "IFN_GSE221804_HUHWT_IFNA_2h",
+      "top20_gold_hits": [
+        "IFIT1",
+        "MX1"
+      ],
+      "top_gene": "TSPAN8"
+    },
+    {
+      "output": "data/deg/raw/ifn/GSE221804_IFNA_4h_vs_un_derived_logcpm_welch.csv",
+      "paper_id": "GSE221804_HUHWT_IFNA",
+      "rows": 11892,
+      "study_id": "IFN_GSE221804_HUHWT_IFNA_4h",
+      "top20_gold_hits": [
+        "MX1"
+      ],
+      "top_gene": "MYCN"
+    },
+    {
+      "output": "data/deg/raw/ifn/GSE221804_IFNA_8h_vs_un_derived_logcpm_welch.csv",
+      "paper_id": "GSE221804_HUHWT_IFNA",
+      "rows": 11898,
+      "study_id": "IFN_GSE221804_HUHWT_IFNA_8h",
+      "top20_gold_hits": [
+        "IFIH1",
+        "IFIT1",
+        "MX1",
+        "OAS1",
+        "RSAD2",
+        "STAT1"
+      ],
+      "top_gene": "RSAD2"
+    },
+    {
+      "output": "data/deg/raw/ifn/GSE221804_IFNA_24h_vs_un_derived_logcpm_welch.csv",
+      "paper_id": "GSE221804_HUHWT_IFNA",
+      "rows": 11953,
+      "study_id": "IFN_GSE221804_HUHWT_IFNA_24h",
+      "top20_gold_hits": [
+        "IFIH1",
+        "MX1",
+        "OAS1"
+      ],
+      "top_gene": "MX1"
+    }
+  ],
+  "corpus": "IFN response derived-count pilot",
+  "gold_genes": [
+    "ISG15",
+    "IFIT1",
+    "IFIT2",
+    "IFIT3",
+    "IFI6",
+    "IFI27",
+    "IFI44",
+    "IFI44L",
+    "MX1",
+    "MX2",
+    "OAS1",
+    "OAS2",
+    "OAS3",
+    "OASL",
+    "RSAD2",
+    "IFIH1",
+    "DDX58",
+    "IRF7",
+    "STAT1",
+    "STAT2"
+  ],
+  "gold_panel": "data/studies/gold/ifn_gold_panel.csv",
+  "n_contrasts": 7,
+  "n_source_units": 2
+}

@@ -1,0 +1,42 @@
+{
+  "command": "PYTHONPATH=outputs/code python outputs/code/figures/make_degora_scheme_figure.py --output-dir outputs/figures/manuscript/FIGURE_1_SCHEME",
+  "figure_id": "FIGURE_1_SCHEME",
+  "generated_at": "2026-05-31T05:48:12.350558+00:00",
+  "inputs": [],
+  "known_limitations": [
+    "Schematic panel shows analysis structure, not quantitative benchmark performance."
+  ],
+  "outputs": [
+    "outputs/figures/manuscript/FIGURE_1_SCHEME/figure1_scheme.png",
+    "outputs/figures/manuscript/FIGURE_1_SCHEME/figure1_scheme.pdf",
+    "outputs/figures/manuscript/FIGURE_1_SCHEME/figure1_scheme.svg",
+    "outputs/figures/manuscript/FIGURE_1_SCHEME/figure1_scheme_A_workflow.png",
+    "outputs/figures/manuscript/FIGURE_1_SCHEME/figure1_scheme_A_workflow.pdf",
+    "outputs/figures/manuscript/FIGURE_1_SCHEME/figure1_scheme_A_workflow.svg",
+    "outputs/figures/manuscript/FIGURE_1_SCHEME/figure1_scheme_B_score.png",
+    "outputs/figures/manuscript/FIGURE_1_SCHEME/figure1_scheme_B_score.pdf",
+    "outputs/figures/manuscript/FIGURE_1_SCHEME/figure1_scheme_B_score.svg",
+    "outputs/figures/manuscript/FIGURE_1_SCHEME/figure1_scheme_C_outputs.png",
+    "outputs/figures/manuscript/FIGURE_1_SCHEME/figure1_scheme_C_outputs.pdf",
+    "outputs/figures/manuscript/FIGURE_1_SCHEME/figure1_scheme_C_outputs.svg",
+    "outputs/figures/manuscript/FIGURE_1_SCHEME/figure1_scheme_source_data.xlsx",
+    "outputs/figures/manuscript/FIGURE_1_SCHEME/figure1_scheme_legend.docx",
+    "outputs/figures/manuscript/FIGURE_1_SCHEME/figure1_scheme_manifest.json",
+    "outputs/figures/manuscript/FIGURE_1_SCHEME/figure1_scheme_validation.txt"
+  ],
+  "panel_claims": [
+    "Workflow steps, score weights, and outputs are declared in structured source-data sheets."
+  ],
+  "script": "outputs/code/figures/make_degora_scheme_figure.py",
+  "source_data": [
+    "outputs/figures/manuscript/FIGURE_1_SCHEME/figure1_scheme_source_data.xlsx"
+  ],
+  "transformations": {
+    "layout": "schematic generated from workflow, score, and output tables"
+  },
+  "validation": {
+    "output_rows": 4,
+    "score_rows": 5,
+    "workflow_rows": 6
+  }
+}

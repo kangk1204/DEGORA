@@ -1,0 +1,1 @@
+make -C outputs/code resource-package RESOURCE_SCORE_CSV=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/piper_gene_scores.csv RESOURCE_SCORE_DB=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/piper_scores.db RESOURCE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot RESOURCE_TOP_N=20 RESOURCE_API_URL=

@@ -1,0 +1,7 @@
+AUXILIARY MSigDB Hallmark sensitivity recompute (does NOT replace locked compact panels).
+Command: PYTHONPATH=outputs/code python3 outputs/results/code-review/_hallmark_sensitivity.py
+Hallmark source/version: Enrichr GMT download MSigDB_Hallmark_2020 (https://maayanlab.cloud/Enrichr/geneSetLibrary?mode=text&libraryName=MSigDB_Hallmark_2020)
+Hallmark sets used: {"HALLMARK_INTERFERON_ALPHA_RESPONSE": 97, "HALLMARK_INTERFERON_GAMMA_RESPONSE": 200, "HALLMARK_UNFOLDED_PROTEIN_RESPONSE": 113, "HALLMARK_HYPOXIA": 200}
+sklearn_available: True
+Compact gold panels: data/studies/gold/{ifn_gold_panel,er_stress_upr_gold_panel,hypoxia_hif1_gold_panel}.csv
+Ranking: quality_weighted_piper_score DESC, tie-break quality_weighted_piper_rank ASC.

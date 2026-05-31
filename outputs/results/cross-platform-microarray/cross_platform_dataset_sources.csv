@@ -1,0 +1,6 @@
+topic,accession,assay_type,platform,samples,contrast,source_url,use
+IFN,GSE71634,microarray,GPL10558,40,IFN-beta 18h vs unstimulated PBMC,https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE71634,added to RNA-seq-only IFN benchmark
+ER stress,GSE19519,microarray,GPL570,120,tunicamycin 8h vs DMSO LCL,https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE19519,added to RNA-seq-only ER primary benchmark
+ER stress,GSE19519,microarray,GPL570,104,thapsigargin 4h vs DMSO LCL,https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE19519,same source unit as GSE19519 tunicamycin row
+Hypoxia,GSE3045,microarray,GPL570,6,primary human astrocyte 1% O2 24h vs normoxia,https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE3045,added to human-only hypoxia benchmark
+Hypoxia,GSE22282,microarray,GPL570,6,mature dendritic-cell hypoxia vs normoxia,https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE22282,added to human-only hypoxia benchmark

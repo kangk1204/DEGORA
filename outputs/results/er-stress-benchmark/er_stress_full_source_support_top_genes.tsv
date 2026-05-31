@@ -1,0 +1,11 @@
+rank	gene_symbol	locked_gold	interpretive_marker	known_or_locked_marker	expected_direction	consensus_direction	direction_match	n_source_units	sign_concordance	source_support_pass	piper_score	priority_score	evidence_reliability_score	direction_confidence_index	quality_weighted_piper_score	source_units	marker_role	validation_role	evidence_basis	source_url	notes
+1	ADAM19	False	False	False		down		3.0	1.0		82.507227	74.880167	98.965585	0.960852	82.510482	GSE102505_glioma_TUN;GSE103667_THAP;GSE84450_DTT					
+2	DDIT3	True	False	True	up	up	True	3.0	1.0	True	82.310858	74.385055	98.499423	0.951289	85.062758	GSE102505_glioma_TUN;GSE103667_THAP;GSE84450_DTT					
+3	HAS2	False	False	False		down		3.0	1.0		82.197708	74.085168	98.668323	0.951024	83.624829	GSE102505_glioma_TUN;GSE103667_THAP;GSE84450_DTT					
+4	PPP1R15A	True	False	True	up	up	True	3.0	1.0	True	81.827576	73.805801	98.764199	0.956138	83.945157	GSE102505_glioma_TUN;GSE103667_THAP;GSE84450_DTT					
+5	ACTB	False	False	False		down		3.0	1.0		81.412349	73.215362	98.72118	0.954738	79.317256	GSE102505_glioma_TUN;GSE103667_THAP;GSE84450_DTT					
+6	DUSP6	False	False	False		down		3.0	1.0		81.310464	73.141299	98.742411	0.954324	79.798442	GSE102505_glioma_TUN;GSE103667_THAP;GSE84450_DTT					
+7	LFNG	False	False	False		down		3.0	1.0		81.072661	72.708682	98.744341	0.95343	81.191962	GSE102505_glioma_TUN;GSE103667_THAP;GSE84450_DTT					
+8	LMNB1	False	False	False		down		3.0	1.0		80.312148	71.667981	98.636262	0.953485	79.838604	GSE102505_glioma_TUN;GSE103667_THAP;GSE84450_DTT					
+9	MGP	False	False	False		down		3.0	1.0		80.188103	71.219354	98.404752	0.946494	79.432351	GSE102505_glioma_TUN;GSE103667_THAP;GSE84450_DTT					
+10	SNAI1	False	False	False		down		3.0	1.0		80.104041	71.357494	98.592662	0.952418	80.423575	GSE102505_glioma_TUN;GSE103667_THAP;GSE84450_DTT					

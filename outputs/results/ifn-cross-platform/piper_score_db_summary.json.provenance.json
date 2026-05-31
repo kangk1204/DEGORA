@@ -1,0 +1,23 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/ifn-cross-platform/piper_score_db_summary.json",
+  "artifact_sha256": "f7e76fac53b1cf94a373358973d3fde2f6025e6c1d2c6f55649c38243a84885c",
+  "artifact_size_bytes": 1016,
+  "command": "PYTHONPATH=outputs/code python outputs/code/scripts/write_cross_platform_microarray_benchmarks.py --output-dir outputs/results/cross-platform-microarray",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/harmonized/ifn-cross-platform_harmonized.csv",
+      "sha256": "a87db4b95c546856798ebfe372d03750c2cfcabe653ad13d61e22590d291387f",
+      "size_bytes": 64721736
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/studies/ifn_cross_platform_catalog.csv",
+      "sha256": "f7577d21249ab43876c1c922f92ef337b6f2345f54390cd8a97e11c10324f70c",
+      "size_bytes": 5114
+    }
+  ],
+  "metadata": {
+    "generator": "piper-score-db"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary/tool-feasibility/er-stress-benchmark-primary_study_tool_feasibility_matrix.csv",
+  "artifact_sha256": "cc4df61bd0796e366428fb2c5db68cc1ecd863ab558befbe3ce5624a3a69730c",
+  "artifact_size_bytes": 3240,
+  "command": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_study_tool_feasibility_matrix.py --harmonized data/deg/harmonized/er-stress-benchmark-primary_harmonized.csv --corpus er-stress-benchmark-primary --output-csv outputs/results/er-stress-benchmark-primary/tool-feasibility/er-stress-benchmark-primary_study_tool_feasibility_matrix.csv --output-md outputs/results/er-stress-benchmark-primary/tool-feasibility/er-stress-benchmark-primary_study_tool_feasibility_matrix.md",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/harmonized/er-stress-benchmark-primary_harmonized.csv",
+      "sha256": "d51618c314480b9a60a973cdb45496ac5289f50d6bc8d698facd4361abbc1236",
+      "size_bytes": 26531106
+    }
+  ],
+  "metadata": {
+    "corpus": "er-stress-benchmark-primary",
+    "generator": "study-tool-feasibility"
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/er_stress_full_source_support_summary.csv",
+  "artifact_sha256": "8ba4d26e45680018305e5646749245471ac0cd5ebe7d66dedee26284b1aaec1f",
+  "artifact_size_bytes": 4952,
+  "command": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_source_support_report.py --score-csv outputs/results/er-stress-benchmark/piper_gene_scores.csv --gold data/studies/gold/er_stress_upr_gold_panel.csv --marker-panel data/studies/interpretive/er_stress_upr_marker_panel.csv --gold-gene-column gene_symbol --rank-column piper_rank --direction-column consensus_direction --top-n 10 --cutoffs 10 20 50 100 --min-source-units 2 --min-sign-concordance 1.0 --title 'ER Stress/UPR Full Source-Support Report' --output-summary-csv outputs/results/er-stress-benchmark/er_stress_full_source_support_summary.csv --output-top-tsv outputs/results/er-stress-benchmark/er_stress_full_source_support_top_genes.tsv --output-json outputs/results/er-stress-benchmark/er_stress_full_source_support_report.json --output-md outputs/results/er-stress-benchmark/er_stress_full_source_support_report.md",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/piper_gene_scores.csv",
+      "sha256": "9af6d485380fde232d75719cd451dc2f66e16406342abefb81494cef65e6c2e1",
+      "size_bytes": 5650676
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/studies/gold/er_stress_upr_gold_panel.csv",
+      "sha256": "0bd4242553e68350a4cbac410069039883b20536839f2e0aa96cfccf93d4b4f1",
+      "size_bytes": 5204
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/studies/interpretive/er_stress_upr_marker_panel.csv",
+      "sha256": "dd028f6848d4255f7414d17075db9c9ef095afe1e6b1bb1e3832f6ec01a4dc60",
+      "size_bytes": 1523
+    }
+  ],
+  "metadata": {
+    "cutoffs": [
+      10,
+      20,
+      50,
+      100
+    ],
+    "direction_column": "consensus_direction",
+    "generator": "source-support-report",
+    "gold_path": "data/studies/gold/er_stress_upr_gold_panel.csv",
+    "marker_panel": "data/studies/interpretive/er_stress_upr_marker_panel.csv",
+    "min_sign_concordance": 1.0,
+    "min_source_units": 2,
+    "n_interpretive_markers": 4,
+    "n_locked_gold": 18,
+    "n_scored_genes": 10872,
+    "rank_column": "piper_rank",
+    "score_csv": "outputs/results/er-stress-benchmark/piper_gene_scores.csv",
+    "top_n": 10
+  }
+}

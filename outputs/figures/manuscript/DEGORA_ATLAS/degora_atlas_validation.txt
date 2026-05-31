@@ -1,0 +1,29 @@
+DEGORA atlas validation
+
+outputs/figures/manuscript/DEGORA_ATLAS/degora_atlas.html: exists=True size_bytes=17747171
+outputs/figures/manuscript/DEGORA_ATLAS/degora_atlas.db: exists=True size_bytes=31297536
+outputs/figures/manuscript/DEGORA_ATLAS/degora_atlas_source_data.xlsx: exists=True size_bytes=19097223
+outputs/figures/manuscript/DEGORA_ATLAS/degora_atlas_gene_index.csv: exists=True size_bytes=27650023
+outputs/figures/manuscript/DEGORA_ATLAS/degora_atlas_legend.docx: exists=True size_bytes=1160
+outputs/figures/manuscript/DEGORA_ATLAS/degora_atlas.png: exists=True size_bytes=528540
+outputs/figures/manuscript/DEGORA_ATLAS/degora_atlas.pdf: exists=True size_bytes=37450
+outputs/figures/manuscript/DEGORA_ATLAS/degora_atlas.svg: exists=True size_bytes=63071
+outputs/figures/manuscript/DEGORA_ATLAS/degora_atlas_A_corpus_scale.png: exists=True size_bytes=127868
+outputs/figures/manuscript/DEGORA_ATLAS/degora_atlas_A_corpus_scale.pdf: exists=True size_bytes=19494
+outputs/figures/manuscript/DEGORA_ATLAS/degora_atlas_A_corpus_scale.svg: exists=True size_bytes=17941
+outputs/figures/manuscript/DEGORA_ATLAS/degora_atlas_B_recall_heatmap.png: exists=True size_bytes=244128
+outputs/figures/manuscript/DEGORA_ATLAS/degora_atlas_B_recall_heatmap.pdf: exists=True size_bytes=31585
+outputs/figures/manuscript/DEGORA_ATLAS/degora_atlas_B_recall_heatmap.svg: exists=True size_bytes=37222
+outputs/figures/manuscript/DEGORA_ATLAS/degora_atlas_C_evidence_quality.png: exists=True size_bytes=86437
+outputs/figures/manuscript/DEGORA_ATLAS/degora_atlas_C_evidence_quality.pdf: exists=True size_bytes=22633
+outputs/figures/manuscript/DEGORA_ATLAS/degora_atlas_C_evidence_quality.svg: exists=True size_bytes=14527
+outputs/figures/manuscript/DEGORA_ATLAS/degora_atlas_D_prior_art_status.png: exists=True size_bytes=195622
+outputs/figures/manuscript/DEGORA_ATLAS/degora_atlas_D_prior_art_status.pdf: exists=True size_bytes=19069
+outputs/figures/manuscript/DEGORA_ATLAS/degora_atlas_D_prior_art_status.svg: exists=True size_bytes=14797
+
+gene_index: rows=118633 columns=27
+corpus_summary: rows=6 columns=13
+method_recall: rows=114 columns=47
+prior_art: rows=23 columns=12
+top100: rows=6 columns=7
+prior_counts: rows=14 columns=3

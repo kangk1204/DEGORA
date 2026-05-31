@@ -1,0 +1,131 @@
+{
+  "catalog_path": "/home/keunsoo/projects/09_PIPER/data/studies/heat_shock_hsf1_catalog.csv",
+  "db_path": "/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/degora_scores.db",
+  "direction_concordance_rule": "evidence-strength-weighted concordance across independent source-unit representatives",
+  "direction_confidence_rule": "Beta(1,1)-shrunk source-unit count concordance: (1 + concordant source units) / (2 + observed source units); quality-weighted direction confidence uses reliability-weighted pseudo-counts and is not a calibrated posterior probability",
+  "effect_meta_rule": "parallel effect-size reporting lane only: DerSimonian-Laird random-effects inverse-variance meta-analysis of log2FC using SE derived from log2FC and two-sided p-value/signed_z when exact SE is unavailable; the 95% CI uses a truncated Hartung-Knapp-Sidik-Jonkman small-sample adjustment (t reference, df=k-1) so effect_meta_se/ci are not narrower than the normal random-effects interval; tau2/I2 are interpretable mainly for larger-k corpora",
+  "evidence_reliability_score_weights": {
+    "direction_confidence_index": 0.25,
+    "loo_rank_stability_score": 0.25,
+    "source_quality_support_score": 0.25,
+    "support_score": 0.25
+  },
+  "evidence_tier_rules": {
+    "A": "top_percent <= 1, n_source_units >= min(3, total_source_units), sign_concordance >= 0.90",
+    "B": "top_percent <= 5, n_source_units >= min(2, total_source_units), sign_concordance >= 0.75",
+    "C": "top_percent <= 20, n_source_units >= min(2, total_source_units)",
+    "D": "lower-ranked or weakly supported"
+  },
+  "harmonized_path": "/home/keunsoo/projects/09_PIPER/data/deg/harmonized/heat-shock-benchmark_harmonized.csv",
+  "heterogeneity_flag_rule": "heterogeneity_i2 >= 0.75 is labeled high_context_dependent_review; >= 0.50 is moderate_context_review; flags are descriptive review aids, not score gates",
+  "heterogeneity_rule": "source-unit z heterogeneity is reported as a Cochran-Q-style descriptive index over collapsed source-unit z values; it is an audit field, not a calibrated random-effects model",
+  "high_confidence_rule": "relative browsing flag: n_source_units >= min(2, total_source_units) = 2, sign_concordance >= 0.75, rank_score_component >= 0.80, evidence_score >= 0.50; does not use stouffer_padj as a calibrated inferential gate",
+  "independent_unit_for_consensus": "source_unit_id (paper_id when available, otherwise study_id)",
+  "loo_stability_rule": "leave-one-source-unit-out priority-rank stability; higher means the gene rank is less dependent on a single source unit",
+  "min_studies": 2,
+  "n_contrasts_total": 5,
+  "n_gene_scores": 14285,
+  "n_nonfinite_lfc_capped_for_score": 0,
+  "n_source_quality_outliers": 0,
+  "n_source_unit_gene_evidence_rows": 42977,
+  "n_source_units_total": 3,
+  "priority_score_weights": {
+    "direction_score": 0.25,
+    "effect_score": 0.15,
+    "evidence_score": 0.3,
+    "rank_score_component": 0.3
+  },
+  "quality_weighted_score_formula": "Exploratory secondary ranking only: same component formula as the primary DEGORA score, but source-unit evidence is weighted by predeclared source quality features and a gold-panel-free source-coherence guardrail. It does not replace degora_score and is not a calibrated probability.",
+  "quality_weighted_score_warning": "Quality-weighted ranking is the manuscript-facing default for benchmark tables; degora_score remains available as the unweighted/reference prioritization index.",
+  "random_effects_stouffer_rule": "descriptive heterogeneity-aware reporting lane only: stouffer_z / sqrt(1 + heterogeneity_i2 * (k_source_units - 1)); p/padj are screening fields, not calibrated formal random-effects inference",
+  "rank_interpretation": "degora_rank is the absolute rank among scored genes; top_percent is rank / total scored genes * 100, so smaller is more selective; percentile is 100 for the top-ranked gene and decreases with rank.",
+  "rra_rule": "parallel rank lane using beta order-statistic RobustRankAggreg-style rho over source-unit normalized ranks; missing source-unit lists are handled through the total source-unit universe; rho is computed in log space and rra_neglog10_rho (-log10 rho) preserves ordering for top genes whose rho underflows to 0; rho is not reported as a calibrated FDR",
+  "score_formula": "100 * weighted_geometric_mean(support_score, direction_score, evidence_score, rank_score_component, effect_score); support is log-scaled by independent source units, direction is sign concordance, evidence is Stouffer-z strength, rank is inverse rank product, and effect is absolute weighted log2FC strength. The score is a transparent ranking aid, not a calibrated posterior probability. Consensus evidence is combined after aggregating related contrasts within each independent source unit without max-|z| representative selection.",
+  "score_version": "degora_score_v1_2_source_unit_mean",
+  "score_warning": "DEGORA score is for transparent prioritization and browsing, not a calibrated probability or a validation metric.",
+  "score_weights": {
+    "direction_score": 0.25,
+    "effect_score": 0.1,
+    "evidence_score": 0.2,
+    "rank_score_component": 0.15,
+    "support_score": 0.3
+  },
+  "source_quality_diagnostics": [
+    {
+      "assay_type": "RNA-seq",
+      "median_pairwise_lfc_spearman": 0.30428878377892843,
+      "median_pairwise_sign_agreement": 0.6318599664357868,
+      "min_pairwise_lfc_spearman": 0.2713950559870073,
+      "n_genes": 13302,
+      "n_pairwise_comparisons": 2,
+      "pipeline": "logCPM_Welch_derived_from_NCBI_GEO_counts",
+      "recommended_role": "primary",
+      "source_coherence_weight": 1.0,
+      "source_input_type": "derived_count_table",
+      "source_outlier_flag": false,
+      "source_quality_label": "medium",
+      "source_quality_weight": 0.7224999999999999,
+      "source_recommended_weight": 0.7224999999999999,
+      "source_reliability_label": "medium",
+      "source_reliability_weight": 0.7131425924420868,
+      "source_unit_id": "GSE124609_WI38_HS"
+    },
+    {
+      "assay_type": "RNA-seq",
+      "median_pairwise_lfc_spearman": 0.2200977667864315,
+      "median_pairwise_sign_agreement": 0.5701626711000964,
+      "min_pairwise_lfc_spearman": 0.16880047758585573,
+      "n_genes": 15612,
+      "n_pairwise_comparisons": 2,
+      "pipeline": "logCPM_Welch_derived_from_NCBI_GEO_counts",
+      "recommended_role": "primary",
+      "source_coherence_weight": 1.0,
+      "source_input_type": "derived_count_table",
+      "source_outlier_flag": false,
+      "source_quality_label": "high",
+      "source_quality_weight": 0.85,
+      "source_recommended_weight": 0.85,
+      "source_reliability_label": "medium",
+      "source_reliability_weight": 0.824450460021849,
+      "source_unit_id": "GSE132447_PrimaryNeurons_HS"
+    },
+    {
+      "assay_type": "RNA-seq",
+      "median_pairwise_lfc_spearman": 0.2529914945783526,
+      "median_pairwise_sign_agreement": 0.6136864454261062,
+      "min_pairwise_lfc_spearman": 0.16880047758585573,
+      "n_genes": 14063,
+      "n_pairwise_comparisons": 2,
+      "pipeline": "logCPM_Welch_derived_from_NCBI_GEO_counts",
+      "recommended_role": "primary",
+      "source_coherence_weight": 1.0,
+      "source_input_type": "derived_count_table",
+      "source_outlier_flag": false,
+      "source_quality_label": "high",
+      "source_quality_weight": 0.85,
+      "source_recommended_weight": 0.85,
+      "source_reliability_label": "medium",
+      "source_reliability_weight": 0.8242787994310994,
+      "source_unit_id": "GSE164834_SW620_HS"
+    }
+  ],
+  "source_quality_weight_rules": {
+    "replicate_multiplier": "1.0 if both groups have >=3 samples; 0.85 for >=2; 0.50 for >=1; 0.35 otherwise",
+    "source_coherence_guardrail": "gold-panel-free source-source LFC Spearman check; low-quality sources with median pairwise Spearman < 0.05 receive source_coherence_weight=0.50 in the secondary score only",
+    "source_input_type_weights": {
+      "author_deg_table": 1.0,
+      "derived_count_table": 0.85,
+      "limma_full_table": 0.9,
+      "microarray_author_deg_table": 0.9,
+      "normalized_expression_matrix": 0.35
+    },
+    "source_reliability_shrinkage": "secondary-score weight shrunk toward neutral 0.65 using source gene coverage and pairwise-comparison evidence; not a calibrated probability",
+    "table_scope_multipliers": {
+      "ambiguous": 0.75,
+      "auto": 0.9,
+      "deg_only": 0.65,
+      "full_results": 1.0
+    }
+  },
+  "source_unit_collapse_rule": "source-unit mean aggregation: sample-size-weighted mean signed_z, sample-size-weighted mean log2FC, mean normalized rank, and mean source weight with per-contrast sample-size weights capped at 4; no max-|z| representative selection. Optional time_course_mode can preselect mean, early, late, or peak_mean rows within a source unit before this aggregation."
+}

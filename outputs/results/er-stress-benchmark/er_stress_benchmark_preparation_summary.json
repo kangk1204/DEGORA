@@ -1,0 +1,269 @@
+{
+  "benchmark_topic": "ER stress / unfolded protein response",
+  "catalog": "data/studies/er_stress_upr_catalog.csv",
+  "claim_scope": "gold_panel_prioritization_in_a_prelocked_er_stress_upr_benchmark",
+  "contrast_summaries": [
+    {
+      "gold_hits_top100": [
+        "ATF3",
+        "CHAC1",
+        "DDIT3",
+        "DNAJB9",
+        "HERPUD1",
+        "HSP90B1",
+        "HSPA5",
+        "MANF"
+      ],
+      "output": "data/deg/raw/er_stress/GSE84450_WT_DTT_vs_UT_cuffdiff_clean.csv",
+      "paper_id": "GSE84450_DTT",
+      "rows": 11428,
+      "source_input_type": "author_deg_table",
+      "study_id": "ER_GSE84450_WT_DTT_vs_UT",
+      "top_gene": "2810474O19RIK"
+    },
+    {
+      "gold_hits_top100": [
+        "DERL3",
+        "HSP90B1",
+        "PDIA4",
+        "SEL1L"
+      ],
+      "output": "data/deg/raw/er_stress/GSE102505_T4213_tunicamycin_vs_DMSO_derived_logcpm_welch.csv",
+      "paper_id": "GSE102505_glioma_TUN",
+      "rows": 9323,
+      "source_input_type": "derived_count_table",
+      "study_id": "ER_GSE102505_T4213_TUN_vs_DMSO",
+      "top_gene": "SLU7"
+    },
+    {
+      "gold_hits_top100": [
+        "HSP90B1",
+        "PPP1R15A"
+      ],
+      "output": "data/deg/raw/er_stress/GSE102505_U251_tunicamycin_vs_DMSO_derived_logcpm_welch.csv",
+      "paper_id": "GSE102505_glioma_TUN",
+      "rows": 10806,
+      "source_input_type": "derived_count_table",
+      "study_id": "ER_GSE102505_U251_TUN_vs_DMSO",
+      "top_gene": "LOXL4"
+    },
+    {
+      "gold_hits_top100": [
+        "CHAC1",
+        "DDIT3",
+        "HERPUD1",
+        "HSP90B1",
+        "HSPA5",
+        "PPP1R15A",
+        "SEL1L",
+        "TRIB3"
+      ],
+      "output": "data/deg/raw/er_stress/GSE102505_NHA_tunicamycin_vs_DMSO_derived_logcpm_welch.csv",
+      "paper_id": "GSE102505_glioma_TUN",
+      "rows": 10125,
+      "source_input_type": "derived_count_table",
+      "study_id": "ER_GSE102505_NHA_TUN_vs_DMSO",
+      "top_gene": "CTSC"
+    },
+    {
+      "gold_hits_top100": [
+        "HERPUD1",
+        "HSP90B1",
+        "HSPA5",
+        "PDIA4"
+      ],
+      "output": "data/deg/raw/er_stress/GSE296996_HepG2_tunicamycin_vs_DMSO_derived_logcpm_welch.csv",
+      "paper_id": "GSE296996_HepG2_TUN",
+      "rows": 10579,
+      "source_input_type": "derived_count_table",
+      "study_id": "ER_GSE296996_HEPG2_TUN_vs_DMSO",
+      "top_gene": "CPB2"
+    },
+    {
+      "gold_hits_top100": [
+        "DDIT3",
+        "DERL3",
+        "HERPUD1",
+        "HSPA5",
+        "MANF",
+        "PDIA4",
+        "TRIB3",
+        "XBP1"
+      ],
+      "output": "data/deg/raw/er_stress/GSE245918_OCI_AML3_tunicamycin_vs_DMSO_derived_logcpm_welch.csv",
+      "paper_id": "GSE245918_TUN",
+      "rows": 12234,
+      "source_input_type": "derived_count_table",
+      "study_id": "ER_GSE245918_OCI_AML3_TUN_vs_DMSO",
+      "top_gene": "NIBAN1"
+    },
+    {
+      "gold_hits_top100": [
+        "ATF3",
+        "ATF4",
+        "DERL3",
+        "HERPUD1",
+        "HSP90B1",
+        "HSPA5",
+        "MANF",
+        "PDIA4",
+        "PPP1R15A",
+        "TRIB3"
+      ],
+      "output": "data/deg/raw/er_stress/GSE245918_HEK293T_tunicamycin_vs_DMSO_derived_logcpm_welch.csv",
+      "paper_id": "GSE245918_TUN",
+      "rows": 13070,
+      "source_input_type": "derived_count_table",
+      "study_id": "ER_GSE245918_HEK293T_TUN_vs_DMSO",
+      "top_gene": "HSPA5"
+    },
+    {
+      "gold_hits_top100": [],
+      "output": "data/deg/raw/er_stress/GSE103667_THAP_vs_DMSO_normexpr_welch.csv",
+      "paper_id": "GSE103667_THAP",
+      "rows": 11415,
+      "source_input_type": "normalized_expression_matrix",
+      "study_id": "ER_GSE103667_THAP_vs_DMSO",
+      "top_gene": "CALHM2"
+    }
+  ],
+  "corpus": "ER stress / unfolded protein response benchmark",
+  "gold_genes": [
+    "HSPA5",
+    "HSP90B1",
+    "DNAJB9",
+    "HERPUD1",
+    "DDIT3",
+    "ATF4",
+    "ATF3",
+    "PPP1R15A",
+    "CHAC1",
+    "ASNS",
+    "PDIA4",
+    "EDEM1",
+    "SEL1L",
+    "DERL3",
+    "MANF",
+    "TRIB3",
+    "DDIT4",
+    "XBP1"
+  ],
+  "gold_panel": "data/studies/gold/er_stress_upr_gold_panel.csv",
+  "gold_panel_locked_before_scoring": true,
+  "n_contrasts": 8,
+  "n_primary_active_contrasts": 6,
+  "n_primary_source_units": 3,
+  "n_source_units": 5,
+  "primary_catalog": "data/studies/er_stress_upr_primary_catalog.csv",
+  "primary_min_studies": 2,
+  "score_interpretation": "prioritization_index_not_calibrated_probability",
+  "score_metadata_extra": "outputs/results/er-stress-benchmark/er_stress_score_metadata_extra.json",
+  "source_availability": [
+    {
+      "local_file_exists": true,
+      "local_path": "data/deg/raw/er_stress/GSE84450_WT_UTvsWT_DTT_gene_exp.diff.gz",
+      "local_size_bytes": 795960,
+      "reason": "as-published Cuffdiff full-result DTT ER-stress table; mouse source retained only for non-primary sensitivity after the human-only species gate",
+      "sha256": "76b50f07c56f9136c38316e38b29a2801fdcd210dd308293a794c3a1501b14b4",
+      "source_id": "GSE84450",
+      "source_url": "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE84450",
+      "status": "species_sensitivity_source",
+      "summary": "{\"n_dropped_non_ok_or_invalid\": 11932, \"n_gene_symbols_after_collapse\": 11428, \"raw_rows\": 23360, \"status_ok_rows\": 11431}",
+      "use_decision": "excluded_from_manuscript_primary"
+    },
+    {
+      "local_file_exists": true,
+      "local_path": "data/deg/raw/er_stress/GSE102505_glioma_nh125_exp_count_matrix.csv.gz",
+      "local_size_bytes": 789827,
+      "reason": "public count matrix with clear tunicamycin vs DMSO columns in three cell systems",
+      "sha256": "28955de6337d8a87076c873f759ac16aaa0afca1e1c1d6456b4f2285ee60bd92",
+      "source_id": "GSE102505",
+      "source_url": "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE102505",
+      "status": "active_primary_source",
+      "summary": "{\"mapped_rows\": 19070, \"n_gene_symbols_after_collapse\": 19070, \"n_unmapped_genes\": 41129, \"raw_rows\": 60199}",
+      "use_decision": "included"
+    },
+    {
+      "local_file_exists": true,
+      "local_path": "data/deg/raw/er_stress/GSE296996_count_matrix.txt.gz",
+      "local_size_bytes": 521879,
+      "reason": "public HepG2 count matrix with five tunicamycin vs five DMSO replicate columns",
+      "sha256": "524467bcb4722ba98fe2cddcbbd1ccb70734e87a757e223ff4f73e8c8faa899b",
+      "source_id": "GSE296996",
+      "source_url": "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE296996",
+      "status": "active_primary_source",
+      "summary": "{\"mapped_rows\": 18544, \"n_gene_symbols_after_collapse\": 18544, \"n_unmapped_genes\": 14194, \"raw_rows\": 32738}",
+      "use_decision": "included"
+    },
+    {
+      "local_file_exists": true,
+      "local_path": "data/deg/raw/er_stress/GSE245918_rsem_counts.txt.gz",
+      "local_size_bytes": 997835,
+      "reason": "public RSEM count matrix with OCI-AML3 and HEK293T tunicamycin vs DMSO 24h arms mapped from the GEO series matrix",
+      "sha256": "401e977e87842850491ba905c80cefab0959dcd21225e027aecc63ccf1ebc3b3",
+      "source_id": "GSE245918",
+      "source_url": "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE245918",
+      "status": "active_primary_source",
+      "summary": "{\"mapped_rows\": 19210, \"n_gene_symbols_after_collapse\": 19210, \"n_unmapped_genes\": 41461, \"raw_rows\": 60671}",
+      "use_decision": "included"
+    },
+    {
+      "local_file_exists": true,
+      "local_path": "data/deg/raw/er_stress/GSE103667_TE.norm.txt.gz",
+      "local_size_bytes": 685709,
+      "reason": "normalized thapsigargin vs DMSO matrix with two replicates per arm; mouse source retained only for non-primary sensitivity after the human-only species gate",
+      "sha256": "9d9ffd0ee51fca52d1afff3db96c7214a1eea1681de74be39b23ecea6b13db7b",
+      "source_id": "GSE103667",
+      "source_url": "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE103667",
+      "status": "species_sensitivity_source",
+      "summary": "{\"n_collapsed_duplicate_symbol_rows\": 7568, \"n_gene_symbols_after_collapse\": 11415, \"raw_rows\": 18983, \"valid_rows\": 18983}",
+      "use_decision": "excluded_from_manuscript_primary"
+    },
+    {
+      "local_file_exists": true,
+      "local_path": "data/deg/raw/er_stress/GSE84989_RAW.tar",
+      "local_size_bytes": 1720320,
+      "reason": "sample-label metadata was not locked for this benchmark run",
+      "sha256": "52373b20045506b77f0ee89bf0d80426c48ca62224e0bc83e8610684a2d2907d",
+      "source_id": "GSE84989",
+      "source_url": "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE84989",
+      "status": "deferred_candidate",
+      "summary": "{}",
+      "use_decision": "excluded_pending_metadata_lock"
+    }
+  ],
+  "source_availability_tsv": "outputs/results/er-stress-benchmark/er_stress_source_availability.tsv",
+  "source_summaries": {
+    "gse102505": {
+      "mapped_rows": 19070,
+      "n_gene_symbols_after_collapse": 19070,
+      "n_unmapped_genes": 41129,
+      "raw_rows": 60199
+    },
+    "gse103667": {
+      "n_collapsed_duplicate_symbol_rows": 7568,
+      "n_gene_symbols_after_collapse": 11415,
+      "raw_rows": 18983,
+      "valid_rows": 18983
+    },
+    "gse245918": {
+      "mapped_rows": 19210,
+      "n_gene_symbols_after_collapse": 19210,
+      "n_unmapped_genes": 41461,
+      "raw_rows": 60671
+    },
+    "gse296996": {
+      "mapped_rows": 18544,
+      "n_gene_symbols_after_collapse": 18544,
+      "n_unmapped_genes": 14194,
+      "raw_rows": 32738
+    },
+    "gse84450": {
+      "n_dropped_non_ok_or_invalid": 11932,
+      "n_gene_symbols_after_collapse": 11428,
+      "raw_rows": 23360,
+      "status_ok_rows": 11431
+    }
+  },
+  "time_course_policy": "Related time points or cell-line contrasts from one accession share a paper_id/source-unit and are mean-aggregated by the primary score; no max-signal source-unit selection is used."
+}

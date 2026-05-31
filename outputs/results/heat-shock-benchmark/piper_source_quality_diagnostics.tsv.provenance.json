@@ -1,0 +1,23 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/piper_source_quality_diagnostics.tsv",
+  "artifact_sha256": "a9388793be55cbef7f968fbe0622a29f4ab2c198317c8812628bbf9a753b6540",
+  "artifact_size_bytes": 1030,
+  "command": "make -C outputs/code score-db SCORE_HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/heat-shock-benchmark_harmonized.csv CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/heat_shock_hsf1_catalog.csv OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark SCORE_DB=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/piper_scores.db SCORE_MIN_STUDIES=2",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/harmonized/heat-shock-benchmark_harmonized.csv",
+      "sha256": "18b31cd86f05358e3940c178163b153b09d94c7a90b37fd24ae4fb48d0fe64a4",
+      "size_bytes": 50353345
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/studies/heat_shock_hsf1_catalog.csv",
+      "sha256": "b4429d1cbd7128bec46d8352ff08e3c116e1eb6f16c6277857cffd0cb6433d2f",
+      "size_bytes": 3816
+    }
+  ],
+  "metadata": {
+    "generator": "piper-score-db"
+  }
+}

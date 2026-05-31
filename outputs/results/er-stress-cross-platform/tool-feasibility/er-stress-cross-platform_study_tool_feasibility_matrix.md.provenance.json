@@ -1,0 +1,18 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-cross-platform/tool-feasibility/er-stress-cross-platform_study_tool_feasibility_matrix.md",
+  "artifact_sha256": "20a20d126b3f85ad2f793e52fed73fec611f3b596250f93e7cd248a76de6d540",
+  "artifact_size_bytes": 1080,
+  "command": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_study_tool_feasibility_matrix.py --harmonized outputs/results/er-stress-cross-platform/slice_harmonized.csv --corpus er-stress-cross-platform --output-csv outputs/results/er-stress-cross-platform/tool-feasibility/er-stress-cross-platform_study_tool_feasibility_matrix.csv --output-md outputs/results/er-stress-cross-platform/tool-feasibility/er-stress-cross-platform_study_tool_feasibility_matrix.md",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-cross-platform/slice_harmonized.csv",
+      "sha256": "16ac98cb82eaf6b629103fd367c05c823d7348a63490ffad462b33ae8252812b",
+      "size_bytes": 51664435
+    }
+  ],
+  "metadata": {
+    "corpus": "er-stress-cross-platform",
+    "generator": "study-tool-feasibility"
+  }
+}

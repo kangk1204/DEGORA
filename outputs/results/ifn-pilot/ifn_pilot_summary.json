@@ -1,0 +1,151 @@
+{
+  "claim_guardrail": "Derived-count pilot; not an as-published DEG-table validation corpus.",
+  "corpus": "IFN response derived-count pilot",
+  "gold_rank_table": "outputs/results/ifn-pilot/ifn_gold_gene_ranks.tsv",
+  "n_gold_genes": 20,
+  "n_scored_genes": 20416,
+  "recall": {
+    "10": {
+      "k": 10,
+      "missing": [
+        "DDX58",
+        "IFI27",
+        "IFI44",
+        "IFI44L",
+        "IFI6",
+        "IFIT2",
+        "IRF7",
+        "ISG15",
+        "MX2",
+        "OAS2",
+        "OAS3",
+        "STAT1",
+        "STAT2"
+      ],
+      "n_gold": 20,
+      "n_recovered": 7,
+      "recall": 0.35,
+      "recovered": [
+        "IFIH1",
+        "IFIT1",
+        "IFIT3",
+        "MX1",
+        "OAS1",
+        "OASL",
+        "RSAD2"
+      ]
+    },
+    "100": {
+      "k": 100,
+      "missing": [
+        "DDX58",
+        "IRF7"
+      ],
+      "n_gold": 20,
+      "n_recovered": 18,
+      "recall": 0.9,
+      "recovered": [
+        "IFI27",
+        "IFI44",
+        "IFI44L",
+        "IFI6",
+        "IFIH1",
+        "IFIT1",
+        "IFIT2",
+        "IFIT3",
+        "ISG15",
+        "MX1",
+        "MX2",
+        "OAS1",
+        "OAS2",
+        "OAS3",
+        "OASL",
+        "RSAD2",
+        "STAT1",
+        "STAT2"
+      ]
+    },
+    "20": {
+      "k": 20,
+      "missing": [
+        "DDX58",
+        "IFI27",
+        "IFI44",
+        "IFI44L",
+        "IFIT2",
+        "IRF7",
+        "MX2",
+        "OAS2",
+        "STAT1",
+        "STAT2"
+      ],
+      "n_gold": 20,
+      "n_recovered": 10,
+      "recall": 0.5,
+      "recovered": [
+        "IFI6",
+        "IFIH1",
+        "IFIT1",
+        "IFIT3",
+        "ISG15",
+        "MX1",
+        "OAS1",
+        "OAS3",
+        "OASL",
+        "RSAD2"
+      ]
+    },
+    "50": {
+      "k": 50,
+      "missing": [
+        "DDX58",
+        "IRF7",
+        "STAT2"
+      ],
+      "n_gold": 20,
+      "n_recovered": 17,
+      "recall": 0.85,
+      "recovered": [
+        "IFI27",
+        "IFI44",
+        "IFI44L",
+        "IFI6",
+        "IFIH1",
+        "IFIT1",
+        "IFIT2",
+        "IFIT3",
+        "ISG15",
+        "MX1",
+        "MX2",
+        "OAS1",
+        "OAS2",
+        "OAS3",
+        "OASL",
+        "RSAD2",
+        "STAT1"
+      ]
+    }
+  },
+  "top_20_genes": [
+    "CMPK2",
+    "MX1",
+    "TAP1",
+    "IFIT1",
+    "RSAD2",
+    "IFIT3",
+    "OASL",
+    "IFIH1",
+    "OAS1",
+    "GBP1",
+    "OAS3",
+    "APOL6",
+    "TRIM21",
+    "ISG15",
+    "UBE2L6",
+    "HELZ2",
+    "IFI6",
+    "SAMD9",
+    "DDX60",
+    "PARP14"
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-cross-platform/er_stress_full_panel_recall.csv",
+  "artifact_sha256": "4b264bd1f078f623b22e4f0ae47fcabb2529d7538e272e75611e858067feb256",
+  "artifact_size_bytes": 14259,
+  "command": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_gold_comparator_summary.py --baseline-dir outputs/results/er-stress-cross-platform/baselines --gold data/studies/gold/er_stress_upr_gold_panel_full.csv --gold-gene-column gene_symbol --degora-score-csv outputs/results/er-stress-cross-platform/degora_gene_scores.csv --degora-score-label v1_2_source_unit_mean --title 'ER stress FULL-EXPANDED supplementary panel recall' --output-csv outputs/results/er-stress-cross-platform/er_stress_full_panel_recall.csv --output-md outputs/results/er-stress-cross-platform/er_stress_full_panel_recall.md",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-cross-platform/baselines"
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/studies/gold/er_stress_upr_gold_panel_full.csv",
+      "sha256": "5ab82dbfb5b1506c75a51fc926fe495490c7f2e54d004f3959c4c6f9a8051ca1",
+      "size_bytes": 13168
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-cross-platform/degora_gene_scores.csv",
+      "sha256": "88d48b317ec0647a09a256e9fad210ca20a0606cad35cb1c7013a7065d1a7117",
+      "size_bytes": 11111987
+    }
+  ],
+  "metadata": {
+    "generator": "gold-comparator-summary",
+    "gold": "data/studies/gold/er_stress_upr_gold_panel_full.csv"
+  }
+}

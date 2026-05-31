@@ -1,0 +1,1 @@
+PYTHONPATH=outputs/code python outputs/code/figures/make_cross_platform_microarray_figure.py --results-dir outputs/results/cross-platform-microarray --output-dir outputs/figures/manuscript/DEGORA_CROSS_PLATFORM

@@ -1,0 +1,19 @@
+topic,ground_truth,corpus,panel_total,n_positives_present,universe_size,recall@100,recall@200,recall@500,auroc,auprc,score_column_used
+ER,compact,RNA-only,18,18,11910,0.6667,0.8333,0.8333,0.9396,0.3272,quality_weighted_piper_score
+ER,compact,+micro,18,18,14239,0.8333,0.8333,0.8889,0.9848,0.5289,quality_weighted_piper_score
+ER,compact,DELTA(+micro - RNA-only),18,18->18,,0.1667,0.0000,0.0556,0.0452,0.2018,
+ER,hallmark,RNA-only,113,110,11910,0.1091,0.2091,0.2727,0.6891,0.0743,quality_weighted_piper_score
+ER,hallmark,+micro,113,112,14239,0.1875,0.2321,0.3304,0.7392,0.0951,quality_weighted_piper_score
+ER,hallmark,DELTA(+micro - RNA-only),113,110->112,,0.0784,0.0231,0.0576,0.0501,0.0208,
+Hypoxia,compact,RNA-only,20,20,32687,0.7500,0.8000,0.8500,0.9463,0.2535,quality_weighted_piper_score
+Hypoxia,compact,+micro,20,20,34785,0.7500,0.8000,0.8500,0.9483,0.2673,quality_weighted_piper_score
+Hypoxia,compact,DELTA(+micro - RNA-only),20,20->20,,0.0000,0.0000,0.0000,0.0020,0.0138,
+Hypoxia,hallmark,RNA-only,200,200,32687,0.2350,0.3100,0.3800,0.8257,0.2034,quality_weighted_piper_score
+Hypoxia,hallmark,+micro,200,200,34785,0.2400,0.3050,0.3750,0.8281,0.2080,quality_weighted_piper_score
+Hypoxia,hallmark,DELTA(+micro - RNA-only),200,200->200,,0.0050,-0.0050,-0.0050,0.0023,0.0046,
+IFN,compact,RNA-only,20,18,9860,1.0000,1.0000,1.0000,0.9989,0.5585,quality_weighted_piper_score
+IFN,compact,+micro,20,19,12777,0.9474,1.0000,1.0000,0.9991,0.6715,quality_weighted_piper_score
+IFN,compact,DELTA(+micro - RNA-only),20,18->19,,-0.0526,0.0000,0.0000,0.0002,0.1130,
+IFN,hallmark,RNA-only,224,165,9860,0.4303,0.6000,0.6788,0.8513,0.5244,quality_weighted_piper_score
+IFN,hallmark,+micro,224,194,12777,0.3763,0.5464,0.6546,0.8563,0.5031,quality_weighted_piper_score
+IFN,hallmark,DELTA(+micro - RNA-only),224,165->194,,-0.0540,-0.0536,-0.0241,0.0050,-0.0214,

@@ -1,0 +1,34 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-cross-platform/deep-metrics/er-stress-cross-platform_piper_advantage_metrics.csv",
+  "artifact_sha256": "7a3fdddad3256df0e3678b5bc7a9d9fa45fb3597ae24a733a802ddd42a5ac96f",
+  "artifact_size_bytes": 750,
+  "command": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_benchmark_deep_metrics.py --corpus er-stress-cross-platform --baseline-dir outputs/results/er-stress-cross-platform/baselines --harmonized data/deg/harmonized/er-stress-cross-platform_harmonized.csv --gold data/studies/gold/er_stress_upr_gold_panel.csv --gold-gene-column gene_symbol --piper-score-csv outputs/results/er-stress-cross-platform/piper_gene_scores.csv --output-dir outputs/results/er-stress-cross-platform/deep-metrics --title 'ER Stress Cross-Platform Deep Benchmark Metrics' --min-studies 2 --max-k 1000 --n-bootstrap 50 --bootstrap-methods weighted_stouffer fisher --seed 1729",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-cross-platform/baselines"
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/harmonized/er-stress-cross-platform_harmonized.csv",
+      "sha256": "5cb5add1b0c36cb3c75dd9854cc6ed85f8d1dc1659ce4926694d27755e4a335c",
+      "size_bytes": 75117443
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/studies/gold/er_stress_upr_gold_panel.csv",
+      "sha256": "0bd4242553e68350a4cbac410069039883b20536839f2e0aa96cfccf93d4b4f1",
+      "size_bytes": 5204
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-cross-platform/piper_gene_scores.csv",
+      "sha256": "b96f3b2b53b2035d0a2967c5d3d7e3778c411ba35c2070457b1c7d37ec0c6973",
+      "size_bytes": 11111983
+    }
+  ],
+  "metadata": {
+    "corpus": "er-stress-cross-platform",
+    "generator": "benchmark-deep-metrics"
+  }
+}

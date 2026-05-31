@@ -1,0 +1,176 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN"
+  "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg xmlns:xlink="http://www.w3.org/1999/xlink" width="511.271437pt" height="175.176pt" viewBox="0 0 511.271437 175.176" xmlns="http://www.w3.org/2000/svg" version="1.1">
+ <metadata>
+  <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+   <cc:Work>
+    <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
+    <dc:date>2026-05-31T14:48:12.167379</dc:date>
+    <dc:format>image/svg+xml</dc:format>
+    <dc:creator>
+     <cc:Agent>
+      <dc:title>Matplotlib v3.10.8, https://matplotlib.org/</dc:title>
+     </cc:Agent>
+    </dc:creator>
+   </cc:Work>
+  </rdf:RDF>
+ </metadata>
+ <defs>
+  <style type="text/css">*{stroke-linejoin: round; stroke-linecap: butt}</style>
+ </defs>
+ <g id="figure_1">
+  <g id="patch_1">
+   <path d="M 0 175.176 
+L 511.271437 175.176 
+L 511.271437 0 
+L 0 0 
+z
+" style="fill: #ffffff"/>
+  </g>
+  <g id="axes_1">
+   <g id="patch_2">
+    <path d="M 43.163438 79.5492 
+L 115.424438 79.5492 
+L 115.424438 31.3164 
+L 43.163438 31.3164 
+z
+" clip-path="url(#p145bb5de4c)" style="fill: #dbeafe; stroke: #1f2937; stroke-width: 0.8; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_3">
+    <path d="M 43.163438 149.2188 
+L 115.424438 149.2188 
+L 115.424438 100.986 
+L 43.163438 100.986 
+z
+" clip-path="url(#p145bb5de4c)" style="fill: #fce7f3; stroke: #1f2937; stroke-width: 0.8; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_4">
+    <path d="M 133.001438 114.384 
+L 205.262438 114.384 
+L 205.262438 66.1512 
+L 133.001438 66.1512 
+z
+" clip-path="url(#p145bb5de4c)" style="fill: #ecfdf5; stroke: #1f2937; stroke-width: 0.8; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_5">
+    <path d="M 222.839438 114.384 
+L 295.100437 114.384 
+L 295.100437 66.1512 
+L 222.839438 66.1512 
+z
+" clip-path="url(#p145bb5de4c)" style="fill: #fef3c7; stroke: #1f2937; stroke-width: 0.8; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_6">
+    <path d="M 312.677437 114.384 
+L 384.938437 114.384 
+L 384.938437 66.1512 
+L 312.677437 66.1512 
+z
+" clip-path="url(#p145bb5de4c)" style="fill: #ede9fe; stroke: #1f2937; stroke-width: 0.8; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_7">
+    <path d="M 402.515438 114.384 
+L 474.776438 114.384 
+L 474.776438 66.1512 
+L 402.515438 66.1512 
+z
+" clip-path="url(#p145bb5de4c)" style="fill: #e0f2fe; stroke: #1f2937; stroke-width: 0.8; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_8">
+    <path d="M 116.242638 57.257035 
+Q 123.236173 72.849611 129.772165 87.422062 
+" clip-path="url(#p145bb5de4c)" style="fill: none; stroke: #4b5563; stroke-linecap: round"/>
+    <path d="M 129.997643 82.060238 
+L 129.772165 87.422062 
+L 125.617992 84.024585 
+z
+" clip-path="url(#p145bb5de4c)" style="fill: #4b5563; stroke: #4b5563; stroke-linecap: round"/>
+   </g>
+   <g id="patch_9">
+    <path d="M 116.242638 123.278165 
+Q 123.236173 107.685589 129.772165 93.113138 
+" clip-path="url(#p145bb5de4c)" style="fill: none; stroke: #4b5563; stroke-linecap: round"/>
+    <path d="M 125.617992 96.510615 
+L 129.772165 93.113138 
+L 129.997643 98.474962 
+z
+" clip-path="url(#p145bb5de4c)" style="fill: #4b5563; stroke: #4b5563; stroke-linecap: round"/>
+   </g>
+   <g id="patch_10">
+    <path d="M 207.265025 90.2676 
+Q 213.076407 90.2676 217.769754 90.2676 
+" clip-path="url(#p145bb5de4c)" style="fill: none; stroke: #4b5563; stroke-linecap: round"/>
+    <path d="M 212.969754 87.8676 
+L 217.769754 90.2676 
+L 212.969754 92.6676 
+z
+" clip-path="url(#p145bb5de4c)" style="fill: #4b5563; stroke: #4b5563; stroke-linecap: round"/>
+   </g>
+   <g id="patch_11">
+    <path d="M 297.103025 90.2676 
+Q 302.914407 90.2676 307.607754 90.2676 
+" clip-path="url(#p145bb5de4c)" style="fill: none; stroke: #4b5563; stroke-linecap: round"/>
+    <path d="M 302.807754 87.8676 
+L 307.607754 90.2676 
+L 302.807754 92.6676 
+z
+" clip-path="url(#p145bb5de4c)" style="fill: #4b5563; stroke: #4b5563; stroke-linecap: round"/>
+   </g>
+   <g id="patch_12">
+    <path d="M 386.941025 90.2676 
+Q 392.752407 90.2676 397.445754 90.2676 
+" clip-path="url(#p145bb5de4c)" style="fill: none; stroke: #4b5563; stroke-linecap: round"/>
+    <path d="M 392.645754 87.8676 
+L 397.445754 90.2676 
+L 392.645754 92.6676 
+z
+" clip-path="url(#p145bb5de4c)" style="fill: #4b5563; stroke: #4b5563; stroke-linecap: round"/>
+   </g>
+   <g id="text_1">
+    <text style="font-weight: 700; font-size: 8.5px; font-family: 'DejaVu Sans'; text-anchor: middle" x="79.293937" y="51.990333" transform="rotate(-0 79.293937 51.990333)">RNA-seq DEG tables</text>
+   </g>
+   <g id="text_2">
+    <text style="font-size: 7.2px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #374151" x="79.293937" y="66.101454" transform="rotate(-0 79.293937 66.101454)">gene, log2FC, p-value, source metadata</text>
+   </g>
+   <g id="text_3">
+    <text style="font-weight: 700; font-size: 8.5px; font-family: 'DejaVu Sans'; text-anchor: middle" x="79.293937" y="121.62673" transform="rotate(-0 79.293937 121.62673)">Microarray DEG tables</text>
+   </g>
+   <g id="text_4">
+    <text style="font-size: 7.2px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #374151" x="79.293937" y="135.771054" transform="rotate(-0 79.293937 135.771054)">probe-collapsed gene summaries</text>
+   </g>
+   <g id="text_5">
+    <text style="font-weight: 700; font-size: 8.5px; font-family: 'DejaVu Sans'; text-anchor: middle" x="169.131937" y="86.79193" transform="rotate(-0 169.131937 86.79193)">Common gene-level schema</text>
+   </g>
+   <g id="text_6">
+    <text style="font-size: 7.2px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #374151" x="169.131937" y="100.936254" transform="rotate(-0 169.131937 100.936254)">symbol, signed z, normalized rank, direction</text>
+   </g>
+   <g id="text_7">
+    <text style="font-weight: 700; font-size: 8.5px; font-family: 'DejaVu Sans'; text-anchor: middle" x="258.969938" y="86.825133" transform="rotate(-0 258.969938 86.825133)">Collapse related contrasts</text>
+   </g>
+   <g id="text_8">
+    <text style="font-size: 7.2px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #374151" x="258.969938" y="100.936254" transform="rotate(-0 258.969938 100.936254)">paper/source-unit mean aggregation</text>
+   </g>
+   <g id="text_9">
+    <text style="font-weight: 700; font-size: 8.5px; font-family: 'DejaVu Sans'; text-anchor: middle" x="348.807937" y="86.79193" transform="rotate(-0 348.807937 86.79193)">DEGORA ranking</text>
+   </g>
+   <g id="text_10">
+    <text style="font-size: 7.2px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #374151" x="348.807937" y="100.936254" transform="rotate(-0 348.807937 100.936254)">support, direction, evidence, rank, effect</text>
+   </g>
+   <g id="text_11">
+    <text style="font-weight: 700; font-size: 8.5px; font-family: 'DejaVu Sans'; text-anchor: middle" x="438.645938" y="86.825133" transform="rotate(-0 438.645938 86.825133)">Evidence database</text>
+   </g>
+   <g id="text_12">
+    <text style="font-size: 7.2px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #374151" x="438.645938" y="100.936254" transform="rotate(-0 438.645938 100.936254)">CSV, SQLite, API, HTML atlas</text>
+   </g>
+   <g id="text_13">
+    <text style="font-weight: 700; font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: start" x="36.132638" y="16.84656" transform="rotate(-0 36.132638 16.84656)">A. Workflow</text>
+   </g>
+  </g>
+ </g>
+ <defs>
+  <clipPath id="p145bb5de4c">
+   <rect x="35.351438" y="7.2" width="468.72" height="160.776"/>
+  </clipPath>
+ </defs>
+</svg>

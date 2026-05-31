@@ -1,0 +1,28 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_repressed_comparator_summary.csv",
+  "artifact_sha256": "431b26e50f978a699b23409b4274a62b388b906ddb6a1a99c9bdae156f18c36b",
+  "artifact_size_bytes": 6330,
+  "command": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_gold_comparator_summary.py --baseline-dir outputs/results/hypoxia-hif1-benchmark/baselines --gold data/studies/gold/hypoxia_hif1_repressed_panel.csv --gold-gene-column gene_symbol --degora-score-csv outputs/results/hypoxia-hif1-benchmark/degora_gene_scores.csv --degora-score-label quality_weighted_default --title 'Hypoxia/HIF repressed-marker (down-direction) gold-panel comparator summary' --output-csv outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_repressed_comparator_summary.csv --output-md outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_repressed_comparator_summary.md",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/baselines"
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/studies/gold/hypoxia_hif1_repressed_panel.csv",
+      "sha256": "7cfa52e9338bd20ee75e0cb7532b30028a68761a2c0d30b03b754fd54c50534d",
+      "size_bytes": 2927
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/degora_gene_scores.csv",
+      "sha256": "828bc53ae3e515e38c7243b156b4f252a0bb1b2c3bc7072a6c3c0202b8821f82",
+      "size_bytes": 25490764
+    }
+  ],
+  "metadata": {
+    "generator": "gold-comparator-summary",
+    "gold": "data/studies/gold/hypoxia_hif1_repressed_panel.csv"
+  }
+}

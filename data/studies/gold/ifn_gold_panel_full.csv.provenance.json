@@ -1,0 +1,10 @@
+{
+  "artifact_path": "data/studies/gold/ifn_gold_panel_full.csv",
+  "artifact_sha256": "183caad6cf28a61a6bd0c05905c603e296df4beb85be114deda0096a51a07804",
+  "artifact_size_bytes": 15247,
+  "command": "make -C outputs/code expanded-gold-panels",
+  "inputs": [],
+  "metadata": {
+    "generator": "expanded-full-gold-panel:ifn_gold_panel_full.csv"
+  }
+}

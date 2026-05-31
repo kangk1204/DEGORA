@@ -1,0 +1,23 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/ifn_derived_deg_summary.json",
+  "artifact_sha256": "908c5ce97234e740fee0ba8c2f3e5f9e582930a446430a33a7febfd88efa787b",
+  "artifact_size_bytes": 2903,
+  "command": "PYTHONPATH=outputs/code python outputs/code/scripts/write_ifn_derived_deg.py --raw-dir data/deg/raw/ifn --catalog data/studies/ifn_derived_catalog.csv --gold data/studies/gold/ifn_gold_panel.csv --summary outputs/results/ifn-pilot/ifn_derived_deg_summary.json",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/studies/ifn_derived_catalog.csv",
+      "sha256": "d29b9f12ffb70a7635b1a8bb1e25c407338a2ea27cd3d0852e2563386ff27e1a",
+      "size_bytes": 4394
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/studies/gold/ifn_gold_panel.csv",
+      "sha256": "5c3879acfdf5b58de11600ad384d43573026623f2f415db12118e411c29bf6ca",
+      "size_bytes": 4164
+    }
+  ],
+  "metadata": {
+    "generator": "ifn-derived-summary"
+  }
+}

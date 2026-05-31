@@ -1,0 +1,7 @@
+corpus,method_id,setting_id,metric,n_bootstrap,mean,ci_low,ci_high,seed,bootstrap_unit
+heat-shock-benchmark,degora_quality_weighted_score,default,aurc_at_max_k,50,0.7371207692307693,0.4454230769230769,0.837594230769231,1729,source_unit_id
+heat-shock-benchmark,degora_quality_weighted_score,default,recall_at_100,50,0.5892307692307692,0.2692307692307692,0.7307692307692307,1729,source_unit_id
+heat-shock-benchmark,fisher,default,aurc_at_max_k,50,0.6124653846153847,0.2631538461538462,0.7822692307692309,1729,source_unit_id
+heat-shock-benchmark,fisher,default,recall_at_100,50,0.4261538461538462,0.07692307692307693,0.5769230769230769,1729,source_unit_id
+heat-shock-benchmark,weighted_stouffer,default,aurc_at_max_k,50,0.6309561538461538,0.2631538461538462,0.7794230769230769,1729,source_unit_id
+heat-shock-benchmark,weighted_stouffer,default,recall_at_100,50,0.46153846153846145,0.07692307692307693,0.5769230769230769,1729,source_unit_id

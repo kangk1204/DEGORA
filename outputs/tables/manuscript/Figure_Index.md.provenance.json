@@ -1,0 +1,41 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/tables/manuscript/Figure_Index.md",
+  "artifact_sha256": "f879d869e1a00928a0508a5850570f3480ab0bdb6fec2502f3a29bc10447f7ec",
+  "artifact_size_bytes": 1577,
+  "command": "PYTHONPATH=outputs/code python outputs/code/scripts/write_manuscript_tables.py --output-dir outputs/tables/manuscript",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/ifn_gold_comparator_summary.csv",
+      "sha256": "4546cd95fe98f54078d8b95b83d3ed468c4c0ac05f1daf38e5bcc0fc5629155f",
+      "size_bytes": 13014
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-cross-platform/er_stress_cross_platform_gold_comparator_summary.csv",
+      "sha256": "df2e913ef94eae66511371447523c364de96e32af2b55e7e8d9bbab674554be7",
+      "size_bytes": 11680
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/heat_shock_gold_comparator_summary.csv",
+      "sha256": "f9268e065731449fa99206c28b27ba44a77cdf3fbe00132c8e96792195be8065",
+      "size_bytes": 12607
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_gold_comparator_summary.csv",
+      "sha256": "7e1d863ce41d6323cd935a128f6f2836fdad31af641152ab91cd0170dc3e8b36",
+      "size_bytes": 13285
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/cross-platform-microarray/cross_platform_benchmark_summary.csv",
+      "sha256": "dc5de2ac0048ed0b29ff64f57c1be844eb88cec0f53d96d670a552ce511752c9",
+      "size_bytes": 1534
+    }
+  ],
+  "metadata": {
+    "generator": "manuscript-table-index"
+  }
+}

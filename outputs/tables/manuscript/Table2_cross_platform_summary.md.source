@@ -1,0 +1,1 @@
+PYTHONPATH=outputs/code python outputs/code/scripts/write_manuscript_tables.py --output-dir outputs/tables/manuscript

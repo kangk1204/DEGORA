@@ -1,0 +1,81 @@
+{
+  "command": "PYTHONPATH=outputs/code python outputs/code/figures/make_benchmark_figure.py --output-dir outputs/figures/manuscript/FIGURE_2_BENCHMARK",
+  "figure_id": "FIGURE_2_BENCHMARK",
+  "generated_at": "2026-05-31T05:48:14.470555+00:00",
+  "inputs": [
+    "outputs/results/ifn-pilot/ifn_gold_comparator_summary.csv",
+    "outputs/results/er-stress-cross-platform/er_stress_cross_platform_gold_comparator_summary.csv",
+    "outputs/results/heat-shock-benchmark/heat_shock_gold_comparator_summary.csv",
+    "outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_gold_comparator_summary.csv",
+    "outputs/results/ifn-pilot/deep-metrics/ifn-pilot_degora_advantage_metrics.csv",
+    "outputs/results/er-stress-cross-platform/deep-metrics/er-stress-cross-platform_degora_advantage_metrics.csv",
+    "outputs/results/heat-shock-benchmark/deep-metrics/heat-shock-benchmark_degora_advantage_metrics.csv",
+    "outputs/results/hypoxia-hif1-benchmark/deep-metrics/hypoxia-hif1-benchmark_degora_advantage_metrics.csv"
+  ],
+  "known_limitations": [
+    "Recall panels use locked positive gene panels and do not estimate false-positive rates."
+  ],
+  "outputs": [
+    "outputs/figures/manuscript/FIGURE_2_BENCHMARK/figure2_benchmark.png",
+    "outputs/figures/manuscript/FIGURE_2_BENCHMARK/figure2_benchmark.pdf",
+    "outputs/figures/manuscript/FIGURE_2_BENCHMARK/figure2_benchmark.svg",
+    "outputs/figures/manuscript/FIGURE_2_BENCHMARK/figure2_benchmark_A_recall.png",
+    "outputs/figures/manuscript/FIGURE_2_BENCHMARK/figure2_benchmark_A_recall.pdf",
+    "outputs/figures/manuscript/FIGURE_2_BENCHMARK/figure2_benchmark_A_recall.svg",
+    "outputs/figures/manuscript/FIGURE_2_BENCHMARK/figure2_benchmark_B_methods.png",
+    "outputs/figures/manuscript/FIGURE_2_BENCHMARK/figure2_benchmark_B_methods.pdf",
+    "outputs/figures/manuscript/FIGURE_2_BENCHMARK/figure2_benchmark_B_methods.svg",
+    "outputs/figures/manuscript/FIGURE_2_BENCHMARK/figure2_benchmark_C_support.png",
+    "outputs/figures/manuscript/FIGURE_2_BENCHMARK/figure2_benchmark_C_support.pdf",
+    "outputs/figures/manuscript/FIGURE_2_BENCHMARK/figure2_benchmark_C_support.svg",
+    "outputs/figures/manuscript/FIGURE_2_BENCHMARK/figure2_benchmark_D_cutoffs.png",
+    "outputs/figures/manuscript/FIGURE_2_BENCHMARK/figure2_benchmark_D_cutoffs.pdf",
+    "outputs/figures/manuscript/FIGURE_2_BENCHMARK/figure2_benchmark_D_cutoffs.svg",
+    "outputs/figures/manuscript/FIGURE_2_BENCHMARK/figure2_benchmark_source_data.xlsx",
+    "outputs/figures/manuscript/FIGURE_2_BENCHMARK/figure2_benchmark_degora_recall.csv",
+    "outputs/figures/manuscript/FIGURE_2_BENCHMARK/figure2_benchmark_method_recall100.csv",
+    "outputs/figures/manuscript/FIGURE_2_BENCHMARK/figure2_benchmark_legend.docx",
+    "outputs/figures/manuscript/FIGURE_2_BENCHMARK/figure2_benchmark_manifest.json",
+    "outputs/figures/manuscript/FIGURE_2_BENCHMARK/figure2_benchmark_validation.txt"
+  ],
+  "panel_claims": [
+    "Recall and support values are read from generated comparator and deep-metric tables."
+  ],
+  "script": "outputs/code/figures/make_benchmark_figure.py",
+  "source_data": [
+    "outputs/figures/manuscript/FIGURE_2_BENCHMARK/figure2_benchmark_source_data.xlsx",
+    "outputs/figures/manuscript/FIGURE_2_BENCHMARK/figure2_benchmark_degora_recall.csv",
+    "outputs/figures/manuscript/FIGURE_2_BENCHMARK/figure2_benchmark_method_recall100.csv"
+  ],
+  "transformations": {
+    "degora_default": "fixed quality-weighted DEGORA row per benchmark when present, otherwise the unweighted DEGORA reference row; no recall-based row selection"
+  },
+  "validation": {
+    "benchmarks": [
+      {
+        "benchmark": "IFN",
+        "recall_at_10": 0.2857142857142857,
+        "recall_at_100": 0.9285714285714286,
+        "recall_at_50": 0.8214285714285714
+      },
+      {
+        "benchmark": "ER stress",
+        "recall_at_10": 0.25,
+        "recall_at_100": 0.78125,
+        "recall_at_50": 0.59375
+      },
+      {
+        "benchmark": "Heat shock",
+        "recall_at_10": 0.3076923076923077,
+        "recall_at_100": 0.7307692307692307,
+        "recall_at_50": 0.5769230769230769
+      },
+      {
+        "benchmark": "Hypoxia",
+        "recall_at_10": 0.2121212121212121,
+        "recall_at_100": 0.8484848484848485,
+        "recall_at_50": 0.7575757575757576
+      }
+    ]
+  }
+}

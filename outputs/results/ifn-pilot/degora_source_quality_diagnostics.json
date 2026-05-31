@@ -1,0 +1,40 @@
+[
+  {
+    "assay_type": "RNA-seq",
+    "median_pairwise_lfc_spearman": 0.12199620181474449,
+    "median_pairwise_sign_agreement": 0.5422920892494929,
+    "min_pairwise_lfc_spearman": 0.12199620181474449,
+    "n_genes": 11302,
+    "n_pairwise_comparisons": 1,
+    "pipeline": "logCPM_Welch_derived_from_public_counts",
+    "recommended_role": "primary",
+    "source_coherence_weight": 1.0,
+    "source_input_type": "derived_count_table",
+    "source_outlier_flag": false,
+    "source_quality_label": "medium",
+    "source_quality_weight": 0.7224999999999999,
+    "source_recommended_weight": 0.7224999999999999,
+    "source_reliability_label": "medium",
+    "source_reliability_weight": 0.7116245841155517,
+    "source_unit_id": "GSE147507_NHBE_IFNB"
+  },
+  {
+    "assay_type": "RNA-seq",
+    "median_pairwise_lfc_spearman": 0.12199620181474449,
+    "median_pairwise_sign_agreement": 0.5422920892494929,
+    "min_pairwise_lfc_spearman": 0.12199620181474449,
+    "n_genes": 12088,
+    "n_pairwise_comparisons": 1,
+    "pipeline": "logCPM_Welch_derived_from_public_counts",
+    "recommended_role": "primary",
+    "source_coherence_weight": 1.0,
+    "source_input_type": "derived_count_table",
+    "source_outlier_flag": false,
+    "source_quality_label": "medium",
+    "source_quality_weight": 0.7224999999999999,
+    "source_recommended_weight": 0.7224999999999999,
+    "source_reliability_label": "medium",
+    "source_reliability_weight": 0.7116791458449314,
+    "source_unit_id": "GSE221804_HUHWT_IFNA"
+  }
+]

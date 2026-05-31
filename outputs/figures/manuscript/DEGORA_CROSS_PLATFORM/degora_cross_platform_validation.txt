@@ -1,0 +1,28 @@
+Cross-platform microarray figure validation
+
+outputs/figures/manuscript/DEGORA_CROSS_PLATFORM/degora_cross_platform.png: exists=True size_bytes=375885
+outputs/figures/manuscript/DEGORA_CROSS_PLATFORM/degora_cross_platform.pdf: exists=True size_bytes=35597
+outputs/figures/manuscript/DEGORA_CROSS_PLATFORM/degora_cross_platform.svg: exists=True size_bytes=66106
+outputs/figures/manuscript/DEGORA_CROSS_PLATFORM/degora_cross_platform_A_recall.png: exists=True size_bytes=146070
+outputs/figures/manuscript/DEGORA_CROSS_PLATFORM/degora_cross_platform_A_recall.pdf: exists=True size_bytes=25186
+outputs/figures/manuscript/DEGORA_CROSS_PLATFORM/degora_cross_platform_A_recall.svg: exists=True size_bytes=28327
+outputs/figures/manuscript/DEGORA_CROSS_PLATFORM/degora_cross_platform_B_rank_shift.png: exists=True size_bytes=144764
+outputs/figures/manuscript/DEGORA_CROSS_PLATFORM/degora_cross_platform_B_rank_shift.pdf: exists=True size_bytes=29414
+outputs/figures/manuscript/DEGORA_CROSS_PLATFORM/degora_cross_platform_B_rank_shift.svg: exists=True size_bytes=47762
+outputs/figures/manuscript/DEGORA_CROSS_PLATFORM/degora_cross_platform_C_support.png: exists=True size_bytes=90927
+outputs/figures/manuscript/DEGORA_CROSS_PLATFORM/degora_cross_platform_C_support.pdf: exists=True size_bytes=21674
+outputs/figures/manuscript/DEGORA_CROSS_PLATFORM/degora_cross_platform_C_support.svg: exists=True size_bytes=18814
+outputs/figures/manuscript/DEGORA_CROSS_PLATFORM/degora_cross_platform_D_sources.png: exists=True size_bytes=80382
+outputs/figures/manuscript/DEGORA_CROSS_PLATFORM/degora_cross_platform_D_sources.pdf: exists=True size_bytes=18070
+outputs/figures/manuscript/DEGORA_CROSS_PLATFORM/degora_cross_platform_D_sources.svg: exists=True size_bytes=13957
+outputs/figures/manuscript/DEGORA_CROSS_PLATFORM/degora_cross_platform_source_data.xlsx: exists=True size_bytes=18170
+outputs/figures/manuscript/DEGORA_CROSS_PLATFORM/degora_cross_platform_recall_long.csv: exists=True size_bytes=3040
+outputs/figures/manuscript/DEGORA_CROSS_PLATFORM/degora_cross_platform_marker_rank_shifts.csv: exists=True size_bytes=8724
+outputs/figures/manuscript/DEGORA_CROSS_PLATFORM/degora_cross_platform_legend.docx: exists=True size_bytes=1211
+
+benchmark_summary: rows=6 columns=13
+recall_long: rows=24 columns=8
+marker_rank_shifts: rows=91 columns=15
+support_summary: rows=6 columns=5
+dataset_sources: rows=5 columns=8
+source_summary: rows=3 columns=6

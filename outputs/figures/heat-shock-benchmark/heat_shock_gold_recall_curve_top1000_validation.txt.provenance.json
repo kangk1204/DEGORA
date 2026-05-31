@@ -1,0 +1,29 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/figures/heat-shock-benchmark/heat_shock_gold_recall_curve_top1000_validation.txt",
+  "artifact_sha256": "88f14d39d049f06eac09ec498f12f257bcfb778f5017aeeac75800f14f63e4c4",
+  "artifact_size_bytes": 3795,
+  "command": "PYTHONPATH=outputs/code python outputs/code/figures/make_gold_recall_curve.py --baseline-dir outputs/results/heat-shock-benchmark/baselines --gold data/studies/gold/heat_shock_hsf1_gold_panel.csv --gold-gene-column gene_symbol --piper-score-csv outputs/results/heat-shock-benchmark/piper_gene_scores.csv --output-dir outputs/figures/heat-shock-benchmark --figure-id 'Heat shock benchmark recall curve' --output-stem heat_shock_gold_recall_curve_top1000 --title 'Heat shock / HSF1 locked gold recall' --max-k 1000",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/baselines"
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/studies/gold/heat_shock_hsf1_gold_panel.csv",
+      "sha256": "43b84b05728a989184d741a1fea4d48dee450d17aba9797b3a8d23bf074d2c7d",
+      "size_bytes": 5766
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/piper_gene_scores.csv",
+      "sha256": "54ad69d5848da947a6ee9d654cde43627d88cdf9d607d6a844caf25c430e4e2e",
+      "size_bytes": 7649665
+    }
+  ],
+  "metadata": {
+    "figure_id": "Heat shock benchmark recall curve",
+    "generator": "gold-recall-curve",
+    "max_k": 1000
+  }
+}

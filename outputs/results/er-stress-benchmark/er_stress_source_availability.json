@@ -1,0 +1,74 @@
+[
+  {
+    "local_file_exists": true,
+    "local_path": "data/deg/raw/er_stress/GSE84450_WT_UTvsWT_DTT_gene_exp.diff.gz",
+    "local_size_bytes": 795960,
+    "reason": "as-published Cuffdiff full-result DTT ER-stress table; mouse source retained only for non-primary sensitivity after the human-only species gate",
+    "sha256": "76b50f07c56f9136c38316e38b29a2801fdcd210dd308293a794c3a1501b14b4",
+    "source_id": "GSE84450",
+    "source_url": "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE84450",
+    "status": "species_sensitivity_source",
+    "summary": "{\"n_dropped_non_ok_or_invalid\": 11932, \"n_gene_symbols_after_collapse\": 11428, \"raw_rows\": 23360, \"status_ok_rows\": 11431}",
+    "use_decision": "excluded_from_manuscript_primary"
+  },
+  {
+    "local_file_exists": true,
+    "local_path": "data/deg/raw/er_stress/GSE102505_glioma_nh125_exp_count_matrix.csv.gz",
+    "local_size_bytes": 789827,
+    "reason": "public count matrix with clear tunicamycin vs DMSO columns in three cell systems",
+    "sha256": "28955de6337d8a87076c873f759ac16aaa0afca1e1c1d6456b4f2285ee60bd92",
+    "source_id": "GSE102505",
+    "source_url": "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE102505",
+    "status": "active_primary_source",
+    "summary": "{\"mapped_rows\": 19070, \"n_gene_symbols_after_collapse\": 19070, \"n_unmapped_genes\": 41129, \"raw_rows\": 60199}",
+    "use_decision": "included"
+  },
+  {
+    "local_file_exists": true,
+    "local_path": "data/deg/raw/er_stress/GSE296996_count_matrix.txt.gz",
+    "local_size_bytes": 521879,
+    "reason": "public HepG2 count matrix with five tunicamycin vs five DMSO replicate columns",
+    "sha256": "524467bcb4722ba98fe2cddcbbd1ccb70734e87a757e223ff4f73e8c8faa899b",
+    "source_id": "GSE296996",
+    "source_url": "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE296996",
+    "status": "active_primary_source",
+    "summary": "{\"mapped_rows\": 18544, \"n_gene_symbols_after_collapse\": 18544, \"n_unmapped_genes\": 14194, \"raw_rows\": 32738}",
+    "use_decision": "included"
+  },
+  {
+    "local_file_exists": true,
+    "local_path": "data/deg/raw/er_stress/GSE245918_rsem_counts.txt.gz",
+    "local_size_bytes": 997835,
+    "reason": "public RSEM count matrix with OCI-AML3 and HEK293T tunicamycin vs DMSO 24h arms mapped from the GEO series matrix",
+    "sha256": "401e977e87842850491ba905c80cefab0959dcd21225e027aecc63ccf1ebc3b3",
+    "source_id": "GSE245918",
+    "source_url": "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE245918",
+    "status": "active_primary_source",
+    "summary": "{\"mapped_rows\": 19210, \"n_gene_symbols_after_collapse\": 19210, \"n_unmapped_genes\": 41461, \"raw_rows\": 60671}",
+    "use_decision": "included"
+  },
+  {
+    "local_file_exists": true,
+    "local_path": "data/deg/raw/er_stress/GSE103667_TE.norm.txt.gz",
+    "local_size_bytes": 685709,
+    "reason": "normalized thapsigargin vs DMSO matrix with two replicates per arm; mouse source retained only for non-primary sensitivity after the human-only species gate",
+    "sha256": "9d9ffd0ee51fca52d1afff3db96c7214a1eea1681de74be39b23ecea6b13db7b",
+    "source_id": "GSE103667",
+    "source_url": "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE103667",
+    "status": "species_sensitivity_source",
+    "summary": "{\"n_collapsed_duplicate_symbol_rows\": 7568, \"n_gene_symbols_after_collapse\": 11415, \"raw_rows\": 18983, \"valid_rows\": 18983}",
+    "use_decision": "excluded_from_manuscript_primary"
+  },
+  {
+    "local_file_exists": true,
+    "local_path": "data/deg/raw/er_stress/GSE84989_RAW.tar",
+    "local_size_bytes": 1720320,
+    "reason": "sample-label metadata was not locked for this benchmark run",
+    "sha256": "52373b20045506b77f0ee89bf0d80426c48ca62224e0bc83e8610684a2d2907d",
+    "source_id": "GSE84989",
+    "source_url": "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE84989",
+    "status": "deferred_candidate",
+    "summary": "{}",
+    "use_decision": "excluded_pending_metadata_lock"
+  }
+]

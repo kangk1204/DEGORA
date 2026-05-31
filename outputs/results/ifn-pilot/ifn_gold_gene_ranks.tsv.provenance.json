@@ -1,0 +1,23 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/ifn_gold_gene_ranks.tsv",
+  "artifact_sha256": "cec83d7bfd69aa452263cb0d43480e6b64796891693d8ae29548fdad5203a56c",
+  "artifact_size_bytes": 1917,
+  "command": "PYTHONPATH=outputs/code python outputs/code/scripts/summarize_ifn_pilot.py --score-csv outputs/results/ifn-pilot/piper_gene_scores.csv --gold data/studies/gold/ifn_isg_targets.csv --output-json outputs/results/ifn-pilot/ifn_pilot_summary.json --output-tsv outputs/results/ifn-pilot/ifn_gold_gene_ranks.tsv",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/piper_gene_scores.csv",
+      "sha256": "e89b39d22962ae8ba131dae1772e0259961c7fe61778cb69871f26fee1bacf63",
+      "size_bytes": 8094971
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/studies/gold/ifn_isg_targets.csv",
+      "sha256": "5c3879acfdf5b58de11600ad384d43573026623f2f415db12118e411c29bf6ca",
+      "size_bytes": 4164
+    }
+  ],
+  "metadata": {
+    "generator": "ifn-pilot-summary"
+  }
+}

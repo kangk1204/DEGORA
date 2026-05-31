@@ -1,0 +1,86 @@
+{
+  "assay_type_counts": {
+    "RNA-seq": 4
+  },
+  "catalog_path": "/home/keunsoo/projects/09_PIPER/data/studies/er_stress_upr_primary_catalog.csv",
+  "excluded_catalog_rows": [
+    {
+      "notes": "Secondary ER-stress source from normalized expression matrix with two replicates per group; included as lower-confidence support, not a full author DEG table. Excluded from primary-only ER benchmark because it is a lower-confidence normalized-matrix source; retained in full sensitivity.",
+      "study_id": "ER_GSE103667_THAP_vs_DMSO"
+    }
+  ],
+  "gene_symbol_collapse_warnings": [],
+  "gold_panel_gene_count": 0,
+  "gold_panel_reason": "catalog is not an Excel workbook with a GoldPanel sheet",
+  "gold_panel_source": "",
+  "gold_panel_status": "not_provided",
+  "min_studies": 2,
+  "n_active_catalog_rows": 4,
+  "n_catalog_rows": 5,
+  "n_consensus_genes": 8667,
+  "n_harmonized_rows": 41682,
+  "pipeline_counts": {
+    "Cuffdiff2_author_table": 1,
+    "logCPM_Welch_derived_from_public_counts": 3
+  },
+  "pvalue_clipped_rows": 0,
+  "rank_universe_warnings": [],
+  "recall_at_100": {
+    "reason": "no locked topic-specific GoldPanel was provided; do not interpret hypoxia-specific recall for this run",
+    "status": "not_applicable"
+  },
+  "recall_at_50": {
+    "reason": "no locked topic-specific GoldPanel was provided; do not interpret hypoxia-specific recall for this run",
+    "status": "not_applicable"
+  },
+  "source_filter_summary": {
+    "ER_GSE102505_NHA_TUN_vs_DMSO": {
+      "applied": false,
+      "column": null,
+      "keep": null,
+      "rows_after": 10125,
+      "rows_before": 10125
+    },
+    "ER_GSE102505_T4213_TUN_vs_DMSO": {
+      "applied": false,
+      "column": null,
+      "keep": null,
+      "rows_after": 9323,
+      "rows_before": 9323
+    },
+    "ER_GSE102505_U251_TUN_vs_DMSO": {
+      "applied": false,
+      "column": null,
+      "keep": null,
+      "rows_after": 10806,
+      "rows_before": 10806
+    },
+    "ER_GSE84450_WT_DTT_vs_UT": {
+      "applied": false,
+      "column": null,
+      "keep": null,
+      "rows_after": 11428,
+      "rows_before": 11428
+    }
+  },
+  "source_input_files": [
+    "/home/keunsoo/projects/09_PIPER/data/deg/raw/er_stress/GSE102505_NHA_tunicamycin_vs_DMSO_derived_logcpm_welch.csv",
+    "/home/keunsoo/projects/09_PIPER/data/deg/raw/er_stress/GSE102505_T4213_tunicamycin_vs_DMSO_derived_logcpm_welch.csv",
+    "/home/keunsoo/projects/09_PIPER/data/deg/raw/er_stress/GSE102505_U251_tunicamycin_vs_DMSO_derived_logcpm_welch.csv",
+    "/home/keunsoo/projects/09_PIPER/data/deg/raw/er_stress/GSE84450_WT_DTT_vs_UT_cuffdiff_clean.csv"
+  ],
+  "source_input_type_counts": {
+    "author_deg_table": 1,
+    "derived_count_table": 3
+  },
+  "study_row_counts": {
+    "ER_GSE102505_NHA_TUN_vs_DMSO": 10125,
+    "ER_GSE102505_T4213_TUN_vs_DMSO": 9323,
+    "ER_GSE102505_U251_TUN_vs_DMSO": 10806,
+    "ER_GSE84450_WT_DTT_vs_UT": 11428
+  },
+  "table_scope_counts": {
+    "full_results": 4
+  },
+  "warnings": []
+}

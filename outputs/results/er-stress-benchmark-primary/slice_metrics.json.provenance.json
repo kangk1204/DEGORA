@@ -1,0 +1,42 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary/slice_metrics.json",
+  "artifact_sha256": "ed08d37c9413903a71e51a063ac61c865ba0efef48aea61950c17f4841a1555c",
+  "artifact_size_bytes": 2971,
+  "command": "make -C outputs/code slice CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/er_stress_upr_primary_catalog.csv OUTDIR=outputs/results/er-stress-benchmark-primary HARMONIZED_DIR=data/deg/harmonized SLICE_MIN_STUDIES=2",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/studies/er_stress_upr_primary_catalog.csv",
+      "sha256": "ea2d79d2d35c92c6aeaf1ee9984fce3757f0482cab64424e4ea58d76aeb9ddfe",
+      "size_bytes": 3158
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/er_stress/GSE102505_NHA_tunicamycin_vs_DMSO_derived_logcpm_welch.csv",
+      "sha256": "60ad8eed74d28fd6df13714bebfc8b07626310f89e7063b191cdb4ac3e1925a7",
+      "size_bytes": 1758717
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/er_stress/GSE102505_T4213_tunicamycin_vs_DMSO_derived_logcpm_welch.csv",
+      "sha256": "44da0fd4129cedfc60756b09da1d69c3f67cb03570a8743ab2c7b08226eb7d09",
+      "size_bytes": 1603296
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/er_stress/GSE102505_U251_tunicamycin_vs_DMSO_derived_logcpm_welch.csv",
+      "sha256": "c6ab74a35930fd20a2b8066411b8f1f29898984afa9c9a78780b40f116296c9c",
+      "size_bytes": 1880536
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/er_stress/GSE84450_WT_DTT_vs_UT_cuffdiff_clean.csv",
+      "sha256": "ab0741f4ef128f20f9becd572cb531620c9a1b762aa472be25a68839582b6fb4",
+      "size_bytes": 610294
+    }
+  ],
+  "metadata": {
+    "generator": "slice",
+    "min_studies": 2
+  }
+}

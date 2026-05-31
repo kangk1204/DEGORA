@@ -1,0 +1,18 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-cross-platform/tool-feasibility/hypoxia-cross-platform_study_tool_feasibility_matrix.csv",
+  "artifact_sha256": "7040a4ea2b7d060ead2415cb41bfbe2588632450467bf198ff3edd6737256b76",
+  "artifact_size_bytes": 20821,
+  "command": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_study_tool_feasibility_matrix.py --harmonized outputs/results/hypoxia-cross-platform/slice_harmonized.csv --corpus hypoxia-cross-platform --output-csv outputs/results/hypoxia-cross-platform/tool-feasibility/hypoxia-cross-platform_study_tool_feasibility_matrix.csv --output-md outputs/results/hypoxia-cross-platform/tool-feasibility/hypoxia-cross-platform_study_tool_feasibility_matrix.md",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-cross-platform/slice_harmonized.csv",
+      "sha256": "7e99a94f9269b1019138bf403decd2e31388300e27760fb591c26869e6e57983",
+      "size_bytes": 226696218
+    }
+  ],
+  "metadata": {
+    "corpus": "hypoxia-cross-platform",
+    "generator": "study-tool-feasibility"
+  }
+}

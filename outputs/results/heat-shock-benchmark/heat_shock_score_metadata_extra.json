@@ -1,0 +1,20 @@
+{
+  "active_corpus": "GSE164834 + GSE124609 + GSE132447 NCBI GEO RNA-seq count-derived heat-shock contrasts",
+  "benchmark_topic": "heat shock / HSF1 transcriptional response",
+  "claim_scope": "gold_panel_prioritization_in_a_prelocked_heat_shock_hsf1_benchmark",
+  "deferred_sources": {
+    "GSE123980": "total RNA heat-shock metadata ambiguous for primary benchmark; nascent TT-seq not used as primary expression input",
+    "GSE130493": "heat-shock-only archive without matched controls",
+    "GSE57397": "heat-shock and recovery only; no untreated/non-heat control arm",
+    "GSE73471": "one untreated control only"
+  },
+  "gold_external_basis": [
+    "https://www.gsea-msigdb.org/gsea/msigdb/human/geneset/REACTOME_CELLULAR_RESPONSE_TO_HEAT_STRESS.html",
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC6888953/"
+  ],
+  "gold_panel": "data/studies/gold/heat_shock_hsf1_gold_panel.csv",
+  "gold_panel_locked_before_scoring": true,
+  "primary_min_studies": 2,
+  "score_interpretation": "prioritization_index_not_calibrated_probability",
+  "time_course_policy": "Related time points or related phenotypes from one accession share a paper_id/source-unit and are mean-aggregated by the score; no max-signal source-unit selection is used."
+}

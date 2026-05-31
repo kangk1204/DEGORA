@@ -1,24 +1,24 @@
 {
-  "artifact_path": "data/studies/er_stress_upr_cross_platform_catalog.csv",
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/data/studies/er_stress_upr_cross_platform_catalog.csv",
   "artifact_sha256": "a61352b8b5faa407c8ef426fe85ebfa661825b240d8d5feff2f602445f56faec",
   "artifact_size_bytes": 6669,
   "command": "PYTHONPATH=outputs/code python outputs/code/scripts/write_cross_platform_microarray_benchmarks.py --output-dir outputs/results/cross-platform-microarray",
   "inputs": [
     {
       "exists": true,
-      "path": "data/studies/er_stress_upr_primary_catalog.csv",
+      "path": "/home/keunsoo/projects/09_PIPER/data/studies/er_stress_upr_primary_catalog.csv",
       "sha256": "8bebe90c08eeeacc791881800d8709f8af3fba119119fd5b4e04acd504f991a0",
       "size_bytes": 5054
     },
     {
       "exists": true,
-      "path": "data/deg/raw/microarray_cross_platform/GSE19519_LCL_tunicamycin_8h_vs_DMSO_microarray_welch.csv",
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/microarray_cross_platform/GSE19519_LCL_tunicamycin_8h_vs_DMSO_microarray_welch.csv",
       "sha256": "bdea82886bee3ab0dc4b504dbd8aa628fb3c1a910293079948b1530f48ee553d",
       "size_bytes": 4005623
     },
     {
       "exists": true,
-      "path": "data/deg/raw/microarray_cross_platform/GSE19519_LCL_thapsigargin_4h_vs_DMSO_microarray_welch.csv",
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/microarray_cross_platform/GSE19519_LCL_thapsigargin_4h_vs_DMSO_microarray_welch.csv",
       "sha256": "95e97b41787ce52f6b531be0f4e7f8adddd873f3c44345ee731fc5eae2a4e685",
       "size_bytes": 3997944
     }

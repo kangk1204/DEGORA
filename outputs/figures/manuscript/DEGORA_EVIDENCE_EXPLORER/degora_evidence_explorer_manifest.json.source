@@ -1,0 +1,1 @@
+PYTHONPATH=outputs/code python outputs/code/figures/make_degora_evidence_explorer.py --output-dir outputs/figures/manuscript/DEGORA_EVIDENCE_EXPLORER

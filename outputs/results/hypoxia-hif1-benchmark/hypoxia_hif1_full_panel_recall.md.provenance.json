@@ -1,0 +1,28 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_full_panel_recall.md",
+  "artifact_sha256": "e111b3a6146bbbf7a32388c24ef98834b537f427013f1789aef8495dad45f425",
+  "artifact_size_bytes": 3892,
+  "command": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_gold_comparator_summary.py --baseline-dir outputs/results/hypoxia-hif1-benchmark/baselines --gold data/studies/gold/hypoxia_hif1_gold_panel_full.csv --gold-gene-column gene_symbol --degora-score-csv outputs/results/hypoxia-hif1-benchmark/degora_gene_scores.csv --degora-score-label v1_2_source_unit_mean --title 'Hypoxia/HIF FULL-EXPANDED supplementary panel recall' --output-csv outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_full_panel_recall.csv --output-md outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_full_panel_recall.md",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/baselines"
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/studies/gold/hypoxia_hif1_gold_panel_full.csv",
+      "sha256": "c7ccb9c29d053dc336b61a11707e55146918d02f3954ed901f0ed205f20c48ba",
+      "size_bytes": 14142
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/degora_gene_scores.csv",
+      "sha256": "828bc53ae3e515e38c7243b156b4f252a0bb1b2c3bc7072a6c3c0202b8821f82",
+      "size_bytes": 25490764
+    }
+  ],
+  "metadata": {
+    "generator": "gold-comparator-summary",
+    "gold": "data/studies/gold/hypoxia_hif1_gold_panel_full.csv"
+  }
+}

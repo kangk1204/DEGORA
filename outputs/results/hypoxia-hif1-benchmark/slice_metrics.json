@@ -1,0 +1,273 @@
+{
+  "assay_type_counts": {
+    "unknown": 19
+  },
+  "catalog_path": "/home/keunsoo/projects/09_PIPER/data/studies/hypoxia_catalog.csv",
+  "excluded_catalog_rows": [
+    {
+      "notes": "Excluded from iteration 3 active analysis: lncRNA-only parser-test row, not total mRNA DEG evidence.",
+      "study_id": "HYP002"
+    },
+    {
+      "notes": "Excluded from iteration 3 active analysis: public tutorial DESeq2 all-genes output, not an as-published DEG table.",
+      "study_id": "HYP004"
+    },
+    {
+      "notes": "Excluded from iteration 3 active analysis: public tutorial DESeq2 all-genes output, not an as-published DEG table.",
+      "study_id": "HYP005"
+    },
+    {
+      "notes": "GEO-deposited 17k-row hypoxia-vs-normoxia chondrogenic differentiation table with LFC and nominal p-value; decimal-comma source was converted to parser-stable CSV with raw file retained. Pipeline is recorded as a GEO processed contrast without adjusted p-values, so padj is blank and this provenance limitation is carried explicitly. Excluded from manuscript benchmark after the human-only species gate.",
+      "study_id": "HYP016"
+    },
+    {
+      "notes": "GEO-deposited full Cuffdiff-like differential gene expression table for WT MEFs incubated in normoxia or hypoxia for 16 h; GEO metadata explicitly states biological triplicates for each condition. Source sample_1 is wt_norm and sample_2 is wt_hypo, so log2.fold_change. is already hypoxia versus normoxia. Excluded from manuscript benchmark after the human-only species gate.",
+      "study_id": "HYP022"
+    }
+  ],
+  "gene_symbol_collapse_warnings": [
+    "HYP001: duplicate gene symbols were collapsed by min_pvalue_max_abs_lfc; set probe_collapse in the config if this is expected.",
+    "HYP006: duplicate gene symbols were collapsed by min_pvalue_max_abs_lfc; set probe_collapse in the config if this is expected.",
+    "HYP007: duplicate gene symbols were collapsed by min_pvalue_max_abs_lfc; set probe_collapse in the config if this is expected.",
+    "HYP008: duplicate gene symbols were collapsed by min_pvalue_max_abs_lfc; set probe_collapse in the config if this is expected.",
+    "HYP012: duplicate gene symbols were collapsed by min_pvalue_max_abs_lfc; set probe_collapse in the config if this is expected.",
+    "HYP013: duplicate gene symbols were collapsed by min_pvalue_max_abs_lfc; set probe_collapse in the config if this is expected.",
+    "HYP014: duplicate gene symbols were collapsed by min_pvalue_max_abs_lfc; set probe_collapse in the config if this is expected.",
+    "HYP015: duplicate gene symbols were collapsed by min_pvalue_max_abs_lfc; set probe_collapse in the config if this is expected.",
+    "HYP017: duplicate gene symbols were collapsed by min_pvalue_max_abs_lfc; set probe_collapse in the config if this is expected.",
+    "HYP018: duplicate gene symbols were collapsed by min_pvalue_max_abs_lfc; set probe_collapse in the config if this is expected.",
+    "HYP019: duplicate gene symbols were collapsed by min_pvalue_max_abs_lfc; set probe_collapse in the config if this is expected.",
+    "HYP020: duplicate gene symbols were collapsed by min_pvalue_max_abs_lfc; set probe_collapse in the config if this is expected.",
+    "HYP021: duplicate gene symbols were collapsed by min_pvalue_max_abs_lfc; set probe_collapse in the config if this is expected.",
+    "HYP023: duplicate gene symbols were collapsed by min_pvalue_max_abs_lfc; set probe_collapse in the config if this is expected.",
+    "HYP024: duplicate gene symbols were collapsed by min_pvalue_max_abs_lfc; set probe_collapse in the config if this is expected."
+  ],
+  "gold_panel_gene_count": 0,
+  "gold_panel_reason": "catalog is not an Excel workbook with a GoldPanel sheet",
+  "gold_panel_source": "",
+  "gold_panel_status": "not_provided",
+  "min_studies": 2,
+  "n_active_catalog_rows": 19,
+  "n_catalog_rows": 24,
+  "n_consensus_genes": 32687,
+  "n_harmonized_rows": 341563,
+  "pipeline_counts": {
+    "Cuffdiff": 1,
+    "Cuffdiff_NCBI_ESummary_mapped": 1,
+    "DESeq2": 11,
+    "GEO_processed_contrast_unspecified": 1,
+    "STAR_HTSeq_DESeq2_LRT": 1,
+    "edgeR": 1,
+    "edgeR_QLF": 3
+  },
+  "pvalue_clipped_rows": 29,
+  "rank_universe_warnings": [],
+  "recall_at_100": {
+    "reason": "no locked topic-specific GoldPanel was provided; do not interpret hypoxia-specific recall for this run",
+    "status": "not_applicable"
+  },
+  "recall_at_50": {
+    "reason": "no locked topic-specific GoldPanel was provided; do not interpret hypoxia-specific recall for this run",
+    "status": "not_applicable"
+  },
+  "source_filter_summary": {
+    "HYP001": {
+      "applied": false,
+      "column": null,
+      "keep": null,
+      "rows_after": 54668,
+      "rows_before": 54668
+    },
+    "HYP003": {
+      "applied": false,
+      "column": null,
+      "keep": null,
+      "rows_after": 17527,
+      "rows_before": 17527
+    },
+    "HYP006": {
+      "applied": false,
+      "column": null,
+      "keep": null,
+      "rows_after": 65217,
+      "rows_before": 65217
+    },
+    "HYP007": {
+      "applied": false,
+      "column": null,
+      "keep": null,
+      "rows_after": 65217,
+      "rows_before": 65217
+    },
+    "HYP008": {
+      "applied": false,
+      "column": null,
+      "keep": null,
+      "rows_after": 33121,
+      "rows_before": 33121
+    },
+    "HYP009": {
+      "applied": false,
+      "column": null,
+      "keep": null,
+      "rows_after": 13628,
+      "rows_before": 13628
+    },
+    "HYP010": {
+      "applied": false,
+      "column": null,
+      "keep": null,
+      "rows_after": 12739,
+      "rows_before": 12739
+    },
+    "HYP011": {
+      "applied": false,
+      "column": null,
+      "keep": null,
+      "rows_after": 13087,
+      "rows_before": 13087
+    },
+    "HYP012": {
+      "applied": false,
+      "column": null,
+      "keep": null,
+      "rows_after": 32201,
+      "rows_before": 32201
+    },
+    "HYP013": {
+      "applied": false,
+      "column": null,
+      "keep": null,
+      "rows_after": 27721,
+      "rows_before": 27721
+    },
+    "HYP014": {
+      "applied": false,
+      "column": null,
+      "keep": null,
+      "rows_after": 21391,
+      "rows_before": 21391
+    },
+    "HYP015": {
+      "applied": false,
+      "column": null,
+      "keep": null,
+      "rows_after": 60232,
+      "rows_before": 60232
+    },
+    "HYP017": {
+      "applied": true,
+      "column": "gene_biotype",
+      "keep": "protein_coding",
+      "rows_after": 15705,
+      "rows_before": 28484
+    },
+    "HYP018": {
+      "applied": false,
+      "column": null,
+      "keep": null,
+      "rows_after": 13322,
+      "rows_before": 13322
+    },
+    "HYP019": {
+      "applied": false,
+      "column": null,
+      "keep": null,
+      "rows_after": 24645,
+      "rows_before": 24645
+    },
+    "HYP020": {
+      "applied": false,
+      "column": null,
+      "keep": null,
+      "rows_after": 15561,
+      "rows_before": 15561
+    },
+    "HYP021": {
+      "applied": true,
+      "column": "gene_biotype",
+      "keep": "protein_coding",
+      "rows_after": 19951,
+      "rows_before": 58735
+    },
+    "HYP023": {
+      "applied": false,
+      "column": null,
+      "keep": null,
+      "rows_after": 14532,
+      "rows_before": 14532
+    },
+    "HYP024": {
+      "applied": false,
+      "column": null,
+      "keep": null,
+      "rows_after": 14011,
+      "rows_before": 14011
+    }
+  },
+  "source_input_files": [
+    "/home/keunsoo/projects/09_PIPER/data/deg/raw/GSE76743_HUVEC_HYPOXIA_mRNA_DESeq2.txt.gz",
+    "/home/keunsoo/projects/09_PIPER/data/deg/raw/TFEA_hypoxia_symbol.csv",
+    "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter11/GSE255352_HvsO_deg_signflipped.csv",
+    "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter12/GSE313740_processed_dataxGEO_14dic25.xlsx",
+    "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter13/GSE225253_DESeq2_HK-2_hypoxia_vs_HK-2_normoxia_all.xlsx",
+    "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter15/GSE160491_siControl_hypoxia_vs_normoxia_signflipped.csv",
+    "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter15/GSE283446_TableS8.xlsx",
+    "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter16/GSE296192_HCT116_hypoxia_vs_normoxia.csv",
+    "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter16/GSE296192_PC3_hypoxia_vs_normoxia.csv",
+    "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter3/bauer_2022_thp1_total_mrna_AH_vs_N.csv",
+    "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter3/bauer_2022_thp1_total_mrna_CH_vs_N.csv",
+    "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter3/mendeley_z42wpkbb8k_hypoxia_vs_normoxia.csv",
+    "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter6/GSE132624_edgeR_501mel_24h.csv.gz",
+    "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter6/GSE132624_edgeR_IGR37_24h.csv.gz",
+    "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter6/GSE132624_edgeR_IGR39_24h.csv.gz",
+    "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter7/GSE108676_human_refseq_mapped_hypoxia_vs_normoxia.csv",
+    "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter7/GSE70544_Normoxia_vs_Hypoxia_Gencode_gene_exp.diff.txt.gz",
+    "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter8/GSE311800_DEG_Results_All_Comparisons.xlsx",
+    "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter9/GSE293238_RNAseq_processed.xlsx"
+  ],
+  "source_input_type_counts": {
+    "unknown": 19
+  },
+  "study_row_counts": {
+    "HYP001": 18835,
+    "HYP003": 17527,
+    "HYP006": 13201,
+    "HYP007": 12781,
+    "HYP008": 19867,
+    "HYP009": 13628,
+    "HYP010": 12739,
+    "HYP011": 13087,
+    "HYP012": 32200,
+    "HYP013": 26023,
+    "HYP014": 21335,
+    "HYP015": 27793,
+    "HYP017": 15686,
+    "HYP018": 13189,
+    "HYP019": 22850,
+    "HYP020": 15553,
+    "HYP021": 16730,
+    "HYP023": 14530,
+    "HYP024": 14009
+  },
+  "table_scope_counts": {
+    "full_results": 19
+  },
+  "warnings": [
+    "HYP001: duplicate gene symbols were collapsed by min_pvalue_max_abs_lfc; set probe_collapse in the config if this is expected.",
+    "HYP006: duplicate gene symbols were collapsed by min_pvalue_max_abs_lfc; set probe_collapse in the config if this is expected.",
+    "HYP007: duplicate gene symbols were collapsed by min_pvalue_max_abs_lfc; set probe_collapse in the config if this is expected.",
+    "HYP008: duplicate gene symbols were collapsed by min_pvalue_max_abs_lfc; set probe_collapse in the config if this is expected.",
+    "HYP012: duplicate gene symbols were collapsed by min_pvalue_max_abs_lfc; set probe_collapse in the config if this is expected.",
+    "HYP013: duplicate gene symbols were collapsed by min_pvalue_max_abs_lfc; set probe_collapse in the config if this is expected.",
+    "HYP014: duplicate gene symbols were collapsed by min_pvalue_max_abs_lfc; set probe_collapse in the config if this is expected.",
+    "HYP015: duplicate gene symbols were collapsed by min_pvalue_max_abs_lfc; set probe_collapse in the config if this is expected.",
+    "HYP017: duplicate gene symbols were collapsed by min_pvalue_max_abs_lfc; set probe_collapse in the config if this is expected.",
+    "HYP018: duplicate gene symbols were collapsed by min_pvalue_max_abs_lfc; set probe_collapse in the config if this is expected.",
+    "HYP019: duplicate gene symbols were collapsed by min_pvalue_max_abs_lfc; set probe_collapse in the config if this is expected.",
+    "HYP020: duplicate gene symbols were collapsed by min_pvalue_max_abs_lfc; set probe_collapse in the config if this is expected.",
+    "HYP021: duplicate gene symbols were collapsed by min_pvalue_max_abs_lfc; set probe_collapse in the config if this is expected.",
+    "HYP023: duplicate gene symbols were collapsed by min_pvalue_max_abs_lfc; set probe_collapse in the config if this is expected.",
+    "HYP024: duplicate gene symbols were collapsed by min_pvalue_max_abs_lfc; set probe_collapse in the config if this is expected."
+  ]
+}

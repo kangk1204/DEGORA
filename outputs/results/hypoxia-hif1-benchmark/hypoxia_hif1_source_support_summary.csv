@@ -1,0 +1,13 @@
+metric,cutoff,denominator,n_recovered,recall,recovered_genes,missing_genes,criteria
+locked_membership_recall,10,20,4,0.2,EGLN3;HK2;SLC2A1;VEGFA,ALDOA;ANGPT2;BNIP3;BNIP3L;CA9;DDIT4;EGLN1;ENO1;EPO;FLT1;HK1;LDHA;PDK1;PFKL;PGK1;SLC2A3,gene is in locked gold panel
+locked_direction_recall,10,20,4,0.2,EGLN3;HK2;SLC2A1;VEGFA,ALDOA;ANGPT2;BNIP3;BNIP3L;CA9;DDIT4;EGLN1;ENO1;EPO;FLT1;HK1;LDHA;PDK1;PFKL;PGK1;SLC2A3,locked gold gene is recovered with expected direction when declared
+locked_source_supported_recall,10,20,1,0.05,VEGFA,ALDOA;ANGPT2;BNIP3;BNIP3L;CA9;DDIT4;EGLN1;EGLN3;ENO1;EPO;FLT1;HK1;HK2;LDHA;PDK1;PFKL;PGK1;SLC2A1;SLC2A3,locked direction match plus n_source_units>=2 and sign_concordance>=1.0
+locked_membership_recall,20,20,7,0.35,BNIP3;BNIP3L;EGLN3;HK2;SLC2A1;SLC2A3;VEGFA,ALDOA;ANGPT2;CA9;DDIT4;EGLN1;ENO1;EPO;FLT1;HK1;LDHA;PDK1;PFKL;PGK1,gene is in locked gold panel
+locked_direction_recall,20,20,7,0.35,BNIP3;BNIP3L;EGLN3;HK2;SLC2A1;SLC2A3;VEGFA,ALDOA;ANGPT2;CA9;DDIT4;EGLN1;ENO1;EPO;FLT1;HK1;LDHA;PDK1;PFKL;PGK1,locked gold gene is recovered with expected direction when declared
+locked_source_supported_recall,20,20,2,0.1,BNIP3L;VEGFA,ALDOA;ANGPT2;BNIP3;CA9;DDIT4;EGLN1;EGLN3;ENO1;EPO;FLT1;HK1;HK2;LDHA;PDK1;PFKL;PGK1;SLC2A1;SLC2A3,locked direction match plus n_source_units>=2 and sign_concordance>=1.0
+locked_membership_recall,50,20,13,0.65,ALDOA;BNIP3;BNIP3L;DDIT4;EGLN1;EGLN3;HK2;LDHA;PDK1;PGK1;SLC2A1;SLC2A3;VEGFA,ANGPT2;CA9;ENO1;EPO;FLT1;HK1;PFKL,gene is in locked gold panel
+locked_direction_recall,50,20,13,0.65,ALDOA;BNIP3;BNIP3L;DDIT4;EGLN1;EGLN3;HK2;LDHA;PDK1;PGK1;SLC2A1;SLC2A3;VEGFA,ANGPT2;CA9;ENO1;EPO;FLT1;HK1;PFKL,locked gold gene is recovered with expected direction when declared
+locked_source_supported_recall,50,20,5,0.25,ALDOA;BNIP3L;EGLN1;LDHA;VEGFA,ANGPT2;BNIP3;CA9;DDIT4;EGLN3;ENO1;EPO;FLT1;HK1;HK2;PDK1;PFKL;PGK1;SLC2A1;SLC2A3,locked direction match plus n_source_units>=2 and sign_concordance>=1.0
+locked_membership_recall,100,20,16,0.8,ALDOA;BNIP3;BNIP3L;CA9;DDIT4;EGLN1;EGLN3;ENO1;HK2;LDHA;PDK1;PFKL;PGK1;SLC2A1;SLC2A3;VEGFA,ANGPT2;EPO;FLT1;HK1,gene is in locked gold panel
+locked_direction_recall,100,20,16,0.8,ALDOA;BNIP3;BNIP3L;CA9;DDIT4;EGLN1;EGLN3;ENO1;HK2;LDHA;PDK1;PFKL;PGK1;SLC2A1;SLC2A3;VEGFA,ANGPT2;EPO;FLT1;HK1,locked gold gene is recovered with expected direction when declared
+locked_source_supported_recall,100,20,5,0.25,ALDOA;BNIP3L;EGLN1;LDHA;VEGFA,ANGPT2;BNIP3;CA9;DDIT4;EGLN3;ENO1;EPO;FLT1;HK1;HK2;PDK1;PFKL;PGK1;SLC2A1;SLC2A3,locked direction match plus n_source_units>=2 and sign_concordance>=1.0

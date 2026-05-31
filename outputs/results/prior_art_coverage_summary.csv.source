@@ -1,0 +1,1 @@
+env PYTHONPATH=outputs/code python outputs/code/scripts/write_prior_art_coverage_summary.py --input-csv outputs/results/comparator_public_summary_input_requirements.csv --output-csv outputs/results/prior_art_coverage_summary.csv --output-md outputs/results/prior_art_coverage_summary.md

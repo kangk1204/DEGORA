@@ -1,0 +1,28 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/cross-platform-microarray/gse3045_hypoxia_astrocyte_microarray_summary.json",
+  "artifact_sha256": "2aa6b381a35e7fbaa3f21985b87c4c92eaa3131a3ef40d5839ad0bb27280978b",
+  "artifact_size_bytes": 1203,
+  "command": "PYTHONPATH=outputs/code python outputs/code/scripts/write_cross_platform_microarray_benchmarks.py --output-dir outputs/results/cross-platform-microarray",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/microarray_cross_platform/GSE3045_hypoxia_astrocyte_probe_gene_matrix.csv",
+      "sha256": "430705d058aecbcd8ac8c6970e0a821995e28e871581dd07c7892a43d00cd33d",
+      "size_bytes": 2235580
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/microarray_cross_platform/GSE3045_primary_astrocyte_hypoxia_24h_vs_normoxia_microarray_welch.csv",
+      "sha256": "da1d896105e80fb277df54b7a6b82a97f9076ba7a219a94e5b5853c6ea54fbe3",
+      "size_bytes": 4049388
+    }
+  ],
+  "metadata": {
+    "generator": "microarray-normalized-matrix-summary",
+    "normalization": "GEO_series_matrix_MAS5_log2_transform",
+    "paper_id": "GSE3045_ASTROCYTE_HYPOXIA",
+    "platform": "GPL570",
+    "source_url": "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE3045",
+    "study_id": "HYP_GSE3045_ASTROCYTE_HYPOXIA_24h"
+  }
+}

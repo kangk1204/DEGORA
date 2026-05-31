@@ -1,0 +1,5 @@
+corpus,score_variant,subset,n_genes,median_n_source_units,median_sign_concordance,fraction_full_concordance,median_loo_rank_stability_score,median_loo_top50_fraction,median_loo_top100_fraction,median_source_quality_weight_sum
+hypoxia-hif1-benchmark,piper_quality_weighted_secondary,all_scored,32687,7.0,0.8044363856228389,0.22715452626426408,0.995686,0.0,0.0,4.55
+hypoxia-hif1-benchmark,piper_quality_weighted_secondary,top100_primary,100,15.0,0.9939505969145692,0.34,0.999939,0.333333,1.0,9.75
+hypoxia-hif1-benchmark,piper_quality_weighted_secondary,top100_quality_weighted,100,15.0,0.9939505969145692,0.34,0.999939,0.333333,1.0,9.75
+hypoxia-hif1-benchmark,piper_quality_weighted_secondary,locked_gold,20,15.0,0.9888118024448902,0.25,0.999969,0.8999999999999999,1.0,9.75

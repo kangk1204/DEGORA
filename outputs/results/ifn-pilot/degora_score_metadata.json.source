@@ -1,0 +1,1 @@
+make -C outputs/code score-db SCORE_HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/ifn-pilot_harmonized.csv CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/ifn_derived_catalog.csv OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot SCORE_DB=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/degora_scores.db SCORE_MIN_STUDIES=2

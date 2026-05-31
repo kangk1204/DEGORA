@@ -47,7 +47,7 @@ TNFA_GATE_OUTPUT ?=
 TNFA_SCARCITY_CANDIDATE_THRESHOLD ?= 20
 ROOT_PYTHON := cd $(PROJECT_ROOT) && env PYTHONPATH=outputs/code $(PYTHON)
 
-.PHONY: check slice diagnose rank-plane baseline baseline-preflight score-db resource-package microarray-deg serve degora-template degora-demo degora-validate degora-run tnfa-gate publication-gate rerun-readiness benchmark prior-art-tables gold-summaries manuscript-tables figs paper
+.PHONY: check slice diagnose rank-plane baseline baseline-preflight score-db resource-package microarray-deg serve degora-template degora-demo degora-validate degora-run tnfa-gate publication-gate rerun-readiness benchmark expanded-gold-panels prior-art-tables gold-summaries deep-metrics manuscript-tables figs paper
 
 check: unit typecheck lint provenance-check
 
@@ -113,6 +113,9 @@ rerun-readiness:
 
 benchmark: slice
 
+expanded-gold-panels:
+	$(ROOT_PYTHON) outputs/code/scripts/write_expanded_gold_panels.py
+
 prior-art-tables:
 	$(ROOT_PYTHON) outputs/code/scripts/write_public_summary_tool_requirements.py
 	$(ROOT_PYTHON) outputs/code/scripts/write_prior_art_coverage_summary.py
@@ -123,10 +126,16 @@ gold-summaries:
 	$(ROOT_PYTHON) outputs/code/scripts/write_gold_comparator_summary.py --baseline-dir outputs/results/heat-shock-benchmark/baselines --gold data/studies/gold/heat_shock_hsf1_gold_panel.csv --degora-score-csv outputs/results/heat-shock-benchmark/degora_gene_scores.csv --title "Heat shock locked gold-panel comparator summary" --output-csv outputs/results/heat-shock-benchmark/heat_shock_gold_comparator_summary.csv --output-md outputs/results/heat-shock-benchmark/heat_shock_gold_comparator_summary.md
 	$(ROOT_PYTHON) outputs/code/scripts/write_gold_comparator_summary.py --baseline-dir outputs/results/hypoxia-hif1-benchmark/baselines --gold data/studies/gold/hypoxia_hif1_gold_panel.csv --degora-score-csv outputs/results/hypoxia-hif1-benchmark/degora_gene_scores.csv --title "Hypoxia/HIF locked gold-panel comparator summary" --output-csv outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_gold_comparator_summary.csv --output-md outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_gold_comparator_summary.md
 
+deep-metrics:
+	$(ROOT_PYTHON) outputs/code/scripts/write_benchmark_deep_metrics.py --corpus ifn-pilot --baseline-dir outputs/results/ifn-pilot/baselines --harmonized data/deg/harmonized/ifn-pilot_harmonized.csv --gold data/studies/gold/ifn_gold_panel.csv --degora-score-csv outputs/results/ifn-pilot/degora_gene_scores.csv --output-dir outputs/results/ifn-pilot/deep-metrics --title "IFN pilot deep benchmark metrics"
+	$(ROOT_PYTHON) outputs/code/scripts/write_benchmark_deep_metrics.py --corpus er-stress-cross-platform --baseline-dir outputs/results/er-stress-cross-platform/baselines --harmonized data/deg/harmonized/er-stress-cross-platform_harmonized.csv --gold data/studies/gold/er_stress_upr_gold_panel.csv --degora-score-csv outputs/results/er-stress-cross-platform/degora_gene_scores.csv --output-dir outputs/results/er-stress-cross-platform/deep-metrics --title "ER stress cross-platform deep benchmark metrics"
+	$(ROOT_PYTHON) outputs/code/scripts/write_benchmark_deep_metrics.py --corpus heat-shock-benchmark --baseline-dir outputs/results/heat-shock-benchmark/baselines --harmonized data/deg/harmonized/heat-shock-benchmark_harmonized.csv --gold data/studies/gold/heat_shock_hsf1_gold_panel.csv --degora-score-csv outputs/results/heat-shock-benchmark/degora_gene_scores.csv --output-dir outputs/results/heat-shock-benchmark/deep-metrics --title "Heat shock deep benchmark metrics"
+	$(ROOT_PYTHON) outputs/code/scripts/write_benchmark_deep_metrics.py --corpus hypoxia-hif1-benchmark --baseline-dir outputs/results/hypoxia-hif1-benchmark/baselines --harmonized data/deg/harmonized/hypoxia-hif1-benchmark_harmonized.csv --gold data/studies/gold/hypoxia_hif1_gold_panel.csv --degora-score-csv outputs/results/hypoxia-hif1-benchmark/degora_gene_scores.csv --output-dir outputs/results/hypoxia-hif1-benchmark/deep-metrics --title "Hypoxia/HIF1 deep benchmark metrics"
+
 manuscript-tables: prior-art-tables gold-summaries
 	$(ROOT_PYTHON) outputs/code/scripts/write_manuscript_tables.py --output-dir outputs/tables/manuscript
 
-figs: manuscript-tables
+figs: manuscript-tables deep-metrics
 	$(ROOT_PYTHON) outputs/code/figures/make_degora_scheme_figure.py --output-dir outputs/figures/manuscript/FIGURE_1_SCHEME
 	$(ROOT_PYTHON) outputs/code/figures/make_benchmark_figure.py --output-dir outputs/figures/manuscript/FIGURE_2_BENCHMARK
 	$(ROOT_PYTHON) outputs/code/figures/make_cross_platform_microarray_figure.py --results-dir outputs/results/cross-platform-microarray --output-dir outputs/figures/manuscript/DEGORA_CROSS_PLATFORM

@@ -1,0 +1,60 @@
+Gold recall curve validation
+
+outputs/figures/hypoxia-hif1-benchmark/hypoxia_hif1_gold_recall_curve_top1000.png: exists=True size_bytes=196284
+outputs/figures/hypoxia-hif1-benchmark/hypoxia_hif1_gold_recall_curve_top1000.pdf: exists=True size_bytes=28468
+outputs/figures/hypoxia-hif1-benchmark/hypoxia_hif1_gold_recall_curve_top1000.svg: exists=True size_bytes=30814
+outputs/figures/hypoxia-hif1-benchmark/hypoxia_hif1_gold_recall_curve_top1000_source_data.csv: exists=True size_bytes=513414
+outputs/figures/hypoxia-hif1-benchmark/hypoxia_hif1_gold_recall_curve_top1000_source_data.xlsx: exists=True size_bytes=263286
+outputs/figures/hypoxia-hif1-benchmark/hypoxia_hif1_gold_recall_curve_top1000_selected_cutoffs.csv: exists=True size_bytes=4587
+outputs/figures/hypoxia-hif1-benchmark/hypoxia_hif1_gold_recall_curve_top1000_legend.docx: exists=True size_bytes=1116
+
+Selected cutoff values:
+PIPER primary k=10: recall=0.200, direction_recall=0.200
+PIPER quality-weighted k=10: recall=0.150, direction_recall=0.150
+Weighted Stouffer k=10: recall=0.200, direction_recall=0.200
+Fisher k=10: recall=0.150, direction_recall=0.150
+MetaVolcanoR k=10: recall=0.150, direction_recall=0.150
+RobustRankAggreg k=10: recall=0.150, direction_recall=0.150
+Rank product approx. k=10: recall=0.150, direction_recall=0.150
+PIPER primary k=20: recall=0.350, direction_recall=0.350
+PIPER quality-weighted k=20: recall=0.350, direction_recall=0.350
+Weighted Stouffer k=20: recall=0.400, direction_recall=0.400
+Fisher k=20: recall=0.350, direction_recall=0.350
+MetaVolcanoR k=20: recall=0.350, direction_recall=0.350
+RobustRankAggreg k=20: recall=0.350, direction_recall=0.350
+Rank product approx. k=20: recall=0.400, direction_recall=0.400
+PIPER primary k=50: recall=0.650, direction_recall=0.650
+PIPER quality-weighted k=50: recall=0.650, direction_recall=0.650
+Weighted Stouffer k=50: recall=0.700, direction_recall=0.700
+Fisher k=50: recall=0.700, direction_recall=0.700
+MetaVolcanoR k=50: recall=0.700, direction_recall=0.700
+RobustRankAggreg k=50: recall=0.700, direction_recall=0.700
+Rank product approx. k=50: recall=0.700, direction_recall=0.700
+PIPER primary k=100: recall=0.800, direction_recall=0.800
+PIPER quality-weighted k=100: recall=0.800, direction_recall=0.800
+Weighted Stouffer k=100: recall=0.750, direction_recall=0.750
+Fisher k=100: recall=0.750, direction_recall=0.750
+MetaVolcanoR k=100: recall=0.750, direction_recall=0.750
+RobustRankAggreg k=100: recall=0.750, direction_recall=0.750
+Rank product approx. k=100: recall=0.750, direction_recall=0.750
+PIPER primary k=200: recall=0.850, direction_recall=0.850
+PIPER quality-weighted k=200: recall=0.850, direction_recall=0.850
+Weighted Stouffer k=200: recall=0.850, direction_recall=0.850
+Fisher k=200: recall=0.800, direction_recall=0.800
+MetaVolcanoR k=200: recall=0.800, direction_recall=0.800
+RobustRankAggreg k=200: recall=0.750, direction_recall=0.750
+Rank product approx. k=200: recall=0.800, direction_recall=0.800
+PIPER primary k=500: recall=0.850, direction_recall=0.850
+PIPER quality-weighted k=500: recall=0.850, direction_recall=0.850
+Weighted Stouffer k=500: recall=0.850, direction_recall=0.850
+Fisher k=500: recall=0.850, direction_recall=0.850
+MetaVolcanoR k=500: recall=0.850, direction_recall=0.850
+RobustRankAggreg k=500: recall=0.800, direction_recall=0.800
+Rank product approx. k=500: recall=0.850, direction_recall=0.850
+PIPER primary k=1000: recall=0.850, direction_recall=0.850
+PIPER quality-weighted k=1000: recall=0.850, direction_recall=0.850
+Weighted Stouffer k=1000: recall=0.850, direction_recall=0.850
+Fisher k=1000: recall=0.900, direction_recall=0.900
+MetaVolcanoR k=1000: recall=0.900, direction_recall=0.900
+RobustRankAggreg k=1000: recall=0.850, direction_recall=0.850
+Rank product approx. k=1000: recall=0.850, direction_recall=0.850

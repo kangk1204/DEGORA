@@ -1,0 +1,949 @@
+{
+  "indisulam_excluded": true,
+  "n_benchmark_rows": 6,
+  "n_dataset_rows": 5,
+  "n_rank_shift_rows": 91,
+  "output_dir": "outputs/results/cross-platform-microarray",
+  "pipeline": [
+    {
+      "baseline_summary": {
+        "baseline_manifest": "outputs/results/ifn-cross-platform/baselines/baseline_manifest.csv",
+        "corpus": "ifn-cross-platform",
+        "harmonized_path": "/home/keunsoo/projects/09_PIPER/data/deg/harmonized/ifn-cross-platform_harmonized.csv",
+        "n_open_s1_blockers": 7,
+        "output_dir": "/home/keunsoo/projects/09_PIPER/outputs/results/ifn-cross-platform/baselines",
+        "parity_matrix": "outputs/results/ifn-cross-platform/baselines/baseline_parity_matrix.csv",
+        "public_summary_tool_input_requirements": "outputs/results/ifn-cross-platform/baselines/public_summary_tool_input_requirements.csv",
+        "tier0_outputs": [
+          "outputs/results/ifn-cross-platform/baselines/ifn-cross-platform_degora_slice_locked.tsv",
+          "outputs/results/ifn-cross-platform/baselines/ifn-cross-platform_weighted_stouffer_default.tsv",
+          "outputs/results/ifn-cross-platform/baselines/ifn-cross-platform_unweighted_stouffer_default.tsv",
+          "outputs/results/ifn-cross-platform/baselines/ifn-cross-platform_fisher_default.tsv",
+          "outputs/results/ifn-cross-platform/baselines/ifn-cross-platform_rank_product_approx_default.tsv",
+          "outputs/results/ifn-cross-platform/baselines/ifn-cross-platform_sign_vote_default.tsv",
+          "outputs/results/ifn-cross-platform/baselines/ifn-cross-platform_metavolcanor_default.tsv",
+          "outputs/results/ifn-cross-platform/baselines/ifn-cross-platform_robustrankaggreg_default.tsv",
+          "outputs/results/ifn-cross-platform/baselines/ifn-cross-platform_awfisher_default.tsv",
+          "outputs/results/ifn-cross-platform/baselines/ifn-cross-platform_metarnaseq_fisher_default.tsv"
+        ]
+      },
+      "catalog": "data/studies/ifn_cross_platform_catalog.csv",
+      "comparator_summary": "outputs/results/ifn-cross-platform/ifn_cross_platform_gold_comparator_summary.csv",
+      "harmonized": "data/deg/harmonized/ifn-cross-platform_harmonized.csv",
+      "outdir": "outputs/results/ifn-cross-platform",
+      "score_summary": {
+        "db_path": "/home/keunsoo/projects/09_PIPER/outputs/results/ifn-cross-platform/degora_scores.db",
+        "metadata_json": "/home/keunsoo/projects/09_PIPER/outputs/results/ifn-cross-platform/degora_score_metadata.json",
+        "n_contrasts": 8,
+        "n_evidence_rows": 44146,
+        "n_gene_scores": 12777,
+        "n_source_quality_outliers": 0,
+        "n_source_units": 3,
+        "score_csv": "/home/keunsoo/projects/09_PIPER/outputs/results/ifn-cross-platform/degora_gene_scores.csv",
+        "source_quality_diagnostics_json": "/home/keunsoo/projects/09_PIPER/outputs/results/ifn-cross-platform/degora_source_quality_diagnostics.json",
+        "source_quality_diagnostics_tsv": "/home/keunsoo/projects/09_PIPER/outputs/results/ifn-cross-platform/degora_source_quality_diagnostics.tsv",
+        "top_genes": [
+          "CMPK2",
+          "IFI27",
+          "IFI44L",
+          "RSAD2",
+          "IFIT1",
+          "IFI6",
+          "OAS3",
+          "OASL",
+          "OAS2",
+          "USP18",
+          "MX2",
+          "HERC5",
+          "IFIH1",
+          "MX1",
+          "HELZ2",
+          "DDX60",
+          "IFI44",
+          "IFIT2",
+          "IFIT3",
+          "OAS1"
+        ]
+      },
+      "slice_metrics": {
+        "assay_type_counts": {
+          "RNA-seq": 7,
+          "microarray": 1
+        },
+        "catalog_path": "/home/keunsoo/projects/09_PIPER/data/studies/ifn_cross_platform_catalog.csv",
+        "excluded_catalog_rows": [],
+        "gene_symbol_collapse_warnings": [],
+        "gold_panel_gene_count": 0,
+        "gold_panel_reason": "catalog is not an Excel workbook with a GoldPanel sheet",
+        "gold_panel_source": "",
+        "gold_panel_status": "not_provided",
+        "min_studies": 2,
+        "n_active_catalog_rows": 8,
+        "n_catalog_rows": 8,
+        "n_consensus_genes": 12777,
+        "n_harmonized_rows": 101745,
+        "pipeline_counts": {
+          "logCPM_Welch_derived_from_public_counts": 7,
+          "welch_microarray_normalized_matrix": 1
+        },
+        "pvalue_clipped_rows": 0,
+        "rank_universe_warnings": [],
+        "recall_at_100": {
+          "reason": "no locked topic-specific GoldPanel was provided; do not interpret hypoxia-specific recall for this run",
+          "status": "not_applicable"
+        },
+        "recall_at_50": {
+          "reason": "no locked topic-specific GoldPanel was provided; do not interpret hypoxia-specific recall for this run",
+          "status": "not_applicable"
+        },
+        "source_filter_summary": {
+          "IFN_GSE147507_NHBE_IFNB_12h": {
+            "applied": false,
+            "column": null,
+            "keep": null,
+            "rows_after": 11080,
+            "rows_before": 11080
+          },
+          "IFN_GSE147507_NHBE_IFNB_4h": {
+            "applied": false,
+            "column": null,
+            "keep": null,
+            "rows_after": 11252,
+            "rows_before": 11252
+          },
+          "IFN_GSE147507_NHBE_IFNB_6h": {
+            "applied": false,
+            "column": null,
+            "keep": null,
+            "rows_after": 11092,
+            "rows_before": 11092
+          },
+          "IFN_GSE221804_HUHWT_IFNA_24h": {
+            "applied": false,
+            "column": null,
+            "keep": null,
+            "rows_after": 11953,
+            "rows_before": 11953
+          },
+          "IFN_GSE221804_HUHWT_IFNA_2h": {
+            "applied": false,
+            "column": null,
+            "keep": null,
+            "rows_after": 11822,
+            "rows_before": 11822
+          },
+          "IFN_GSE221804_HUHWT_IFNA_4h": {
+            "applied": false,
+            "column": null,
+            "keep": null,
+            "rows_after": 11892,
+            "rows_before": 11892
+          },
+          "IFN_GSE221804_HUHWT_IFNA_8h": {
+            "applied": false,
+            "column": null,
+            "keep": null,
+            "rows_after": 11898,
+            "rows_before": 11898
+          },
+          "IFN_GSE71634_PBMC_IFNB_18h": {
+            "applied": false,
+            "column": null,
+            "keep": null,
+            "rows_after": 20756,
+            "rows_before": 20756
+          }
+        },
+        "source_input_files": [
+          "/home/keunsoo/projects/09_PIPER/data/deg/raw/ifn/GSE147507_IFNB_12h_vs_mock_derived_logcpm_welch.csv",
+          "/home/keunsoo/projects/09_PIPER/data/deg/raw/ifn/GSE147507_IFNB_4h_vs_mock_derived_logcpm_welch.csv",
+          "/home/keunsoo/projects/09_PIPER/data/deg/raw/ifn/GSE147507_IFNB_6h_vs_mock_derived_logcpm_welch.csv",
+          "/home/keunsoo/projects/09_PIPER/data/deg/raw/ifn/GSE221804_IFNA_24h_vs_un_derived_logcpm_welch.csv",
+          "/home/keunsoo/projects/09_PIPER/data/deg/raw/ifn/GSE221804_IFNA_2h_vs_un_derived_logcpm_welch.csv",
+          "/home/keunsoo/projects/09_PIPER/data/deg/raw/ifn/GSE221804_IFNA_4h_vs_un_derived_logcpm_welch.csv",
+          "/home/keunsoo/projects/09_PIPER/data/deg/raw/ifn/GSE221804_IFNA_8h_vs_un_derived_logcpm_welch.csv",
+          "/home/keunsoo/projects/09_PIPER/data/deg/raw/microarray_cross_platform/GSE71634_PBMC_IFNB_18h_vs_unstimulated_microarray_welch.csv"
+        ],
+        "source_input_type_counts": {
+          "derived_count_table": 7,
+          "normalized_expression_matrix": 1
+        },
+        "study_row_counts": {
+          "IFN_GSE147507_NHBE_IFNB_12h": 11080,
+          "IFN_GSE147507_NHBE_IFNB_4h": 11252,
+          "IFN_GSE147507_NHBE_IFNB_6h": 11092,
+          "IFN_GSE221804_HUHWT_IFNA_24h": 11953,
+          "IFN_GSE221804_HUHWT_IFNA_2h": 11822,
+          "IFN_GSE221804_HUHWT_IFNA_4h": 11892,
+          "IFN_GSE221804_HUHWT_IFNA_8h": 11898,
+          "IFN_GSE71634_PBMC_IFNB_18h": 20756
+        },
+        "table_scope_counts": {
+          "full_results": 8
+        },
+        "warnings": []
+      },
+      "topic": "IFN"
+    },
+    {
+      "baseline_summary": {
+        "baseline_manifest": "outputs/results/er-stress-cross-platform/baselines/baseline_manifest.csv",
+        "corpus": "er-stress-cross-platform",
+        "harmonized_path": "/home/keunsoo/projects/09_PIPER/data/deg/harmonized/er-stress-cross-platform_harmonized.csv",
+        "n_open_s1_blockers": 7,
+        "output_dir": "/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-cross-platform/baselines",
+        "parity_matrix": "outputs/results/er-stress-cross-platform/baselines/baseline_parity_matrix.csv",
+        "public_summary_tool_input_requirements": "outputs/results/er-stress-cross-platform/baselines/public_summary_tool_input_requirements.csv",
+        "tier0_outputs": [
+          "outputs/results/er-stress-cross-platform/baselines/er-stress-cross-platform_degora_slice_locked.tsv",
+          "outputs/results/er-stress-cross-platform/baselines/er-stress-cross-platform_weighted_stouffer_default.tsv",
+          "outputs/results/er-stress-cross-platform/baselines/er-stress-cross-platform_unweighted_stouffer_default.tsv",
+          "outputs/results/er-stress-cross-platform/baselines/er-stress-cross-platform_fisher_default.tsv",
+          "outputs/results/er-stress-cross-platform/baselines/er-stress-cross-platform_rank_product_approx_default.tsv",
+          "outputs/results/er-stress-cross-platform/baselines/er-stress-cross-platform_sign_vote_default.tsv",
+          "outputs/results/er-stress-cross-platform/baselines/er-stress-cross-platform_metavolcanor_default.tsv",
+          "outputs/results/er-stress-cross-platform/baselines/er-stress-cross-platform_robustrankaggreg_default.tsv",
+          "outputs/results/er-stress-cross-platform/baselines/er-stress-cross-platform_awfisher_default.tsv",
+          "outputs/results/er-stress-cross-platform/baselines/er-stress-cross-platform_metarnaseq_fisher_default.tsv"
+        ]
+      },
+      "catalog": "data/studies/er_stress_upr_cross_platform_catalog.csv",
+      "comparator_summary": "outputs/results/er-stress-cross-platform/er_stress_cross_platform_gold_comparator_summary.csv",
+      "harmonized": "data/deg/harmonized/er-stress-cross-platform_harmonized.csv",
+      "outdir": "outputs/results/er-stress-cross-platform",
+      "score_summary": {
+        "db_path": "/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-cross-platform/degora_scores.db",
+        "metadata_json": "/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-cross-platform/degora_score_metadata.json",
+        "n_contrasts": 8,
+        "n_evidence_rows": 57886,
+        "n_gene_scores": 14239,
+        "n_source_quality_outliers": 0,
+        "n_source_units": 4,
+        "score_csv": "/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-cross-platform/degora_gene_scores.csv",
+        "source_quality_diagnostics_json": "/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-cross-platform/degora_source_quality_diagnostics.json",
+        "source_quality_diagnostics_tsv": "/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-cross-platform/degora_source_quality_diagnostics.tsv",
+        "top_genes": [
+          "DDIT3",
+          "HSPA5",
+          "TRIB3",
+          "HERPUD1",
+          "SLC6A9",
+          "CCPG1",
+          "DNAJB9",
+          "SEL1L",
+          "CTH",
+          "SLC3A2",
+          "HYOU1",
+          "MANF",
+          "SLC7A11",
+          "PDIA4",
+          "CRELD1",
+          "CRELD2",
+          "SDF2L1",
+          "ASNS",
+          "CEBPB",
+          "DNAJB11"
+        ]
+      },
+      "slice_metrics": {
+        "assay_type_counts": {
+          "RNA-seq": 6,
+          "microarray": 2
+        },
+        "catalog_path": "/home/keunsoo/projects/09_PIPER/data/studies/er_stress_upr_cross_platform_catalog.csv",
+        "excluded_catalog_rows": [
+          {
+            "notes": "As-published Cuffdiff gene_exp.diff full-result table; status != OK rows excluded before scoring. Excluded from the manuscript benchmark after the human-only species gate.",
+            "study_id": "ER_GSE84450_WT_DTT_vs_UT"
+          },
+          {
+            "notes": "Secondary ER-stress source from normalized expression matrix with two replicates per group; included as lower-confidence support, not a full author DEG table. Excluded from the manuscript benchmark after the human-only species gate. Excluded from primary-only ER benchmark because it is a lower-confidence normalized-matrix source; retained in full sensitivity.",
+            "study_id": "ER_GSE103667_THAP_vs_DMSO"
+          }
+        ],
+        "gene_symbol_collapse_warnings": [],
+        "gold_panel_gene_count": 0,
+        "gold_panel_reason": "catalog is not an Excel workbook with a GoldPanel sheet",
+        "gold_panel_source": "",
+        "gold_panel_status": "not_provided",
+        "min_studies": 2,
+        "n_active_catalog_rows": 8,
+        "n_catalog_rows": 10,
+        "n_consensus_genes": 14239,
+        "n_harmonized_rows": 109637,
+        "pipeline_counts": {
+          "logCPM_Welch_derived_from_public_counts": 6,
+          "welch_microarray_normalized_matrix": 2
+        },
+        "pvalue_clipped_rows": 0,
+        "rank_universe_warnings": [],
+        "recall_at_100": {
+          "reason": "no locked topic-specific GoldPanel was provided; do not interpret hypoxia-specific recall for this run",
+          "status": "not_applicable"
+        },
+        "recall_at_50": {
+          "reason": "no locked topic-specific GoldPanel was provided; do not interpret hypoxia-specific recall for this run",
+          "status": "not_applicable"
+        },
+        "source_filter_summary": {
+          "ER_GSE102505_NHA_TUN_vs_DMSO": {
+            "applied": false,
+            "column": null,
+            "keep": null,
+            "rows_after": 10125,
+            "rows_before": 10125
+          },
+          "ER_GSE102505_T4213_TUN_vs_DMSO": {
+            "applied": false,
+            "column": null,
+            "keep": null,
+            "rows_after": 9323,
+            "rows_before": 9323
+          },
+          "ER_GSE102505_U251_TUN_vs_DMSO": {
+            "applied": false,
+            "column": null,
+            "keep": null,
+            "rows_after": 10806,
+            "rows_before": 10806
+          },
+          "ER_GSE19519_LCL_THAPSIGARGIN_4h": {
+            "applied": false,
+            "column": null,
+            "keep": null,
+            "rows_after": 21753,
+            "rows_before": 21753
+          },
+          "ER_GSE19519_LCL_TUNICAMYCIN_8h": {
+            "applied": false,
+            "column": null,
+            "keep": null,
+            "rows_after": 21753,
+            "rows_before": 21753
+          },
+          "ER_GSE245918_HEK293T_TUN_vs_DMSO": {
+            "applied": false,
+            "column": null,
+            "keep": null,
+            "rows_after": 13070,
+            "rows_before": 13070
+          },
+          "ER_GSE245918_OCI_AML3_TUN_vs_DMSO": {
+            "applied": false,
+            "column": null,
+            "keep": null,
+            "rows_after": 12234,
+            "rows_before": 12234
+          },
+          "ER_GSE296996_HEPG2_TUN_vs_DMSO": {
+            "applied": false,
+            "column": null,
+            "keep": null,
+            "rows_after": 10579,
+            "rows_before": 10579
+          }
+        },
+        "source_input_files": [
+          "/home/keunsoo/projects/09_PIPER/data/deg/raw/er_stress/GSE102505_NHA_tunicamycin_vs_DMSO_derived_logcpm_welch.csv",
+          "/home/keunsoo/projects/09_PIPER/data/deg/raw/er_stress/GSE102505_T4213_tunicamycin_vs_DMSO_derived_logcpm_welch.csv",
+          "/home/keunsoo/projects/09_PIPER/data/deg/raw/er_stress/GSE102505_U251_tunicamycin_vs_DMSO_derived_logcpm_welch.csv",
+          "/home/keunsoo/projects/09_PIPER/data/deg/raw/er_stress/GSE245918_HEK293T_tunicamycin_vs_DMSO_derived_logcpm_welch.csv",
+          "/home/keunsoo/projects/09_PIPER/data/deg/raw/er_stress/GSE245918_OCI_AML3_tunicamycin_vs_DMSO_derived_logcpm_welch.csv",
+          "/home/keunsoo/projects/09_PIPER/data/deg/raw/er_stress/GSE296996_HepG2_tunicamycin_vs_DMSO_derived_logcpm_welch.csv",
+          "/home/keunsoo/projects/09_PIPER/data/deg/raw/microarray_cross_platform/GSE19519_LCL_thapsigargin_4h_vs_DMSO_microarray_welch.csv",
+          "/home/keunsoo/projects/09_PIPER/data/deg/raw/microarray_cross_platform/GSE19519_LCL_tunicamycin_8h_vs_DMSO_microarray_welch.csv"
+        ],
+        "source_input_type_counts": {
+          "derived_count_table": 6,
+          "normalized_expression_matrix": 2
+        },
+        "study_row_counts": {
+          "ER_GSE102505_NHA_TUN_vs_DMSO": 10125,
+          "ER_GSE102505_T4213_TUN_vs_DMSO": 9323,
+          "ER_GSE102505_U251_TUN_vs_DMSO": 10806,
+          "ER_GSE19519_LCL_THAPSIGARGIN_4h": 21750,
+          "ER_GSE19519_LCL_TUNICAMYCIN_8h": 21750,
+          "ER_GSE245918_HEK293T_TUN_vs_DMSO": 13070,
+          "ER_GSE245918_OCI_AML3_TUN_vs_DMSO": 12234,
+          "ER_GSE296996_HEPG2_TUN_vs_DMSO": 10579
+        },
+        "table_scope_counts": {
+          "full_results": 8
+        },
+        "warnings": []
+      },
+      "topic": "ER stress"
+    },
+    {
+      "baseline_summary": {
+        "baseline_manifest": "outputs/results/hypoxia-cross-platform/baselines/baseline_manifest.csv",
+        "corpus": "hypoxia-cross-platform",
+        "harmonized_path": "/home/keunsoo/projects/09_PIPER/data/deg/harmonized/hypoxia-cross-platform_harmonized.csv",
+        "n_open_s1_blockers": 7,
+        "output_dir": "/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-cross-platform/baselines",
+        "parity_matrix": "outputs/results/hypoxia-cross-platform/baselines/baseline_parity_matrix.csv",
+        "public_summary_tool_input_requirements": "outputs/results/hypoxia-cross-platform/baselines/public_summary_tool_input_requirements.csv",
+        "tier0_outputs": [
+          "outputs/results/hypoxia-cross-platform/baselines/hypoxia-cross-platform_degora_slice_locked.tsv",
+          "outputs/results/hypoxia-cross-platform/baselines/hypoxia-cross-platform_weighted_stouffer_default.tsv",
+          "outputs/results/hypoxia-cross-platform/baselines/hypoxia-cross-platform_unweighted_stouffer_default.tsv",
+          "outputs/results/hypoxia-cross-platform/baselines/hypoxia-cross-platform_fisher_default.tsv",
+          "outputs/results/hypoxia-cross-platform/baselines/hypoxia-cross-platform_rank_product_approx_default.tsv",
+          "outputs/results/hypoxia-cross-platform/baselines/hypoxia-cross-platform_sign_vote_default.tsv",
+          "outputs/results/hypoxia-cross-platform/baselines/hypoxia-cross-platform_metavolcanor_default.tsv",
+          "outputs/results/hypoxia-cross-platform/baselines/hypoxia-cross-platform_robustrankaggreg_default.tsv",
+          "outputs/results/hypoxia-cross-platform/baselines/hypoxia-cross-platform_awfisher_default.tsv",
+          "outputs/results/hypoxia-cross-platform/baselines/hypoxia-cross-platform_metarnaseq_fisher_default.tsv"
+        ]
+      },
+      "catalog": "data/studies/hypoxia_cross_platform_catalog.csv",
+      "comparator_summary": "outputs/results/hypoxia-cross-platform/hypoxia_cross_platform_gold_comparator_summary.csv",
+      "harmonized": "data/deg/harmonized/hypoxia-cross-platform_harmonized.csv",
+      "outdir": "outputs/results/hypoxia-cross-platform",
+      "score_summary": {
+        "db_path": "/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-cross-platform/degora_scores.db",
+        "metadata_json": "/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-cross-platform/degora_score_metadata.json",
+        "n_contrasts": 21,
+        "n_evidence_rows": 334431,
+        "n_gene_scores": 34785,
+        "n_source_quality_outliers": 0,
+        "n_source_units": 17,
+        "score_csv": "/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-cross-platform/degora_gene_scores.csv",
+        "source_quality_diagnostics_json": "/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-cross-platform/degora_source_quality_diagnostics.json",
+        "source_quality_diagnostics_tsv": "/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-cross-platform/degora_source_quality_diagnostics.tsv",
+        "top_genes": [
+          "EGLN3",
+          "NDRG1",
+          "ANGPTL4",
+          "PFKFB4",
+          "TMEM45A",
+          "ADM",
+          "ANKRD37",
+          "HK2",
+          "PPFIA4",
+          "P4HA1",
+          "VEGFA",
+          "ENO2",
+          "BNIP3",
+          "SLC2A3",
+          "MIR210HG",
+          "BNIP3L",
+          "SPAG4",
+          "MXI1",
+          "AK4",
+          "SLC2A1"
+        ]
+      },
+      "slice_metrics": {
+        "assay_type_counts": {
+          "microarray": 2,
+          "unknown": 19
+        },
+        "catalog_path": "/home/keunsoo/projects/09_PIPER/data/studies/hypoxia_cross_platform_catalog.csv",
+        "excluded_catalog_rows": [
+          {
+            "notes": "Excluded from iteration 3 active analysis: lncRNA-only parser-test row, not total mRNA DEG evidence.",
+            "study_id": "HYP002"
+          },
+          {
+            "notes": "Excluded from iteration 3 active analysis: public tutorial DESeq2 all-genes output, not an as-published DEG table.",
+            "study_id": "HYP004"
+          },
+          {
+            "notes": "Excluded from iteration 3 active analysis: public tutorial DESeq2 all-genes output, not an as-published DEG table.",
+            "study_id": "HYP005"
+          },
+          {
+            "notes": "GEO-deposited 17k-row hypoxia-vs-normoxia chondrogenic differentiation table with LFC and nominal p-value; decimal-comma source was converted to parser-stable CSV with raw file retained. Pipeline is recorded as a GEO processed contrast without adjusted p-values, so padj is blank and this provenance limitation is carried explicitly. Excluded from manuscript benchmark after the human-only species gate.",
+            "study_id": "HYP016"
+          },
+          {
+            "notes": "GEO-deposited full Cuffdiff-like differential gene expression table for WT MEFs incubated in normoxia or hypoxia for 16 h; GEO metadata explicitly states biological triplicates for each condition. Source sample_1 is wt_norm and sample_2 is wt_hypo, so log2.fold_change. is already hypoxia versus normoxia. Excluded from manuscript benchmark after the human-only species gate.",
+            "study_id": "HYP022"
+          }
+        ],
+        "gene_symbol_collapse_warnings": [],
+        "gold_panel_gene_count": 0,
+        "gold_panel_reason": "catalog is not an Excel workbook with a GoldPanel sheet",
+        "gold_panel_source": "",
+        "gold_panel_status": "not_provided",
+        "min_studies": 2,
+        "n_active_catalog_rows": 21,
+        "n_catalog_rows": 26,
+        "n_consensus_genes": 34785,
+        "n_harmonized_rows": 385063,
+        "pipeline_counts": {
+          "Cuffdiff": 1,
+          "Cuffdiff_NCBI_ESummary_mapped": 1,
+          "DESeq2": 11,
+          "GEO_processed_contrast_unspecified": 1,
+          "STAR_HTSeq_DESeq2_LRT": 1,
+          "edgeR": 1,
+          "edgeR_QLF": 3,
+          "welch_microarray_normalized_matrix": 2
+        },
+        "pvalue_clipped_rows": 29,
+        "rank_universe_warnings": [],
+        "recall_at_100": {
+          "reason": "no locked topic-specific GoldPanel was provided; do not interpret hypoxia-specific recall for this run",
+          "status": "not_applicable"
+        },
+        "recall_at_50": {
+          "reason": "no locked topic-specific GoldPanel was provided; do not interpret hypoxia-specific recall for this run",
+          "status": "not_applicable"
+        },
+        "source_filter_summary": {
+          "HYP001": {
+            "applied": false,
+            "column": null,
+            "keep": null,
+            "rows_after": 54668,
+            "rows_before": 54668
+          },
+          "HYP003": {
+            "applied": false,
+            "column": null,
+            "keep": null,
+            "rows_after": 17527,
+            "rows_before": 17527
+          },
+          "HYP006": {
+            "applied": false,
+            "column": null,
+            "keep": null,
+            "rows_after": 65217,
+            "rows_before": 65217
+          },
+          "HYP007": {
+            "applied": false,
+            "column": null,
+            "keep": null,
+            "rows_after": 65217,
+            "rows_before": 65217
+          },
+          "HYP008": {
+            "applied": false,
+            "column": null,
+            "keep": null,
+            "rows_after": 33121,
+            "rows_before": 33121
+          },
+          "HYP009": {
+            "applied": false,
+            "column": null,
+            "keep": null,
+            "rows_after": 13628,
+            "rows_before": 13628
+          },
+          "HYP010": {
+            "applied": false,
+            "column": null,
+            "keep": null,
+            "rows_after": 12739,
+            "rows_before": 12739
+          },
+          "HYP011": {
+            "applied": false,
+            "column": null,
+            "keep": null,
+            "rows_after": 13087,
+            "rows_before": 13087
+          },
+          "HYP012": {
+            "applied": false,
+            "column": null,
+            "keep": null,
+            "rows_after": 32201,
+            "rows_before": 32201
+          },
+          "HYP013": {
+            "applied": false,
+            "column": null,
+            "keep": null,
+            "rows_after": 27721,
+            "rows_before": 27721
+          },
+          "HYP014": {
+            "applied": false,
+            "column": null,
+            "keep": null,
+            "rows_after": 21391,
+            "rows_before": 21391
+          },
+          "HYP015": {
+            "applied": false,
+            "column": null,
+            "keep": null,
+            "rows_after": 60232,
+            "rows_before": 60232
+          },
+          "HYP017": {
+            "applied": true,
+            "column": "gene_biotype",
+            "keep": "protein_coding",
+            "rows_after": 15705,
+            "rows_before": 28484
+          },
+          "HYP018": {
+            "applied": false,
+            "column": null,
+            "keep": null,
+            "rows_after": 13322,
+            "rows_before": 13322
+          },
+          "HYP019": {
+            "applied": false,
+            "column": null,
+            "keep": null,
+            "rows_after": 24645,
+            "rows_before": 24645
+          },
+          "HYP020": {
+            "applied": false,
+            "column": null,
+            "keep": null,
+            "rows_after": 15561,
+            "rows_before": 15561
+          },
+          "HYP021": {
+            "applied": true,
+            "column": "gene_biotype",
+            "keep": "protein_coding",
+            "rows_after": 19951,
+            "rows_before": 58735
+          },
+          "HYP023": {
+            "applied": false,
+            "column": null,
+            "keep": null,
+            "rows_after": 14532,
+            "rows_before": 14532
+          },
+          "HYP024": {
+            "applied": false,
+            "column": null,
+            "keep": null,
+            "rows_after": 14011,
+            "rows_before": 14011
+          },
+          "HYP_GSE22282_MDC_HYPOXIA": {
+            "applied": false,
+            "column": null,
+            "keep": null,
+            "rows_after": 21753,
+            "rows_before": 21753
+          },
+          "HYP_GSE3045_ASTROCYTE_HYPOXIA_24h": {
+            "applied": false,
+            "column": null,
+            "keep": null,
+            "rows_after": 21753,
+            "rows_before": 21753
+          }
+        },
+        "source_input_files": [
+          "/home/keunsoo/projects/09_PIPER/data/deg/raw/GSE76743_HUVEC_HYPOXIA_mRNA_DESeq2.txt.gz",
+          "/home/keunsoo/projects/09_PIPER/data/deg/raw/TFEA_hypoxia_symbol.csv",
+          "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter11/GSE255352_HvsO_deg_signflipped.csv",
+          "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter12/GSE313740_processed_dataxGEO_14dic25.xlsx",
+          "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter13/GSE225253_DESeq2_HK-2_hypoxia_vs_HK-2_normoxia_all.xlsx",
+          "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter15/GSE160491_siControl_hypoxia_vs_normoxia_signflipped.csv",
+          "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter15/GSE283446_TableS8.xlsx",
+          "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter16/GSE296192_HCT116_hypoxia_vs_normoxia.csv",
+          "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter16/GSE296192_PC3_hypoxia_vs_normoxia.csv",
+          "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter3/bauer_2022_thp1_total_mrna_AH_vs_N.csv",
+          "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter3/bauer_2022_thp1_total_mrna_CH_vs_N.csv",
+          "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter3/mendeley_z42wpkbb8k_hypoxia_vs_normoxia.csv",
+          "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter6/GSE132624_edgeR_501mel_24h.csv.gz",
+          "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter6/GSE132624_edgeR_IGR37_24h.csv.gz",
+          "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter6/GSE132624_edgeR_IGR39_24h.csv.gz",
+          "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter7/GSE108676_human_refseq_mapped_hypoxia_vs_normoxia.csv",
+          "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter7/GSE70544_Normoxia_vs_Hypoxia_Gencode_gene_exp.diff.txt.gz",
+          "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter8/GSE311800_DEG_Results_All_Comparisons.xlsx",
+          "/home/keunsoo/projects/09_PIPER/data/deg/raw/iter9/GSE293238_RNAseq_processed.xlsx",
+          "/home/keunsoo/projects/09_PIPER/data/deg/raw/microarray_cross_platform/GSE22282_mDC_hypoxia_vs_normoxia_microarray_welch.csv",
+          "/home/keunsoo/projects/09_PIPER/data/deg/raw/microarray_cross_platform/GSE3045_primary_astrocyte_hypoxia_24h_vs_normoxia_microarray_welch.csv"
+        ],
+        "source_input_type_counts": {
+          "normalized_expression_matrix": 2,
+          "unknown": 19
+        },
+        "study_row_counts": {
+          "HYP001": 18835,
+          "HYP003": 17527,
+          "HYP006": 13201,
+          "HYP007": 12781,
+          "HYP008": 19867,
+          "HYP009": 13628,
+          "HYP010": 12739,
+          "HYP011": 13087,
+          "HYP012": 32200,
+          "HYP013": 26023,
+          "HYP014": 21335,
+          "HYP015": 27793,
+          "HYP017": 15686,
+          "HYP018": 13189,
+          "HYP019": 22850,
+          "HYP020": 15553,
+          "HYP021": 16730,
+          "HYP023": 14530,
+          "HYP024": 14009,
+          "HYP_GSE22282_MDC_HYPOXIA": 21750,
+          "HYP_GSE3045_ASTROCYTE_HYPOXIA_24h": 21750
+        },
+        "table_scope_counts": {
+          "full_results": 21
+        },
+        "warnings": []
+      },
+      "topic": "Hypoxia"
+    }
+  ],
+  "preparation": {
+    "ER_GSE19519_LCL_THAPSIGARGIN_4h": {
+      "assay_type": "microarray",
+      "collapse_rule": "min_pvalue_max_abs_lfc",
+      "matrix_path": "data/deg/raw/microarray_cross_platform/GSE19519_ER_STRESS_LCL_probe_gene_matrix.csv",
+      "n_collapsed_probe_rows": 23365,
+      "n_gene_rows": 21753,
+      "n_input_rows": 45118,
+      "n_valid_probe_rows": 45118,
+      "normalization": "GEO_series_matrix_log2_processed",
+      "output_path": "data/deg/raw/microarray_cross_platform/GSE19519_LCL_thapsigargin_4h_vs_DMSO_microarray_welch.csv",
+      "paper_id": "GSE19519_ER_STRESS",
+      "pipeline": "welch_microarray_normalized_matrix",
+      "platform": "GPL570",
+      "preferred_pipeline": "limma_microarray when raw array files or a validated limma full table are available",
+      "source_input_type": "normalized_expression_matrix",
+      "source_url": "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE19519",
+      "study_id": "ER_GSE19519_LCL_THAPSIGARGIN_4h",
+      "top_genes": [
+        "CEBPB",
+        "ASNS",
+        "SLC7A1",
+        "TRIB3",
+        "CARS",
+        "SLC38A2",
+        "CTH",
+        "RBM12",
+        "SARS",
+        "NFE2L1",
+        "NAMPT",
+        "TES",
+        "ATP2B1",
+        "PCK2",
+        "RAB39B",
+        "SESN2",
+        "DDIT3",
+        "CEBPG",
+        "IFRD1",
+        "ZNF143"
+      ]
+    },
+    "ER_GSE19519_LCL_TUNICAMYCIN_8h": {
+      "assay_type": "microarray",
+      "collapse_rule": "min_pvalue_max_abs_lfc",
+      "matrix_path": "data/deg/raw/microarray_cross_platform/GSE19519_ER_STRESS_LCL_probe_gene_matrix.csv",
+      "n_collapsed_probe_rows": 23365,
+      "n_gene_rows": 21753,
+      "n_input_rows": 45118,
+      "n_valid_probe_rows": 45118,
+      "normalization": "GEO_series_matrix_log2_processed",
+      "output_path": "data/deg/raw/microarray_cross_platform/GSE19519_LCL_tunicamycin_8h_vs_DMSO_microarray_welch.csv",
+      "paper_id": "GSE19519_ER_STRESS",
+      "pipeline": "welch_microarray_normalized_matrix",
+      "platform": "GPL570",
+      "preferred_pipeline": "limma_microarray when raw array files or a validated limma full table are available",
+      "source_input_type": "normalized_expression_matrix",
+      "source_url": "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE19519",
+      "study_id": "ER_GSE19519_LCL_TUNICAMYCIN_8h",
+      "top_genes": [
+        "SEL1L",
+        "SARS",
+        "TRIB3",
+        "NFE2L1",
+        "DDIT3",
+        "SLC3A2",
+        "CTH",
+        "CEBPB",
+        "PCK2",
+        "HAX1",
+        "SLC38A2",
+        "CARS",
+        "MEI1",
+        "SLC33A1",
+        "MTHFD2",
+        "FICD",
+        "ASNS",
+        "SLC1A5",
+        "AARS",
+        "SLC1A4"
+      ]
+    },
+    "HYP_GSE22282_MDC_HYPOXIA": {
+      "assay_type": "microarray",
+      "collapse_rule": "min_pvalue_max_abs_lfc",
+      "matrix_path": "data/deg/raw/microarray_cross_platform/GSE22282_hypoxia_mDC_probe_gene_matrix.csv",
+      "n_collapsed_probe_rows": 23365,
+      "n_gene_rows": 21753,
+      "n_input_rows": 45118,
+      "n_valid_probe_rows": 45118,
+      "normalization": "GEO_series_matrix_MAS5_log2_transform",
+      "output_path": "data/deg/raw/microarray_cross_platform/GSE22282_mDC_hypoxia_vs_normoxia_microarray_welch.csv",
+      "paper_id": "GSE22282_MDC_HYPOXIA",
+      "pipeline": "welch_microarray_normalized_matrix",
+      "platform": "GPL570",
+      "preferred_pipeline": "limma_microarray when raw array files or a validated limma full table are available",
+      "source_input_type": "normalized_expression_matrix",
+      "source_url": "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE22282",
+      "study_id": "HYP_GSE22282_MDC_HYPOXIA",
+      "top_genes": [
+        "LRRC63",
+        "GLS",
+        "RFX6",
+        "MS4A4A",
+        "LEF1",
+        "SUB1",
+        "SYPL1",
+        "CCL5",
+        "CCL20",
+        "CD44",
+        "CXCL3",
+        "UGGT1",
+        "LRPPRC",
+        "EPHX3",
+        "SQLE",
+        "C10ORF128",
+        "KCNE1",
+        "MT1M",
+        "EVI2A",
+        "GSAP"
+      ]
+    },
+    "HYP_GSE3045_ASTROCYTE_HYPOXIA_24h": {
+      "assay_type": "microarray",
+      "collapse_rule": "min_pvalue_max_abs_lfc",
+      "matrix_path": "data/deg/raw/microarray_cross_platform/GSE3045_hypoxia_astrocyte_probe_gene_matrix.csv",
+      "n_collapsed_probe_rows": 23365,
+      "n_gene_rows": 21753,
+      "n_input_rows": 45118,
+      "n_valid_probe_rows": 45118,
+      "normalization": "GEO_series_matrix_MAS5_log2_transform",
+      "output_path": "data/deg/raw/microarray_cross_platform/GSE3045_primary_astrocyte_hypoxia_24h_vs_normoxia_microarray_welch.csv",
+      "paper_id": "GSE3045_ASTROCYTE_HYPOXIA",
+      "pipeline": "welch_microarray_normalized_matrix",
+      "platform": "GPL570",
+      "preferred_pipeline": "limma_microarray when raw array files or a validated limma full table are available",
+      "source_input_type": "normalized_expression_matrix",
+      "source_url": "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE3045",
+      "study_id": "HYP_GSE3045_ASTROCYTE_HYPOXIA_24h",
+      "top_genes": [
+        "MAP4",
+        "ZNF497",
+        "CD55",
+        "LOC100506725",
+        "ZNF221",
+        "KALRN",
+        "TNPO1",
+        "CA4",
+        "LRRTM1",
+        "ASL",
+        "LDHA",
+        "DDHD2",
+        "RIMS3",
+        "WIPF2",
+        "SLC25A51",
+        "LOC100130331",
+        "PDE3B",
+        "HAGLROS",
+        "ABCA13",
+        "SLC43A3"
+      ]
+    },
+    "IFN_GSE71634_PBMC_IFNB_18h": {
+      "assay_type": "microarray",
+      "collapse_rule": "min_pvalue_max_abs_lfc",
+      "matrix_path": "data/deg/raw/microarray_cross_platform/GSE71634_IFNB_PBMC_probe_gene_matrix.csv",
+      "n_collapsed_probe_rows": 10506,
+      "n_gene_rows": 20756,
+      "n_input_rows": 31262,
+      "n_valid_probe_rows": 31262,
+      "normalization": "GEO_series_matrix_log2_transform",
+      "output_path": "data/deg/raw/microarray_cross_platform/GSE71634_PBMC_IFNB_18h_vs_unstimulated_microarray_welch.csv",
+      "paper_id": "GSE71634_PBMC_IFNB",
+      "pipeline": "welch_microarray_normalized_matrix",
+      "platform": "GPL10558",
+      "preferred_pipeline": "limma_microarray when raw array files or a validated limma full table are available",
+      "source_input_type": "normalized_expression_matrix",
+      "source_url": "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE71634",
+      "study_id": "IFN_GSE71634_PBMC_IFNB_18h",
+      "top_genes": [
+        "CMPK2",
+        "IFI27",
+        "IFI44L",
+        "USP18",
+        "MX2",
+        "OAS2",
+        "OASL",
+        "DHX58",
+        "TRIM22",
+        "OAS3",
+        "EIF2AK2",
+        "SAMD9",
+        "C19ORF66",
+        "HERC5",
+        "PARP12",
+        "LGALS3BP",
+        "IFI6",
+        "SP110",
+        "DDX58",
+        "PHF11"
+      ]
+    },
+    "downloaded_inputs": [
+      "data/deg/raw/microarray_cross_platform/GSE71634_series_matrix.txt.gz",
+      "data/deg/raw/microarray_cross_platform/GSE19519_series_matrix.txt.gz",
+      "data/deg/raw/microarray_cross_platform/GSE3045_series_matrix.txt.gz",
+      "data/deg/raw/microarray_cross_platform/GSE22282_series_matrix.txt.gz",
+      "data/deg/raw/microarray_cross_platform/GPL10558.annot.gz",
+      "data/deg/raw/microarray_cross_platform/GPL570.annot.gz"
+    ],
+    "er_matrix": {
+      "n_gene_symbols": 21753,
+      "n_probe_rows_with_symbol": 45118,
+      "output": "data/deg/raw/microarray_cross_platform/GSE19519_ER_STRESS_LCL_probe_gene_matrix.csv"
+    },
+    "hypoxia_astrocyte_matrix": {
+      "n_gene_symbols": 21753,
+      "n_probe_rows_with_symbol": 45118,
+      "output": "data/deg/raw/microarray_cross_platform/GSE3045_hypoxia_astrocyte_probe_gene_matrix.csv"
+    },
+    "hypoxia_mdc_matrix": {
+      "n_gene_symbols": 21753,
+      "n_probe_rows_with_symbol": 45118,
+      "output": "data/deg/raw/microarray_cross_platform/GSE22282_hypoxia_mDC_probe_gene_matrix.csv"
+    },
+    "ifn_matrix": {
+      "n_gene_symbols": 20756,
+      "n_probe_rows_with_symbol": 31262,
+      "output": "data/deg/raw/microarray_cross_platform/GSE71634_IFNB_PBMC_probe_gene_matrix.csv"
+    },
+    "sample_groups": {
+      "er_thapsigargin_ctrl": 52,
+      "er_thapsigargin_treat": 52,
+      "er_tunicamycin_ctrl": 60,
+      "er_tunicamycin_treat": 60,
+      "hypoxia_astrocyte_ctrl": 3,
+      "hypoxia_astrocyte_treat": 3,
+      "hypoxia_mdc_ctrl": 3,
+      "hypoxia_mdc_treat": 3,
+      "ifn_ctrl": 20,
+      "ifn_treat": 20
+    }
+  },
+  "tables": {
+    "benchmark_summary": "outputs/results/cross-platform-microarray/cross_platform_benchmark_summary.csv",
+    "dataset_sources": "outputs/results/cross-platform-microarray/cross_platform_dataset_sources.csv",
+    "marker_rank_shifts": "outputs/results/cross-platform-microarray/cross_platform_marker_rank_shifts.csv"
+  }
+}

@@ -1,0 +1,65 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/er_stress_score_metadata_extra.json",
+  "artifact_sha256": "2be2d6a6fd0b5779b7077e98727476aeee1ce144eb699897b24353f7e8ba489c",
+  "artifact_size_bytes": 816,
+  "command": "PYTHONPATH=outputs/code python outputs/code/scripts/write_er_stress_benchmark.py --raw-dir data/deg/raw/er_stress --catalog data/studies/er_stress_upr_catalog.csv --primary-catalog data/studies/er_stress_upr_primary_catalog.csv --gold data/studies/gold/er_stress_upr_gold_panel.csv --output-dir outputs/results/er-stress-benchmark",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/studies/er_stress_upr_catalog.csv",
+      "sha256": "70c00330c4b1884d71a60c706b143b31dba8821ab88195347e87a813616a15f8",
+      "size_bytes": 4925
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/studies/gold/er_stress_upr_gold_panel.csv",
+      "sha256": "0bd4242553e68350a4cbac410069039883b20536839f2e0aa96cfccf93d4b4f1",
+      "size_bytes": 5204
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/er_stress/GSE84450_WT_UTvsWT_DTT_gene_exp.diff.gz",
+      "sha256": "76b50f07c56f9136c38316e38b29a2801fdcd210dd308293a794c3a1501b14b4",
+      "size_bytes": 795960
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/er_stress/GSE102505_glioma_nh125_exp_count_matrix.csv.gz",
+      "sha256": "28955de6337d8a87076c873f759ac16aaa0afca1e1c1d6456b4f2285ee60bd92",
+      "size_bytes": 789827
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/er_stress/GSE296996_count_matrix.txt.gz",
+      "sha256": "524467bcb4722ba98fe2cddcbbd1ccb70734e87a757e223ff4f73e8c8faa899b",
+      "size_bytes": 521879
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/er_stress/GSE245918_rsem_counts.txt.gz",
+      "sha256": "401e977e87842850491ba905c80cefab0959dcd21225e027aecc63ccf1ebc3b3",
+      "size_bytes": 997835
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/er_stress/GSE103667_TE.norm.txt.gz",
+      "sha256": "9d9ffd0ee51fca52d1afff3db96c7214a1eea1681de74be39b23ecea6b13db7b",
+      "size_bytes": 685709
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/ifn/hgnc_complete_set.txt",
+      "sha256": "fd691bb739d2f6558f0f768e1dc315b673d36e4b7540d2fcdd060be36ffa5692",
+      "size_bytes": 16735022
+    }
+  ],
+  "metadata": {
+    "benchmark_topic": "ER stress / unfolded protein response",
+    "claim_scope": "gold_panel_prioritization_in_a_prelocked_er_stress_upr_benchmark",
+    "generator": "er-stress-upr-preparation-summary",
+    "gold_panel_locked_before_scoring": true,
+    "primary_min_studies": 2,
+    "score_interpretation": "prioritization_index_not_calibrated_probability",
+    "time_course_policy": "Related time points or cell-line contrasts from one accession share a paper_id/source-unit and are mean-aggregated by the primary score; no max-signal source-unit selection is used."
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/cross-platform-microarray/gse19519_thapsigargin_microarray_summary.json",
+  "artifact_sha256": "5e39cf3f86ca445eb045b46f8b3c6f1666f8edbcc159ea318fa5f0bd25e6cb97",
+  "artifact_size_bytes": 1155,
+  "command": "PYTHONPATH=outputs/code python outputs/code/scripts/write_cross_platform_microarray_benchmarks.py --output-dir outputs/results/cross-platform-microarray",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/microarray_cross_platform/GSE19519_ER_STRESS_LCL_probe_gene_matrix.csv",
+      "sha256": "697194183ecd41b7921d840937eb52492072dc1f8a5148882732dc07f33a4237",
+      "size_bytes": 171906182
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/microarray_cross_platform/GSE19519_LCL_thapsigargin_4h_vs_DMSO_microarray_welch.csv",
+      "sha256": "95e97b41787ce52f6b531be0f4e7f8adddd873f3c44345ee731fc5eae2a4e685",
+      "size_bytes": 3997944
+    }
+  ],
+  "metadata": {
+    "generator": "microarray-normalized-matrix-summary",
+    "normalization": "GEO_series_matrix_log2_processed",
+    "paper_id": "GSE19519_ER_STRESS",
+    "platform": "GPL570",
+    "source_url": "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE19519",
+    "study_id": "ER_GSE19519_LCL_THAPSIGARGIN_4h"
+  }
+}

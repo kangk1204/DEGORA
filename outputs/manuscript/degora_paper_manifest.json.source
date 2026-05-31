@@ -1,0 +1,1 @@
+env PYTHONPATH=outputs/code python outputs/code/scripts/write_manuscript_package.py --manuscript outputs/manuscript/main.md --tables-dir outputs/tables/manuscript --figures-dir outputs/figures/manuscript --output-dir outputs/manuscript

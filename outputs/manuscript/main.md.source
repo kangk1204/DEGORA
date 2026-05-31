@@ -1,0 +1,17 @@
+Manual manuscript draft updated with paper-writer pass after error3 audit from:
+- outputs/tables/manuscript/Table1_core_benchmark_summary.csv
+- outputs/tables/manuscript/Table2_cross_platform_summary.csv
+- outputs/figures/manuscript/FIGURE_2_BENCHMARK/figure2_benchmark_manifest.json
+- outputs/figures/manuscript/PIPER_CROSS_PLATFORM/piper_cross_platform_manifest.json
+- outputs/figures/manuscript/PIPER_ATLAS/piper_atlas_manifest.json
+- outputs/results/*/piper_score_metadata.json
+- outputs/results/prior_art_coverage_summary.csv
+- outputs/results/*/baselines/public_summary_tool_input_requirements.csv
+
+External method/resource/biology citations were inserted after live literature lookup. Dataset-level source-study citations remain marked for a later citation-audit pass.
+
+Reviewer caveat pass added after the 2026-05-29 15:2x snapshot review:
+- high heterogeneity-flag rates are now explicitly disclosed, including hypoxia 17,880/32,687;
+- thin positive-control source-unit counts and recall@K point-summary status are now stated;
+- comparator results are framed as default/documented same-input adapters, not tuned-baseline dominance;
+- Data and Code Availability now notes the need for public DOI/release plus clean one-command regeneration before submission.

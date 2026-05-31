@@ -1,0 +1,41 @@
+{
+  "command": "PYTHONPATH=outputs/code python outputs/code/figures/make_degora_evidence_explorer.py --output-dir outputs/figures/manuscript/DEGORA_EVIDENCE_EXPLORER",
+  "design": {
+    "deployment": "single self-contained HTML; embeds gzip-compressed SQLite + wasm; opens from file:// with no server or network",
+    "engine": "sql.js (SQLite compiled to WebAssembly), vendored offline",
+    "interactions": [
+      "client-side SQL gene search",
+      "corpus/direction/tier filters",
+      "per-gene per-source provenance drill-down with source URLs",
+      "cross-corpus comparison",
+      "recall heatmap",
+      "gene permalinks via URL hash",
+      "CSV export per gene and per query"
+    ],
+    "tables": [
+      "gene_scores (all scored genes)",
+      "gene_evidence (per-source provenance for top-ranked genes)",
+      "corpora",
+      "method_recall"
+    ]
+  },
+  "figure_id": "DEGORA_EVIDENCE_EXPLORER",
+  "generated_at": "2026-05-31T05:48:46.742188+00:00",
+  "known_limitations": [
+    "Embedded provenance covers the top 1000 ranked genes per corpus; lower-ranked genes show score-level metrics and point to the full per-corpus degora_scores.db.",
+    "DEGORA scores are relative prioritization indices, not calibrated probabilities."
+  ],
+  "outputs": [
+    "outputs/figures/manuscript/DEGORA_EVIDENCE_EXPLORER/degora_evidence_explorer.html",
+    "outputs/figures/manuscript/DEGORA_EVIDENCE_EXPLORER/degora_evidence_explorer.db",
+    "outputs/figures/manuscript/DEGORA_EVIDENCE_EXPLORER/degora_evidence_explorer_manifest.json"
+  ],
+  "script": "outputs/code/figures/make_degora_evidence_explorer.py",
+  "stats": {
+    "n_corpora": 6,
+    "n_evidence": 41993,
+    "n_scores": 118633,
+    "raw_db_bytes": 47923200,
+    "top_evidence_rank": 1000
+  }
+}

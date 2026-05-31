@@ -1,0 +1,48 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/slice_harmonized.csv",
+  "artifact_sha256": "18b31cd86f05358e3940c178163b153b09d94c7a90b37fd24ae4fb48d0fe64a4",
+  "artifact_size_bytes": 50353345,
+  "command": "make -C outputs/code slice CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/heat_shock_hsf1_catalog.csv OUTDIR=outputs/results/heat-shock-benchmark HARMONIZED_DIR=data/deg/harmonized SLICE_MIN_STUDIES=2",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/studies/heat_shock_hsf1_catalog.csv",
+      "sha256": "b4429d1cbd7128bec46d8352ff08e3c116e1eb6f16c6277857cffd0cb6433d2f",
+      "size_bytes": 3816
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/heat_shock/GSE124609_WI38_Senescent_HS_vs_Ctrl_logcpm_welch.csv",
+      "sha256": "54e462b224bffa8b6568045be12f7ce833436d0343f8ab6f1414ef641f851b8e",
+      "size_bytes": 2246825
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/heat_shock/GSE124609_WI38_Young_HS_vs_Ctrl_logcpm_welch.csv",
+      "sha256": "3b0fb9a8ffd5e805eb1009d062d8caabfe232f5b6f6b366f4bef09f25858aecb",
+      "size_bytes": 2277718
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/heat_shock/GSE132447_PrimaryNeurons_HS_3h_REC_vs_Untreated_logcpm_welch.csv",
+      "sha256": "a2c7fecc18681e081605e5db5107e81e4e18d8193472f43a1a86d22a7bfe0bff",
+      "size_bytes": 2716061
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/heat_shock/GSE164834_SW620_HS_1h_REC_1h_vs_Ctrl_logcpm_welch.csv",
+      "sha256": "df52e26864a7184d148dae92c2bef39d3f1dfcaf379c53d3f7a156e95c4aa2ed",
+      "size_bytes": 2446937
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/heat_shock/GSE164834_SW620_HS_1h_vs_Ctrl_logcpm_welch.csv",
+      "sha256": "b6bd11eee98d770a9408956dea1a51c0b1bd37306883aec51c6e55fecf95c59e",
+      "size_bytes": 2422438
+    }
+  ],
+  "metadata": {
+    "generator": "slice",
+    "min_studies": 2
+  }
+}

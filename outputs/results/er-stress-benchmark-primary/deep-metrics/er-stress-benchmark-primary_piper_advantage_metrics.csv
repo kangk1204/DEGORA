@@ -1,0 +1,5 @@
+corpus,score_variant,subset,n_genes,median_n_source_units,median_sign_concordance,fraction_full_concordance,median_loo_rank_stability_score,median_loo_top50_fraction,median_loo_top100_fraction,median_source_quality_weight_sum
+er-stress-benchmark-primary,piper_quality_weighted_secondary,all_scored,11910,3.0,0.8781549444490937,0.3878253568429891,0.934005,0.0,0.0,2.472022
+er-stress-benchmark-primary,piper_quality_weighted_secondary,top100_primary,100,3.0,1.0,1.0,0.998405,0.333333,0.666667,2.472022
+er-stress-benchmark-primary,piper_quality_weighted_secondary,top100_quality_weighted,100,3.0,1.0,1.0,0.998405,0.333333,0.666667,2.472022
+er-stress-benchmark-primary,piper_quality_weighted_secondary,locked_gold,18,3.0,1.0,0.8888888888888888,0.999328,0.666667,0.666667,2.472022

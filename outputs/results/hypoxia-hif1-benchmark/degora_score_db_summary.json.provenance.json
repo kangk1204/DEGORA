@@ -1,0 +1,23 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/degora_score_db_summary.json",
+  "artifact_sha256": "059d9f8140463d8ae55f3d3cc06e7e0ad14d9dc1bd2751206625aaf6ec290a0b",
+  "artifact_size_bytes": 1058,
+  "command": "make -C outputs/code score-db SCORE_HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/hypoxia-hif1-benchmark_harmonized.csv CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/hypoxia_catalog.csv OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark SCORE_DB=/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/degora_scores.db SCORE_MIN_STUDIES=2",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/harmonized/hypoxia-hif1-benchmark_harmonized.csv",
+      "sha256": "4bdcc157b381c7e132a0e566544195bfd050e764fecd1d44bac13fbfa5822cc5",
+      "size_bytes": 231141077
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/studies/hypoxia_catalog.csv",
+      "sha256": "aba15000b3a625f0f17ad131c4b5a38ecb665e957a76a7caa902bfd65624dbf1",
+      "size_bytes": 12822
+    }
+  ],
+  "metadata": {
+    "generator": "degora-score-db"
+  }
+}

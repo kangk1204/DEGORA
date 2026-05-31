@@ -1,0 +1,7 @@
+corpus,method_id,setting_id,metric,n_bootstrap,mean,ci_low,ci_high,seed,bootstrap_unit
+hypoxia-hif1-benchmark,degora_quality_weighted_score,default,aurc_at_max_k,50,0.8593006060606058,0.8274060606060605,0.8779984848484845,1729,source_unit_id
+hypoxia-hif1-benchmark,degora_quality_weighted_score,default,recall_at_100,50,0.8230303030303031,0.7878787878787878,0.8484848484848485,1729,source_unit_id
+hypoxia-hif1-benchmark,fisher,default,aurc_at_max_k,50,0.8486709090909089,0.7833030303030304,0.8889386363636362,1729,source_unit_id
+hypoxia-hif1-benchmark,fisher,default,recall_at_100,50,0.7496969696969696,0.45833333333333337,0.871969696969697,1729,source_unit_id
+hypoxia-hif1-benchmark,weighted_stouffer,default,aurc_at_max_k,50,0.860014545454545,0.8131810606060604,0.8863287878787875,1729,source_unit_id
+hypoxia-hif1-benchmark,weighted_stouffer,default,recall_at_100,50,0.8248484848484849,0.7272727272727273,0.9090909090909091,1729,source_unit_id

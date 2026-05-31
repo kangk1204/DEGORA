@@ -1,0 +1,7 @@
+corpus,method_id,setting_id,metric,n_bootstrap,mean,ci_low,ci_high,seed,bootstrap_unit
+er-stress-cross-platform,degora_quality_weighted_score,default,aurc_at_max_k,50,0.794565,0.5923015625,0.89121875,1729,source_unit_id
+er-stress-cross-platform,degora_quality_weighted_score,default,recall_at_100,50,0.699375,0.46875,0.84375,1729,source_unit_id
+er-stress-cross-platform,fisher,default,aurc_at_max_k,50,0.7746431249999999,0.5266335937500001,0.83125,1729,source_unit_id
+er-stress-cross-platform,fisher,default,recall_at_100,50,0.589375,0.340625,0.6875,1729,source_unit_id
+er-stress-cross-platform,weighted_stouffer,default,aurc_at_max_k,50,0.771518125,0.5352250000000001,0.86159375,1729,source_unit_id
+er-stress-cross-platform,weighted_stouffer,default,recall_at_100,50,0.628125,0.371875,0.74296875,1729,source_unit_id

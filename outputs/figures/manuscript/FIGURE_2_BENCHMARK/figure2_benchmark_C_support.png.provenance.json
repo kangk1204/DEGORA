@@ -1,0 +1,60 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/figures/manuscript/FIGURE_2_BENCHMARK/figure2_benchmark_C_support.png",
+  "artifact_sha256": "ceb8f904dce6961756cff0df94bf72ec3f12c44f9236900bd79a87a6c03906ce",
+  "artifact_size_bytes": 99560,
+  "command": "PYTHONPATH=outputs/code python outputs/code/figures/make_benchmark_figure.py --output-dir outputs/figures/manuscript/FIGURE_2_BENCHMARK",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/ifn_gold_comparator_summary.csv",
+      "sha256": "4546cd95fe98f54078d8b95b83d3ed468c4c0ac05f1daf38e5bcc0fc5629155f",
+      "size_bytes": 13014
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-cross-platform/er_stress_cross_platform_gold_comparator_summary.csv",
+      "sha256": "df2e913ef94eae66511371447523c364de96e32af2b55e7e8d9bbab674554be7",
+      "size_bytes": 11680
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/heat_shock_gold_comparator_summary.csv",
+      "sha256": "f9268e065731449fa99206c28b27ba44a77cdf3fbe00132c8e96792195be8065",
+      "size_bytes": 12607
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_gold_comparator_summary.csv",
+      "sha256": "7e1d863ce41d6323cd935a128f6f2836fdad31af641152ab91cd0170dc3e8b36",
+      "size_bytes": 13285
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/deep-metrics/ifn-pilot_degora_advantage_metrics.csv",
+      "sha256": "0167f2442166aa00f530a424ad110d2ab6cee9539af106984d5d8352bf8205b6",
+      "size_bytes": 648
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-cross-platform/deep-metrics/er-stress-cross-platform_degora_advantage_metrics.csv",
+      "sha256": "d0ef732174ba475275f1e2be0b80acaf6003ad4417506fbbca8969d1ee571e6d",
+      "size_bytes": 744
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/deep-metrics/heat-shock-benchmark_degora_advantage_metrics.csv",
+      "sha256": "b814a40c985f3c2433d87441f6e39153c1736d556c72549d4e85bf45a4677480",
+      "size_bytes": 753
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/deep-metrics/hypoxia-hif1-benchmark_degora_advantage_metrics.csv",
+      "sha256": "d2c2f332a7b1b798c027a22cd02ba8ebc5d21da88fb0950475cb185d5f70de78",
+      "size_bytes": 774
+    }
+  ],
+  "metadata": {
+    "figure_id": "FIGURE_2_BENCHMARK",
+    "generator": "benchmark-figure"
+  }
+}

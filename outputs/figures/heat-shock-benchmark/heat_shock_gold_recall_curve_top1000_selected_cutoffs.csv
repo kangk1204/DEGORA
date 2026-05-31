@@ -1,0 +1,50 @@
+method_label,method_id,setting_id,k,recall,direction_recall,aurc_at_k,direction_aurc_at_k,n_recovered,n_gold
+PIPER primary,piper_deg_score,v1_2_source_unit_mean,10,0.375,0.375,0.275,0.275,6,16
+PIPER quality-weighted,piper_quality_weighted_score,quality_weighted_secondary,10,0.375,0.375,0.275,0.275,6,16
+Weighted Stouffer,weighted_stouffer,default,10,0.375,0.375,0.25,0.25,6,16
+Fisher,fisher,default,10,0.4375,0.4375,0.2375,0.2375,7,16
+MetaVolcanoR,metavolcanor,default,10,0.4375,0.4375,0.2375,0.2375,7,16
+RobustRankAggreg,robustrankaggreg,default,10,0.3125,0.3125,0.1875,0.1875,5,16
+Rank product approx.,rank_product_approx,default,10,0.3125,0.3125,0.20625,0.20625,5,16
+PIPER primary,piper_deg_score,v1_2_source_unit_mean,20,0.375,0.375,0.325,0.325,6,16
+PIPER quality-weighted,piper_quality_weighted_score,quality_weighted_secondary,20,0.375,0.375,0.325,0.325,6,16
+Weighted Stouffer,weighted_stouffer,default,20,0.4375,0.4375,0.34375,0.34375,7,16
+Fisher,fisher,default,20,0.4375,0.4375,0.3375,0.3375,7,16
+MetaVolcanoR,metavolcanor,default,20,0.4375,0.4375,0.3375,0.3375,7,16
+RobustRankAggreg,robustrankaggreg,default,20,0.3125,0.3125,0.25,0.25,5,16
+Rank product approx.,rank_product_approx,default,20,0.4375,0.4375,0.309375,0.309375,7,16
+PIPER primary,piper_deg_score,v1_2_source_unit_mean,50,0.6875,0.6875,0.4425,0.4425,11,16
+PIPER quality-weighted,piper_quality_weighted_score,quality_weighted_secondary,50,0.6875,0.6875,0.43125,0.43125,11,16
+Weighted Stouffer,weighted_stouffer,default,50,0.5,0.5,0.4325,0.4325,8,16
+Fisher,fisher,default,50,0.5,0.5,0.425,0.425,8,16
+MetaVolcanoR,metavolcanor,default,50,0.5,0.5,0.425,0.425,8,16
+RobustRankAggreg,robustrankaggreg,default,50,0.375,0.375,0.315,0.315,6,16
+Rank product approx.,rank_product_approx,default,50,0.4375,0.4375,0.38625,0.38625,7,16
+PIPER primary,piper_deg_score,v1_2_source_unit_mean,100,0.75,0.75,0.59375,0.59375,12,16
+PIPER quality-weighted,piper_quality_weighted_score,quality_weighted_secondary,100,0.75,0.75,0.590625,0.590625,12,16
+Weighted Stouffer,weighted_stouffer,default,100,0.625,0.625,0.503125,0.503125,10,16
+Fisher,fisher,default,100,0.5,0.5,0.4625,0.4625,8,16
+MetaVolcanoR,metavolcanor,default,100,0.5,0.5,0.4625,0.4625,8,16
+RobustRankAggreg,robustrankaggreg,default,100,0.4375,0.4375,0.369375,0.369375,7,16
+Rank product approx.,rank_product_approx,default,100,0.4375,0.4375,0.411875,0.411875,7,16
+PIPER primary,piper_deg_score,v1_2_source_unit_mean,200,0.8125,0.8125,0.69375,0.69375,13,16
+PIPER quality-weighted,piper_quality_weighted_score,quality_weighted_secondary,200,0.8125,0.8125,0.6978125,0.6978125,13,16
+Weighted Stouffer,weighted_stouffer,default,200,0.6875,0.6875,0.5796875,0.5796875,11,16
+Fisher,fisher,default,200,0.625,0.625,0.526875,0.526875,10,16
+MetaVolcanoR,metavolcanor,default,200,0.625,0.625,0.526875,0.526875,10,16
+RobustRankAggreg,robustrankaggreg,default,200,0.625,0.625,0.445625,0.445625,10,16
+Rank product approx.,rank_product_approx,default,200,0.625,0.625,0.4965625,0.4965625,10,16
+PIPER primary,piper_deg_score,v1_2_source_unit_mean,500,0.8125,0.8125,0.765,0.765,13,16
+PIPER quality-weighted,piper_quality_weighted_score,quality_weighted_secondary,500,0.8125,0.8125,0.766625,0.766625,13,16
+Weighted Stouffer,weighted_stouffer,default,500,0.8125,0.8125,0.69025,0.69025,13,16
+Fisher,fisher,default,500,0.75,0.75,0.651125,0.651125,12,16
+MetaVolcanoR,metavolcanor,default,500,0.75,0.75,0.651125,0.651125,12,16
+RobustRankAggreg,robustrankaggreg,default,500,0.6875,0.6875,0.562875,0.562875,11,16
+Rank product approx.,rank_product_approx,default,500,0.75,0.75,0.6165,0.6165,12,16
+PIPER primary,piper_deg_score,v1_2_source_unit_mean,1000,0.8125,0.8125,0.78875,0.78875,13,16
+PIPER quality-weighted,piper_quality_weighted_score,quality_weighted_secondary,1000,0.8125,0.8125,0.7895625,0.7895625,13,16
+Weighted Stouffer,weighted_stouffer,default,1000,0.8125,0.8125,0.751375,0.751375,13,16
+Fisher,fisher,default,1000,0.875,0.875,0.756125,0.756125,14,16
+MetaVolcanoR,metavolcanor,default,1000,0.875,0.875,0.756125,0.756125,14,16
+RobustRankAggreg,robustrankaggreg,default,1000,0.8125,0.8125,0.660125,0.660125,13,16
+Rank product approx.,rank_product_approx,default,1000,0.875,0.875,0.7041875,0.7041875,14,16

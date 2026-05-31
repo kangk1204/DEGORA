@@ -1,0 +1,27 @@
+{
+  "source_family_collapse_table": "/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/piper_score_source_family_collapse_top_genes.tsv",
+  "top_gene_table": "/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/piper_score_resource_top_genes.tsv",
+  "top_genes": [
+    "CMPK2",
+    "MX1",
+    "TAP1",
+    "IFIT1",
+    "RSAD2",
+    "IFIT3",
+    "OASL",
+    "IFIH1",
+    "OAS1",
+    "GBP1",
+    "OAS3",
+    "APOL6",
+    "TRIM21",
+    "ISG15",
+    "UBE2L6",
+    "HELZ2",
+    "IFI6",
+    "SAMD9",
+    "DDX60",
+    "PARP14"
+  ],
+  "top_n": 20
+}

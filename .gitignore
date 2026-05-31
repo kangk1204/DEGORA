@@ -1,0 +1,86 @@
+.omx/
+.omc/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+.Rhistory
+.DS_Store
+
+# Bootstrap snapshots duplicated outside the active root workspace.
+piper.zip
+piper_methodology_dev.tar.gz
+piper_methodology_dev/
+
+# Failed or unused exploratory downloads from curation attempts.
+data/deg/raw/TFEA.ChIP_1.28.0.tar.gz
+data/deg/raw/ijms-22-08160-s1.zip
+data/deg/raw/ijms-25-07669-s001.zip
+
+# Junk duplicate trees created by wrong-CWD pipeline runs (regenerable; never commit).
+outputs/code/outputs/
+outputs/code/data/
+outputs/code/figures/__pycache__/
+
+# Mouse ER source excluded by the human-only species gate (raw inputs, regenerable).
+data/deg/raw/er_stress/GSE84989/
+data/deg/raw/er_stress/GSE84989_RAW.tar
+
+# Local review scratch.
+.audit_results_listing.txt
+.claude/
+data/deg/raw/er_stress/GSE84989_RAW.tar.provenance.json
+data/deg/raw/er_stress/GSE84989_RAW.tar.source
+
+# ---- Public-release exclusions: regenerable large artifacts ----
+# Per-corpus full SQLite score DBs (regenerate with `make -C outputs/code score-db`;
+# the lean evidence DB is embedded in the Evidence Explorer and shipped separately).
+outputs/results/**/piper_scores.db
+outputs/figures/manuscript/PIPER_ATLAS/piper_atlas.db
+outputs/figures/manuscript/PIPER_EVIDENCE_EXPLORER/piper_evidence_explorer.db
+# Harmonized long-format tables (regenerate from catalogs via the harmonize step).
+data/deg/harmonized/*_harmonized.csv
+data/deg/harmonized/*_harmonized.parquet
+# Large per-corpus score CSVs (regenerate via score-db).
+outputs/results/**/piper_gene_scores.csv
+# Large raw reference downloads (re-download from the documented source URLs).
+data/deg/raw/microarray/GPL17077_platform.txt
+data/deg/raw/ifn/hgnc_complete_set.txt
+# Additional regenerable large intermediates (slice harmonized, rank-plane points, derived matrices).
+outputs/results/**/slice_harmonized.csv
+outputs/results/**/rank_plane_points.csv
+data/deg/raw/microarray_cross_platform/GSE19519_ER_STRESS_LCL_probe_gene_matrix.csv
+data/deg/raw/microarray_cross_platform/*_series_matrix.txt.gz
+
+# ---- DEGORA-rename update (2026-05-31): exclude all large regenerable artifacts ----
+# The piper_* patterns above predate the degora rename; the pipeline now emits
+# degora_*-prefixed files. Per release policy, commit only paper-related source/text
+# and curated panels; never commit large regenerable inputs or score artifacts.
+
+# All raw + harmonized DEG input data (large; re-download/regenerate from catalogs).
+data/deg/
+
+# Per-corpus SQLite score DBs and large score/intermediate tables (regenerate via `make -C outputs/code score-db` / `paper`).
+outputs/results/**/*.db
+outputs/results/**/*.parquet
+outputs/results/**/degora_gene_scores.csv
+outputs/results/**/slice_consensus.csv
+outputs/results/**/rank_plane_gene_summary.csv
+outputs/results/**/rank_plane_points.csv
+
+# Old experimental iteration trees (regenerable; not part of the manuscript).
+outputs/results/iter-*/
+
+# Comparator baseline outputs: large regenerable per-method TSVs (rerun via `make -C outputs/code baseline`).
+outputs/results/**/baselines/
+
+# Indisulam drug pilot: excluded from the manuscript (4 topics are IFN/ER/heat/hypoxia).
+outputs/results/indisulam*/
+
+# Large interactive figure artifacts (regenerable; Explorer/Atlas DBs + HTML shipped separately).
+outputs/figures/manuscript/**/*.db
+outputs/figures/manuscript/**/*.html
+outputs/figures/manuscript/DEGORA_ATLAS/degora_atlas_gene_index.csv
+outputs/figures/manuscript/DEGORA_ATLAS/degora_atlas_source_data.xlsx

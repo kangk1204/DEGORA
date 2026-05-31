@@ -1,0 +1,23 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/piper_score_db_summary.json",
+  "artifact_sha256": "f776a21ab7bd9b24173a3f9d29220767e77112650f5d741de484c81b29e67442",
+  "artifact_size_bytes": 973,
+  "command": "make -C outputs/code score-db SCORE_HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/ifn-pilot_harmonized.csv CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/ifn_derived_catalog.csv OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot SCORE_DB=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/piper_scores.db SCORE_MIN_STUDIES=2",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/harmonized/ifn-pilot_harmonized.csv",
+      "sha256": "d8d71a755afc5e66b763e84b6a0f01f1de5fed68d667e41b7bab3c996bed171d",
+      "size_bytes": 50271689
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/studies/ifn_derived_catalog.csv",
+      "sha256": "d29b9f12ffb70a7635b1a8bb1e25c407338a2ea27cd3d0852e2563386ff27e1a",
+      "size_bytes": 4394
+    }
+  ],
+  "metadata": {
+    "generator": "piper-score-db"
+  }
+}

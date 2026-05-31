@@ -1,0 +1,28 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-cross-platform/hypoxia_cross_platform_gold_comparator_summary.md",
+  "artifact_sha256": "2de42abf96cc7f44bca58d059f3033966f2313271ff3738045dab914d1a975d2",
+  "artifact_size_bytes": 3888,
+  "command": "PYTHONPATH=outputs/code python outputs/code/scripts/write_cross_platform_microarray_benchmarks.py --output-dir outputs/results/cross-platform-microarray",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-cross-platform/baselines"
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/studies/gold/hypoxia_hif1_gold_panel.csv",
+      "sha256": "f7a48c415be46210e9df7b9c7f532d26915c227a8abfe54e6afe2f79cc772ee9",
+      "size_bytes": 9871
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-cross-platform/degora_gene_scores.csv",
+      "sha256": "7fb5099a28151013400797ba5362732c35a0cdd5bed2c1c1d668cea6fccdf795",
+      "size_bytes": 28447262
+    }
+  ],
+  "metadata": {
+    "generator": "cross-platform-gold-comparator-summary",
+    "topic": "Hypoxia"
+  }
+}

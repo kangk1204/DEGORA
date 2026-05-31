@@ -1,0 +1,7 @@
+corpus,method_id,setting_id,metric,n_bootstrap,mean,ci_low,ci_high,seed,bootstrap_unit
+ifn-pilot,degora_quality_weighted_score,default,aurc_at_max_k,50,0.9077449999999999,0.8635357142857141,0.9351071428571426,1729,source_unit_id
+ifn-pilot,degora_quality_weighted_score,default,recall_at_100,50,0.9171428571428573,0.8571428571428571,0.9285714285714286,1729,source_unit_id
+ifn-pilot,fisher,default,aurc_at_max_k,50,0.8950928571428572,0.8485714285714284,0.9094642857142855,1729,source_unit_id
+ifn-pilot,fisher,default,recall_at_100,50,0.8950000000000001,0.7857142857142857,0.9285714285714286,1729,source_unit_id
+ifn-pilot,weighted_stouffer,default,aurc_at_max_k,50,0.8950928571428572,0.8485714285714284,0.9094642857142855,1729,source_unit_id
+ifn-pilot,weighted_stouffer,default,recall_at_100,50,0.8950000000000001,0.7857142857142857,0.9285714285714286,1729,source_unit_id

@@ -1,0 +1,1 @@
+env PYTHONPATH=outputs/code python outputs/code/scripts/write_study_tool_feasibility_matrix.py --harmonized outputs/results/ifn-pilot/slice_harmonized.csv --corpus ifn-pilot --output-csv outputs/results/ifn-pilot/tool-feasibility/ifn-pilot_study_tool_feasibility_matrix.csv --output-md outputs/results/ifn-pilot/tool-feasibility/ifn-pilot_study_tool_feasibility_matrix.md

@@ -1,0 +1,10 @@
+{
+  "artifact_path": "data/studies/gold/hypoxia_hif1_gold_panel.csv",
+  "artifact_sha256": "f7a48c415be46210e9df7b9c7f532d26915c227a8abfe54e6afe2f79cc772ee9",
+  "artifact_size_bytes": 9871,
+  "command": "make -C outputs/code expanded-gold-panels",
+  "inputs": [],
+  "metadata": {
+    "generator": "expanded-core-gold-panel:hypoxia_hif1_gold_panel.csv"
+  }
+}

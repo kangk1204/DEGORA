@@ -1,0 +1,28 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/heat_shock_gold_comparator_summary.md",
+  "artifact_sha256": "069a2bb1a6c451694a3b8e83746de5748ce57716072de27eef43ba967071feb0",
+  "artifact_size_bytes": 3992,
+  "command": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_gold_comparator_summary.py --baseline-dir outputs/results/heat-shock-benchmark/baselines --gold data/studies/gold/heat_shock_hsf1_gold_panel.csv --gold-gene-column gene_symbol --degora-score-csv outputs/results/heat-shock-benchmark/degora_gene_scores.csv --degora-score-label v1_2_source_unit_mean --title 'Heat shock locked gold-panel comparator summary' --output-csv outputs/results/heat-shock-benchmark/heat_shock_gold_comparator_summary.csv --output-md outputs/results/heat-shock-benchmark/heat_shock_gold_comparator_summary.md",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/baselines"
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/studies/gold/heat_shock_hsf1_gold_panel.csv",
+      "sha256": "0c843b9b781da82293f50b3a91d6f3271c08488d76be5108175bb4b8342b167a",
+      "size_bytes": 7477
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/degora_gene_scores.csv",
+      "sha256": "e093ef4e8ac20ee8f664b4daa9e7c5c3996140ff0f932b7b0a9e1abf26c17dd6",
+      "size_bytes": 10863694
+    }
+  ],
+  "metadata": {
+    "generator": "gold-comparator-summary",
+    "gold": "data/studies/gold/heat_shock_hsf1_gold_panel.csv"
+  }
+}

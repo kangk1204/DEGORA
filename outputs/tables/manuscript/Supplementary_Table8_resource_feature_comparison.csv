@@ -1,0 +1,7 @@
+resource,per_source_evidence_drilldown,source_url_on_every_evidence_row,direction_aware_filtering,heterogeneity_or_confidence_surfaced,effect_size_with_CI,client_side_SQL_over_full_schema,fully_static_offline_no_server,gene_permalinks,bulk_and_per_gene_download,self_contained_single_file
+DEGORA Evidence Explorer,yes,yes,yes,yes,yes,yes,yes,yes,yes,yes
+DEET (Sokolowski 2023),yes,yes (PMID),partial,no,no,no,no,partial,yes,no
+CREEDS / RummaGEO,partial,yes (GSE),yes (up/down),no,no,no,no,partial,yes,no
+ARCHS4,partial,yes (GSM),no,no,no,no,no,yes,yes,no
+Enrichr / SigCom LINCS,partial,partial,yes,no,no,no,no,yes,yes,no
+Open Targets Platform,yes,yes,no,yes (datatype score),no,no,no,yes,yes,no

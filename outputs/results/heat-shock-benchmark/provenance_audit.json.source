@@ -1,0 +1,1 @@
+make -C outputs/code provenance-check RESULTS_ROOT=/home/keunsoo/projects/09_PIPER/outputs/results OUTPUT=/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/provenance_audit.json ITERATIONS=heat-shock-benchmark

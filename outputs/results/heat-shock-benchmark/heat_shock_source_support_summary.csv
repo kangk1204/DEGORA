@@ -1,0 +1,13 @@
+metric,cutoff,denominator,n_recovered,recall,recovered_genes,missing_genes,criteria
+locked_membership_recall,10,16,6,0.375,BAG3;DNAJB1;HSPA1A;HSPA1B;HSPA6;HSPH1,DNAJB6;DNAJC7;HSP90AA1;HSP90AB1;HSPA4;HSPA4L;HSPA5;HSPB1;HSPB8;SERPINH1,gene is in locked gold panel
+locked_direction_recall,10,16,6,0.375,BAG3;DNAJB1;HSPA1A;HSPA1B;HSPA6;HSPH1,DNAJB6;DNAJC7;HSP90AA1;HSP90AB1;HSPA4;HSPA4L;HSPA5;HSPB1;HSPB8;SERPINH1,locked gold gene is recovered with expected direction when declared
+locked_source_supported_recall,10,16,6,0.375,BAG3;DNAJB1;HSPA1A;HSPA1B;HSPA6;HSPH1,DNAJB6;DNAJC7;HSP90AA1;HSP90AB1;HSPA4;HSPA4L;HSPA5;HSPB1;HSPB8;SERPINH1,locked direction match plus n_source_units>=2 and sign_concordance>=1.0
+locked_membership_recall,20,16,6,0.375,BAG3;DNAJB1;HSPA1A;HSPA1B;HSPA6;HSPH1,DNAJB6;DNAJC7;HSP90AA1;HSP90AB1;HSPA4;HSPA4L;HSPA5;HSPB1;HSPB8;SERPINH1,gene is in locked gold panel
+locked_direction_recall,20,16,6,0.375,BAG3;DNAJB1;HSPA1A;HSPA1B;HSPA6;HSPH1,DNAJB6;DNAJC7;HSP90AA1;HSP90AB1;HSPA4;HSPA4L;HSPA5;HSPB1;HSPB8;SERPINH1,locked gold gene is recovered with expected direction when declared
+locked_source_supported_recall,20,16,6,0.375,BAG3;DNAJB1;HSPA1A;HSPA1B;HSPA6;HSPH1,DNAJB6;DNAJC7;HSP90AA1;HSP90AB1;HSPA4;HSPA4L;HSPA5;HSPB1;HSPB8;SERPINH1,locked direction match plus n_source_units>=2 and sign_concordance>=1.0
+locked_membership_recall,50,16,11,0.6875,BAG3;DNAJB1;HSP90AA1;HSP90AB1;HSPA1A;HSPA1B;HSPA6;HSPB1;HSPB8;HSPH1;SERPINH1,DNAJB6;DNAJC7;HSPA4;HSPA4L;HSPA5,gene is in locked gold panel
+locked_direction_recall,50,16,11,0.6875,BAG3;DNAJB1;HSP90AA1;HSP90AB1;HSPA1A;HSPA1B;HSPA6;HSPB1;HSPB8;HSPH1;SERPINH1,DNAJB6;DNAJC7;HSPA4;HSPA4L;HSPA5,locked gold gene is recovered with expected direction when declared
+locked_source_supported_recall,50,16,11,0.6875,BAG3;DNAJB1;HSP90AA1;HSP90AB1;HSPA1A;HSPA1B;HSPA6;HSPB1;HSPB8;HSPH1;SERPINH1,DNAJB6;DNAJC7;HSPA4;HSPA4L;HSPA5,locked direction match plus n_source_units>=2 and sign_concordance>=1.0
+locked_membership_recall,100,16,12,0.75,BAG3;DNAJB1;HSP90AA1;HSP90AB1;HSPA1A;HSPA1B;HSPA4L;HSPA6;HSPB1;HSPB8;HSPH1;SERPINH1,DNAJB6;DNAJC7;HSPA4;HSPA5,gene is in locked gold panel
+locked_direction_recall,100,16,12,0.75,BAG3;DNAJB1;HSP90AA1;HSP90AB1;HSPA1A;HSPA1B;HSPA4L;HSPA6;HSPB1;HSPB8;HSPH1;SERPINH1,DNAJB6;DNAJC7;HSPA4;HSPA5,locked gold gene is recovered with expected direction when declared
+locked_source_supported_recall,100,16,12,0.75,BAG3;DNAJB1;HSP90AA1;HSP90AB1;HSPA1A;HSPA1B;HSPA4L;HSPA6;HSPB1;HSPB8;HSPH1;SERPINH1,DNAJB6;DNAJC7;HSPA4;HSPA5,locked direction match plus n_source_units>=2 and sign_concordance>=1.0

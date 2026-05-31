@@ -1,0 +1,23 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/ifn-cross-platform/degora_source_quality_diagnostics.tsv",
+  "artifact_sha256": "bf577b4a42e937ef1d3fc579802341777822d942211f6c86f06cad9f2d3ac85b",
+  "artifact_size_bytes": 1060,
+  "command": "PYTHONPATH=outputs/code python outputs/code/scripts/write_cross_platform_microarray_benchmarks.py --output-dir outputs/results/cross-platform-microarray",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/harmonized/ifn-cross-platform_harmonized.csv",
+      "sha256": "a87db4b95c546856798ebfe372d03750c2cfcabe653ad13d61e22590d291387f",
+      "size_bytes": 64721736
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/studies/ifn_cross_platform_catalog.csv",
+      "sha256": "f7577d21249ab43876c1c922f92ef337b6f2345f54390cd8a97e11c10324f70c",
+      "size_bytes": 5114
+    }
+  ],
+  "metadata": {
+    "generator": "degora-score-db"
+  }
+}

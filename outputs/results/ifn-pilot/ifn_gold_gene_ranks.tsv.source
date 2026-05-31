@@ -1,0 +1,1 @@
+PYTHONPATH=outputs/code python outputs/code/scripts/summarize_ifn_pilot.py --score-csv outputs/results/ifn-pilot/piper_gene_scores.csv --gold data/studies/gold/ifn_isg_targets.csv --output-json outputs/results/ifn-pilot/ifn_pilot_summary.json --output-tsv outputs/results/ifn-pilot/ifn_gold_gene_ranks.tsv

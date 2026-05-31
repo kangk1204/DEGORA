@@ -1,0 +1,50 @@
+method_label,method_id,setting_id,k,recall,direction_recall,aurc_at_k,direction_aurc_at_k,n_recovered,n_gold
+PIPER primary,piper_deg_score,v1_2_source_unit_mean,10,0.35,0.35,0.18000000000000002,0.18000000000000002,7,20
+PIPER quality-weighted,piper_quality_weighted_score,quality_weighted_secondary,10,0.35,0.35,0.18000000000000002,0.18000000000000002,7,20
+Weighted Stouffer,weighted_stouffer,default,10,0.25,0.25,0.11500000000000002,0.11500000000000002,5,20
+Fisher,fisher,default,10,0.25,0.25,0.11500000000000002,0.11500000000000002,5,20
+MetaVolcanoR,metavolcanor,default,10,0.25,0.25,0.11500000000000002,0.11500000000000002,5,20
+RobustRankAggreg,robustrankaggreg,default,10,0.2,0.2,0.095,0.095,4,20
+Rank product approx.,rank_product_approx,default,10,0.25,0.25,0.12,0.12,5,20
+PIPER primary,piper_deg_score,v1_2_source_unit_mean,20,0.5,0.5,0.3175,0.3175,10,20
+PIPER quality-weighted,piper_quality_weighted_score,quality_weighted_secondary,20,0.5,0.5,0.3175,0.3175,10,20
+Weighted Stouffer,weighted_stouffer,default,20,0.4,0.4,0.2325,0.2325,8,20
+Fisher,fisher,default,20,0.45,0.45,0.24500000000000002,0.24500000000000002,9,20
+MetaVolcanoR,metavolcanor,default,20,0.45,0.45,0.24500000000000002,0.24500000000000002,9,20
+RobustRankAggreg,robustrankaggreg,default,20,0.5,0.5,0.2325,0.2325,10,20
+Rank product approx.,rank_product_approx,default,20,0.5,0.5,0.255,0.255,10,20
+PIPER primary,piper_deg_score,v1_2_source_unit_mean,50,0.85,0.85,0.555,0.555,17,20
+PIPER quality-weighted,piper_quality_weighted_score,quality_weighted_secondary,50,0.85,0.85,0.557,0.557,17,20
+Weighted Stouffer,weighted_stouffer,default,50,0.7,0.7,0.44099999999999995,0.44099999999999995,14,20
+Fisher,fisher,default,50,0.7,0.7,0.44599999999999995,0.44599999999999995,14,20
+MetaVolcanoR,metavolcanor,default,50,0.7,0.7,0.44599999999999995,0.44599999999999995,14,20
+RobustRankAggreg,robustrankaggreg,default,50,0.65,0.65,0.42599999999999993,0.42599999999999993,13,20
+Rank product approx.,rank_product_approx,default,50,0.7,0.7,0.48699999999999993,0.48699999999999993,14,20
+PIPER primary,piper_deg_score,v1_2_source_unit_mean,100,0.9,0.9,0.7220000000000003,0.7220000000000003,18,20
+PIPER quality-weighted,piper_quality_weighted_score,quality_weighted_secondary,100,0.9,0.9,0.7230000000000004,0.7230000000000004,18,20
+Weighted Stouffer,weighted_stouffer,default,100,0.9,0.9,0.6615000000000002,0.6615000000000002,18,20
+Fisher,fisher,default,100,0.95,0.95,0.6640000000000001,0.6640000000000001,19,20
+MetaVolcanoR,metavolcanor,default,100,0.95,0.95,0.6640000000000001,0.6640000000000001,19,20
+RobustRankAggreg,robustrankaggreg,default,100,0.85,0.85,0.6094999999999999,0.6094999999999999,17,20
+Rank product approx.,rank_product_approx,default,100,0.85,0.85,0.6375,0.6375,17,20
+PIPER primary,piper_deg_score,v1_2_source_unit_mean,200,0.9,0.9,0.8110000000000003,0.8110000000000003,18,20
+PIPER quality-weighted,piper_quality_weighted_score,quality_weighted_secondary,200,0.9,0.9,0.8115000000000002,0.8115000000000002,18,20
+Weighted Stouffer,weighted_stouffer,default,200,0.9,0.9,0.7807500000000002,0.7807500000000002,18,20
+Fisher,fisher,default,200,0.95,0.95,0.807,0.807,19,20
+MetaVolcanoR,metavolcanor,default,200,0.95,0.95,0.807,0.807,19,20
+RobustRankAggreg,robustrankaggreg,default,200,0.9,0.9,0.7317499999999998,0.7317499999999998,18,20
+Rank product approx.,rank_product_approx,default,200,0.95,0.95,0.7774999999999999,0.7774999999999999,19,20
+PIPER primary,piper_deg_score,v1_2_source_unit_mean,500,0.95,0.95,0.8827999999999999,0.8827999999999999,19,20
+PIPER quality-weighted,piper_quality_weighted_score,quality_weighted_secondary,500,0.95,0.95,0.8879000000000001,0.8879000000000001,19,20
+Weighted Stouffer,weighted_stouffer,default,500,0.9,0.9,0.8523000000000002,0.8523000000000002,18,20
+Fisher,fisher,default,500,0.95,0.95,0.8927999999999999,0.8927999999999999,19,20
+MetaVolcanoR,metavolcanor,default,500,0.95,0.95,0.8927999999999999,0.8927999999999999,19,20
+RobustRankAggreg,robustrankaggreg,default,500,0.95,0.95,0.8375000000000001,0.8375000000000001,19,20
+Rank product approx.,rank_product_approx,default,500,0.95,0.95,0.8809999999999999,0.8809999999999999,19,20
+PIPER primary,piper_deg_score,v1_2_source_unit_mean,1000,0.95,0.95,0.9163999999999999,0.9163999999999999,19,20
+PIPER quality-weighted,piper_quality_weighted_score,quality_weighted_secondary,1000,0.95,0.95,0.9189499999999998,0.9189499999999998,19,20
+Weighted Stouffer,weighted_stouffer,default,1000,0.95,0.95,0.8781500000000001,0.8781500000000001,19,20
+Fisher,fisher,default,1000,0.95,0.95,0.9213999999999998,0.9213999999999998,19,20
+MetaVolcanoR,metavolcanor,default,1000,0.95,0.95,0.9213999999999998,0.9213999999999998,19,20
+RobustRankAggreg,robustrankaggreg,default,1000,0.95,0.95,0.8937499999999999,0.8937499999999999,19,20
+Rank product approx.,rank_product_approx,default,1000,0.95,0.95,0.9154999999999998,0.9154999999999998,19,20

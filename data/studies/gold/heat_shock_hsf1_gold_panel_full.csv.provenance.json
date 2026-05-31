@@ -1,0 +1,10 @@
+{
+  "artifact_path": "data/studies/gold/heat_shock_hsf1_gold_panel_full.csv",
+  "artifact_sha256": "d67244e1726a9e2c396d8a7c42d22001605af6a72dc4c3088e041171eb23662b",
+  "artifact_size_bytes": 11563,
+  "command": "make -C outputs/code expanded-gold-panels",
+  "inputs": [],
+  "metadata": {
+    "generator": "expanded-full-gold-panel:heat_shock_hsf1_gold_panel_full.csv"
+  }
+}

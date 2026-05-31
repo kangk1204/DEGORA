@@ -1,0 +1,131 @@
+{
+  "command": "PYTHONPATH=outputs/code python outputs/code/figures/make_degora_atlas_dashboard.py --output-dir outputs/figures/manuscript/DEGORA_ATLAS --prior-art outputs/results/prior_art_coverage_summary.csv",
+  "figure_id": "DEGORA_ATLAS",
+  "generated_at": "2026-05-31T05:48:40.657333+00:00",
+  "inputs": [
+    "outputs/results/prior_art_coverage_summary.csv",
+    "outputs/results/ifn-pilot/degora_gene_scores.csv",
+    "outputs/results/er-stress-cross-platform/degora_gene_scores.csv",
+    "outputs/results/heat-shock-benchmark/degora_gene_scores.csv",
+    "outputs/results/hypoxia-hif1-benchmark/degora_gene_scores.csv",
+    "outputs/results/ifn-cross-platform/degora_gene_scores.csv",
+    "outputs/results/hypoxia-cross-platform/degora_gene_scores.csv",
+    "outputs/results/ifn-pilot/ifn_gold_comparator_summary.csv",
+    "outputs/results/er-stress-cross-platform/er_stress_cross_platform_gold_comparator_summary.csv",
+    "outputs/results/heat-shock-benchmark/heat_shock_gold_comparator_summary.csv",
+    "outputs/results/hypoxia-hif1-benchmark/hypoxia_hif1_gold_comparator_summary.csv",
+    "outputs/results/ifn-cross-platform/ifn_cross_platform_gold_comparator_summary.csv",
+    "outputs/results/hypoxia-cross-platform/hypoxia_cross_platform_gold_comparator_summary.csv",
+    "outputs/results/ifn-pilot/degora_score_metadata.json",
+    "outputs/results/er-stress-cross-platform/degora_score_metadata.json",
+    "outputs/results/heat-shock-benchmark/degora_score_metadata.json",
+    "outputs/results/hypoxia-hif1-benchmark/degora_score_metadata.json",
+    "outputs/results/ifn-cross-platform/degora_score_metadata.json",
+    "outputs/results/hypoxia-cross-platform/degora_score_metadata.json"
+  ],
+  "known_limitations": [
+    "The static HTML embeds score-level rows, not every source-level evidence row.",
+    "Recall summaries use locked or anchor panels and do not estimate false-positive rates.",
+    "DEGORA scores are relative prioritization indices, not calibrated probabilities."
+  ],
+  "outputs": [
+    "outputs/figures/manuscript/DEGORA_ATLAS/degora_atlas.html",
+    "outputs/figures/manuscript/DEGORA_ATLAS/degora_atlas.db",
+    "outputs/figures/manuscript/DEGORA_ATLAS/degora_atlas_source_data.xlsx",
+    "outputs/figures/manuscript/DEGORA_ATLAS/degora_atlas_gene_index.csv",
+    "outputs/figures/manuscript/DEGORA_ATLAS/degora_atlas_legend.docx",
+    "outputs/figures/manuscript/DEGORA_ATLAS/degora_atlas_manifest.json",
+    "outputs/figures/manuscript/DEGORA_ATLAS/degora_atlas_validation.txt",
+    "outputs/figures/manuscript/DEGORA_ATLAS/degora_atlas.png",
+    "outputs/figures/manuscript/DEGORA_ATLAS/degora_atlas.pdf",
+    "outputs/figures/manuscript/DEGORA_ATLAS/degora_atlas.svg",
+    "outputs/figures/manuscript/DEGORA_ATLAS/degora_atlas_A_corpus_scale.png",
+    "outputs/figures/manuscript/DEGORA_ATLAS/degora_atlas_A_corpus_scale.pdf",
+    "outputs/figures/manuscript/DEGORA_ATLAS/degora_atlas_A_corpus_scale.svg",
+    "outputs/figures/manuscript/DEGORA_ATLAS/degora_atlas_B_recall_heatmap.png",
+    "outputs/figures/manuscript/DEGORA_ATLAS/degora_atlas_B_recall_heatmap.pdf",
+    "outputs/figures/manuscript/DEGORA_ATLAS/degora_atlas_B_recall_heatmap.svg",
+    "outputs/figures/manuscript/DEGORA_ATLAS/degora_atlas_C_evidence_quality.png",
+    "outputs/figures/manuscript/DEGORA_ATLAS/degora_atlas_C_evidence_quality.pdf",
+    "outputs/figures/manuscript/DEGORA_ATLAS/degora_atlas_C_evidence_quality.svg",
+    "outputs/figures/manuscript/DEGORA_ATLAS/degora_atlas_D_prior_art_status.png",
+    "outputs/figures/manuscript/DEGORA_ATLAS/degora_atlas_D_prior_art_status.pdf",
+    "outputs/figures/manuscript/DEGORA_ATLAS/degora_atlas_D_prior_art_status.svg"
+  ],
+  "panel_claims": [
+    "A, corpus scale is computed from degora_gene_scores.csv and degora_score_metadata.json.",
+    "B, recall@100 is read from corpus-level gold or anchor comparator summaries.",
+    "C, top-100 evidence quality is computed from quality-weighted DEGORA ranks.",
+    "D, prior-art input status is summarized from prior_art_coverage_summary.csv."
+  ],
+  "script": "outputs/code/figures/make_degora_atlas_dashboard.py",
+  "source_data": [
+    "outputs/figures/manuscript/DEGORA_ATLAS/degora_atlas_source_data.xlsx",
+    "outputs/figures/manuscript/DEGORA_ATLAS/degora_atlas_gene_index.csv"
+  ],
+  "transformations": {
+    "gene_rank_used_for_dashboard": "quality_weighted_degora_rank when present, otherwise degora_rank",
+    "static_html": "self-contained HTML with embedded compact score index; detailed evidence remains in SQLite",
+    "top100_evidence": "median metrics among genes with dashboard rank <= 100 per corpus"
+  },
+  "validation": {
+    "n_corpora": 6,
+    "n_total_scored_gene_rows": 118633,
+    "top100_rows": [
+      {
+        "corpus_id": "ifn-pilot",
+        "corpus_label": "IFN",
+        "median_evidence_reliability": 93.043,
+        "median_loo_stability": 0.999,
+        "median_sign_concordance": 1.0,
+        "median_source_units": 2.0,
+        "n_top100": 100
+      },
+      {
+        "corpus_id": "er-stress-cross-platform",
+        "corpus_label": "ER stress",
+        "median_evidence_reliability": 95.532,
+        "median_loo_stability": 1.0,
+        "median_sign_concordance": 1.0,
+        "median_source_units": 4.0,
+        "n_top100": 100
+      },
+      {
+        "corpus_id": "heat-shock-benchmark",
+        "corpus_label": "Heat shock",
+        "median_evidence_reliability": 94.509,
+        "median_loo_stability": 0.997,
+        "median_sign_concordance": 1.0,
+        "median_source_units": 3.0,
+        "n_top100": 100
+      },
+      {
+        "corpus_id": "hypoxia-hif1-benchmark",
+        "corpus_label": "Hypoxia",
+        "median_evidence_reliability": 96.494,
+        "median_loo_stability": 1.0,
+        "median_sign_concordance": 0.992,
+        "median_source_units": 15.0,
+        "n_top100": 100
+      },
+      {
+        "corpus_id": "ifn-cross-platform",
+        "corpus_label": "IFN mixed",
+        "median_evidence_reliability": 94.565,
+        "median_loo_stability": 1.0,
+        "median_sign_concordance": 1.0,
+        "median_source_units": 3.0,
+        "n_top100": 100
+      },
+      {
+        "corpus_id": "hypoxia-cross-platform",
+        "corpus_label": "Hypoxia mixed",
+        "median_evidence_reliability": 96.516,
+        "median_loo_stability": 1.0,
+        "median_sign_concordance": 0.992,
+        "median_source_units": 17.0,
+        "n_top100": 100
+      }
+    ]
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "artifact_path": "data/studies/gold/er_stress_upr_gold_panel_full.csv",
+  "artifact_sha256": "5ab82dbfb5b1506c75a51fc926fe495490c7f2e54d004f3959c4c6f9a8051ca1",
+  "artifact_size_bytes": 13168,
+  "command": "make -C outputs/code expanded-gold-panels",
+  "inputs": [],
+  "metadata": {
+    "generator": "expanded-full-gold-panel:er_stress_upr_gold_panel_full.csv"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary/degora_scores.db",
+  "artifact_sha256": "ed95e809c879c8d6b2e09d647c742c9624e1c865f53009cdf34bc4564361dda8",
+  "artifact_size_bytes": 59219968,
+  "command": "make -C outputs/code score-db SCORE_HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/er-stress-benchmark-primary_harmonized.csv CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/er_stress_upr_primary_catalog.csv OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary SCORE_DB=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary/degora_scores.db SCORE_MIN_STUDIES=2",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/harmonized/er-stress-benchmark-primary_harmonized.csv",
+      "sha256": "076308fd22090126d7d1144f967379bc7231a214f5b3cfecfb121922ab395a06",
+      "size_bytes": 43527949
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/studies/er_stress_upr_primary_catalog.csv",
+      "sha256": "8bebe90c08eeeacc791881800d8709f8af3fba119119fd5b4e04acd504f991a0",
+      "size_bytes": 5054
+    }
+  ],
+  "metadata": {
+    "generator": "degora-score-db"
+  }
+}

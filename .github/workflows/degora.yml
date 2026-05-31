@@ -18,13 +18,14 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r outputs/code/requirements.txt
           python -m pip install -e outputs/code
-      - name: Run code checks
-        run: make -C outputs/code check
-      - name: Validate manuscript package
-        # NOTE: This lightweight CI job validates committed manuscript artifacts
-        # and Python unit tests only.  The full R-based comparator regeneration
-        # (RobustRankAggreg, metaRNASeq via BiocManager, rpy2 bridge) requires
-        # a complete R + Bioconductor environment as specified in environment.yml
-        # and is NOT run here.  To reproduce comparator results locally, create
-        # the conda environment from environment.yml and run `make comparators`.
-        run: make -C outputs/code paper
+      - name: Run package unit tests and static checks
+        # Clean-checkout CI validates the Python PACKAGE only (unit tests, byte-compile,
+        # import lint). The `provenance-check` step, the figure/table regeneration, and
+        # the full `paper` build all depend on the large curated corpus and the generated
+        # intermediates under data/deg and outputs/results, which are gitignored in this
+        # lean code mirror and shipped instead in the Zenodo archive. They therefore
+        # CANNOT and do NOT run on a bare clone. To reproduce the full benchmark, tables,
+        # and figures, create the conda environment from environment.yml, obtain the
+        # curated corpus from the Zenodo release, and run `make -C outputs/code paper`
+        # (R comparators via run_baselines require the R/Bioconductor stack noted there).
+        run: make -C outputs/code unit typecheck lint

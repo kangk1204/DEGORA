@@ -1,0 +1,42 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/gse147507_author_ifnb_piper_overlap_summary.json",
+  "artifact_sha256": "276e6b1ae21da7aa98c028d7e61082d5626b2d7641d0bc968778809f0fe06a25",
+  "artifact_size_bytes": 7891,
+  "command": "PYTHONPATH=outputs/code python outputs/code/scripts/compare_ifn_author_deg.py --author-xlsx data/deg/raw/ifn/GSE147507_BlancoMelo_Cell2020_mmc2_NHBE_DESeq2.xlsx --piper-score-csv outputs/results/ifn-pilot/piper_gene_scores.csv --derived-deg data/deg/raw/ifn/GSE147507_IFNB_4h_vs_mock_derived_logcpm_welch.csv --derived-deg data/deg/raw/ifn/GSE147507_IFNB_6h_vs_mock_derived_logcpm_welch.csv --derived-deg data/deg/raw/ifn/GSE147507_IFNB_12h_vs_mock_derived_logcpm_welch.csv --author-output-csv data/deg/raw/ifn/GSE147507_BlancoMelo_Cell2020_NHBE_IFNB_author_DESeq2.csv --piper-top-output-tsv outputs/results/ifn-pilot/gse147507_author_ifnb_piper_top50.tsv --author-top-output-tsv outputs/results/ifn-pilot/gse147507_author_ifnb_author_top50.tsv --availability-output-tsv outputs/results/ifn-pilot/ifn_author_deg_availability.tsv --summary-output-json outputs/results/ifn-pilot/gse147507_author_ifnb_piper_overlap_summary.json",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/ifn/GSE147507_BlancoMelo_Cell2020_mmc2_NHBE_DESeq2.xlsx",
+      "sha256": "a323699d146080c2118b2dbea0db7ae50b083a034adc6584ac821d3b2a58fba0",
+      "size_bytes": 2705838
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/piper_gene_scores.csv",
+      "sha256": "de9b6871f7ef2f261f7caf9fa88f31d3964bcd45cc0bcbab372c4ef724643387",
+      "size_bytes": 7178671
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/ifn/GSE147507_IFNB_4h_vs_mock_derived_logcpm_welch.csv",
+      "sha256": "c5cf4dcc4f6bccecd5126b8a4e39b442030285c6d33c2c18ae8e8d9e92b3278d",
+      "size_bytes": 1146484
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/ifn/GSE147507_IFNB_6h_vs_mock_derived_logcpm_welch.csv",
+      "sha256": "50bae3e5736ad5c9c265339417eada4c7ca240809fdbc76bbe11b1051eab418a",
+      "size_bytes": 1151352
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/ifn/GSE147507_IFNB_12h_vs_mock_derived_logcpm_welch.csv",
+      "sha256": "e0d50005c5e4e8192847ce6305872b3dde401eb62ef43833f82e78e9f78d729a",
+      "size_bytes": 1122429
+    }
+  ],
+  "metadata": {
+    "author_source": "Blanco-Melo Cell 2020 mmc2",
+    "generator": "ifn-author-deg-comparison"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/cross-platform-microarray/cross_platform_microarray_benchmark_summary.json",
+  "artifact_sha256": "14c68909907df1bdd72ebe01246f9afc78c561a9d1b8a410b177ccac21cf53b8",
+  "artifact_size_bytes": 39692,
+  "command": "PYTHONPATH=outputs/code python outputs/code/scripts/write_cross_platform_microarray_benchmarks.py --output-dir outputs/results/cross-platform-microarray",
+  "inputs": [],
+  "metadata": {
+    "generator": "cross-platform-microarray-benchmark-summary"
+  }
+}

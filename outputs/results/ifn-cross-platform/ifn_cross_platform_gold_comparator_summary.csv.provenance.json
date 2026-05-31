@@ -1,0 +1,28 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/ifn-cross-platform/ifn_cross_platform_gold_comparator_summary.csv",
+  "artifact_sha256": "41b2c4dc7b6c00ce95ba89d472e61ea2e42cb0534928c22f5419022b0bc9b764",
+  "artifact_size_bytes": 11936,
+  "command": "PYTHONPATH=outputs/code python outputs/code/scripts/write_cross_platform_microarray_benchmarks.py --output-dir outputs/results/cross-platform-microarray",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/ifn-cross-platform/baselines"
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/studies/gold/ifn_gold_panel.csv",
+      "sha256": "6ff68be3e320aeba2deaa15beadfc2d3e4a32ec8ad9e098394e237c1f00db56f",
+      "size_bytes": 8465
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/ifn-cross-platform/degora_gene_scores.csv",
+      "sha256": "da3661f00ebab518f57ea9ff636b61af96a5090802105c1f9a9403fa6a91d5f6",
+      "size_bytes": 9698346
+    }
+  ],
+  "metadata": {
+    "generator": "cross-platform-gold-comparator-summary",
+    "topic": "IFN"
+  }
+}

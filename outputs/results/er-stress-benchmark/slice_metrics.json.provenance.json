@@ -1,0 +1,48 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/slice_metrics.json",
+  "artifact_sha256": "3313308e433ba2157621b8580154e3f0096b200db43757c557c3b2222b0a9a2f",
+  "artifact_size_bytes": 2987,
+  "command": "make -C outputs/code slice CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/er_stress_upr_catalog.csv OUTDIR=outputs/results/er-stress-benchmark HARMONIZED_DIR=data/deg/harmonized SLICE_MIN_STUDIES=2",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/studies/er_stress_upr_catalog.csv",
+      "sha256": "da77fd4a044cceee0de6dec85b0bb5a545f1a949eb770a5c58959d07baca4be1",
+      "size_bytes": 3028
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/er_stress/GSE102505_NHA_tunicamycin_vs_DMSO_derived_logcpm_welch.csv",
+      "sha256": "60ad8eed74d28fd6df13714bebfc8b07626310f89e7063b191cdb4ac3e1925a7",
+      "size_bytes": 1758717
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/er_stress/GSE102505_T4213_tunicamycin_vs_DMSO_derived_logcpm_welch.csv",
+      "sha256": "44da0fd4129cedfc60756b09da1d69c3f67cb03570a8743ab2c7b08226eb7d09",
+      "size_bytes": 1603296
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/er_stress/GSE102505_U251_tunicamycin_vs_DMSO_derived_logcpm_welch.csv",
+      "sha256": "c6ab74a35930fd20a2b8066411b8f1f29898984afa9c9a78780b40f116296c9c",
+      "size_bytes": 1880536
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/er_stress/GSE103667_THAP_vs_DMSO_normexpr_welch.csv",
+      "sha256": "57eff0aff7f7b8c59d165f193a6a79f0ae6d6b9a28efc854711bb9d145b2eff5",
+      "size_bytes": 1108310
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/er_stress/GSE84450_WT_DTT_vs_UT_cuffdiff_clean.csv",
+      "sha256": "ab0741f4ef128f20f9becd572cb531620c9a1b762aa472be25a68839582b6fb4",
+      "size_bytes": 610294
+    }
+  ],
+  "metadata": {
+    "generator": "slice",
+    "min_studies": 2
+  }
+}

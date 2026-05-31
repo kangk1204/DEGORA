@@ -1,0 +1,34 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/deep-metrics/heat-shock-benchmark_piper_advantage_metrics.csv",
+  "artifact_sha256": "773f43322ee5cfc00e729b016b78c8b0794d4f56a8c9f361a7723e4f7dc2cfc1",
+  "artifact_size_bytes": 747,
+  "command": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_benchmark_deep_metrics.py --corpus heat-shock-benchmark --baseline-dir outputs/results/heat-shock-benchmark/baselines --harmonized data/deg/harmonized/heat-shock-benchmark_harmonized.csv --gold data/studies/gold/heat_shock_hsf1_gold_panel.csv --gold-gene-column gene_symbol --piper-score-csv outputs/results/heat-shock-benchmark/piper_gene_scores.csv --output-dir outputs/results/heat-shock-benchmark/deep-metrics --title 'Heat shock deep benchmark metrics' --min-studies 2 --max-k 1000 --n-bootstrap 10 --bootstrap-methods piper_quality_weighted_score weighted_stouffer fisher --seed 1729",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/baselines"
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/harmonized/heat-shock-benchmark_harmonized.csv",
+      "sha256": "18b31cd86f05358e3940c178163b153b09d94c7a90b37fd24ae4fb48d0fe64a4",
+      "size_bytes": 50353345
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/studies/gold/heat_shock_hsf1_gold_panel.csv",
+      "sha256": "43b84b05728a989184d741a1fea4d48dee450d17aba9797b3a8d23bf074d2c7d",
+      "size_bytes": 5766
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/piper_gene_scores.csv",
+      "sha256": "59bca6b86b5dd7afc94cdf6f5fc0bd9b31f60c532cf257f6f316650ba67ca336",
+      "size_bytes": 10738440
+    }
+  ],
+  "metadata": {
+    "corpus": "heat-shock-benchmark",
+    "generator": "benchmark-deep-metrics"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/piper_source_quality_diagnostics.tsv",
+  "artifact_sha256": "9016dc6ae589bcf6b64c20ee8a8f475db03bae2940a230d054cc70c2ff402788",
+  "artifact_size_bytes": 973,
+  "command": "make -C outputs/code score-db SCORE_HARMONIZED=/home/keunsoo/projects/09_PIPER/data/deg/harmonized/er-stress-benchmark_harmonized.csv CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/er_stress_upr_catalog.csv OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark SCORE_DB=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/piper_scores.db SCORE_MIN_STUDIES=2 EXTRA_METADATA=/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/er_stress_score_metadata_extra.json",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/harmonized/er-stress-benchmark_harmonized.csv",
+      "sha256": "df4891ae55b66a080e806c5ab9fd8571885d69d412b424ee7121c465e8973c34",
+      "size_bytes": 33628424
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/studies/er_stress_upr_catalog.csv",
+      "sha256": "da77fd4a044cceee0de6dec85b0bb5a545f1a949eb770a5c58959d07baca4be1",
+      "size_bytes": 3028
+    }
+  ],
+  "metadata": {
+    "generator": "piper-score-db"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/cross-platform-microarray/cross_platform_dataset_sources.csv",
+  "artifact_sha256": "10b46787aedd3ce1c464eb4765b1a6341b379767a50641f2b9f0f6f50b510b36",
+  "artifact_size_bytes": 935,
+  "command": "PYTHONPATH=outputs/code python outputs/code/scripts/write_cross_platform_microarray_benchmarks.py --output-dir outputs/results/cross-platform-microarray",
+  "inputs": [],
+  "metadata": {
+    "generator": "cross-platform-dataset-sources"
+  }
+}

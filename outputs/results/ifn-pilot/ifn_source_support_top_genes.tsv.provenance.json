@@ -1,0 +1,46 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/ifn_source_support_top_genes.tsv",
+  "artifact_sha256": "924868f09c8506a8a10b94444ee840547f6db162b843544aa521691f434cce44",
+  "artifact_size_bytes": 2695,
+  "command": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_source_support_report.py --score-csv outputs/results/ifn-pilot/piper_gene_scores.csv --gold data/studies/gold/ifn_gold_panel.csv --marker-panel data/studies/interpretive/ifn_type_i_marker_panel.csv --gold-gene-column gene_symbol --rank-column piper_rank --direction-column consensus_direction --top-n 10 --cutoffs 10 20 50 100 --min-source-units 2 --min-sign-concordance 1.0 --title 'IFN PIPER Source-Support Report' --output-summary-csv outputs/results/ifn-pilot/ifn_source_support_summary.csv --output-top-tsv outputs/results/ifn-pilot/ifn_source_support_top_genes.tsv --output-json outputs/results/ifn-pilot/ifn_source_support_report.json --output-md outputs/results/ifn-pilot/ifn_source_support_report.md",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/piper_gene_scores.csv",
+      "sha256": "37432f388d86e5f45c0516163e73f92352a1864b897ed60c1dd64999700e819d",
+      "size_bytes": 4965158
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/studies/gold/ifn_gold_panel.csv",
+      "sha256": "5c3879acfdf5b58de11600ad384d43573026623f2f415db12118e411c29bf6ca",
+      "size_bytes": 4164
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/studies/interpretive/ifn_type_i_marker_panel.csv",
+      "sha256": "3bd661fc13b4f4e4e7e0d8cb211442c5f19f014929b681f97d79f05a2cf42fd9",
+      "size_bytes": 1376
+    }
+  ],
+  "metadata": {
+    "cutoffs": [
+      10,
+      20,
+      50,
+      100
+    ],
+    "direction_column": "consensus_direction",
+    "generator": "source-support-report",
+    "gold_path": "data/studies/gold/ifn_gold_panel.csv",
+    "marker_panel": "data/studies/interpretive/ifn_type_i_marker_panel.csv",
+    "min_sign_concordance": 1.0,
+    "min_source_units": 2,
+    "n_interpretive_markers": 3,
+    "n_locked_gold": 20,
+    "n_scored_genes": 9860,
+    "rank_column": "piper_rank",
+    "score_csv": "outputs/results/ifn-pilot/piper_gene_scores.csv",
+    "top_n": 10
+  }
+}

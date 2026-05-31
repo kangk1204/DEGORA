@@ -1,0 +1,34 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/deep-metrics/ifn-pilot_deep_metrics_report.md",
+  "artifact_sha256": "916122cc6f883eedce1b120fcc5c49ecd191f52e4d2d937ec36f9ec311d45800",
+  "artifact_size_bytes": 4047,
+  "command": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_benchmark_deep_metrics.py --corpus ifn-pilot --baseline-dir outputs/results/ifn-pilot/baselines --harmonized data/deg/harmonized/ifn-pilot_harmonized.csv --gold data/studies/gold/ifn_gold_panel.csv --gold-gene-column gene_symbol --degora-score-csv outputs/results/ifn-pilot/degora_gene_scores.csv --output-dir outputs/results/ifn-pilot/deep-metrics --title 'IFN pilot deep benchmark metrics' --min-studies 2 --max-k 1000 --n-bootstrap 50 --bootstrap-methods degora_quality_weighted_score weighted_stouffer fisher --seed 1729",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/baselines"
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/harmonized/ifn-pilot_harmonized.csv",
+      "sha256": "d8d71a755afc5e66b763e84b6a0f01f1de5fed68d667e41b7bab3c996bed171d",
+      "size_bytes": 50271689
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/studies/gold/ifn_gold_panel.csv",
+      "sha256": "6ff68be3e320aeba2deaa15beadfc2d3e4a32ec8ad9e098394e237c1f00db56f",
+      "size_bytes": 8465
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/degora_gene_scores.csv",
+      "sha256": "716bb4198404e315f60bf9f0c82735c02510e3e9970782c83938bf49e115865d",
+      "size_bytes": 7151954
+    }
+  ],
+  "metadata": {
+    "corpus": "ifn-pilot",
+    "generator": "benchmark-deep-metrics"
+  }
+}

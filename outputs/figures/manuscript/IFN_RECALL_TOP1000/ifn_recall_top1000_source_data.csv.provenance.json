@@ -1,0 +1,29 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/figures/manuscript/IFN_RECALL_TOP1000/ifn_recall_top1000_source_data.csv",
+  "artifact_sha256": "3539692f94adf038c5da77d7cb5ea7ffbbc84c9c1d172e280a775969fde827b6",
+  "artifact_size_bytes": 513086,
+  "command": "PYTHONPATH=outputs/code python outputs/code/figures/make_gold_recall_curve.py --baseline-dir outputs/results/ifn-pilot/baselines --gold data/studies/gold/ifn_isg_targets.csv --gold-gene-column gene_symbol --piper-score-csv outputs/results/ifn-pilot/piper_gene_scores.csv --output-dir outputs/figures/manuscript/IFN_RECALL_TOP1000 --figure-id IFN_RECALL_TOP1000 --output-stem ifn_recall_top1000 --title 'IFN locked ISG recall through top 1000' --max-k 1000",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/baselines"
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/studies/gold/ifn_isg_targets.csv",
+      "sha256": "5c3879acfdf5b58de11600ad384d43573026623f2f415db12118e411c29bf6ca",
+      "size_bytes": 4164
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/piper_gene_scores.csv",
+      "sha256": "4de2d91954e12785932341d0a1005b14de7662b4a2d1edab1de2a407555f8d1f",
+      "size_bytes": 9841975
+    }
+  ],
+  "metadata": {
+    "figure_id": "IFN_RECALL_TOP1000",
+    "generator": "gold-recall-curve",
+    "max_k": 1000
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-cross-platform/degora_score_db_summary.json",
+  "artifact_sha256": "d753c6e3abc73e3d17986059370bf84dfaf919c23e9d5f5a92d7cfec048c95fa",
+  "artifact_size_bytes": 1058,
+  "command": "PYTHONPATH=outputs/code python outputs/code/scripts/write_cross_platform_microarray_benchmarks.py --output-dir outputs/results/cross-platform-microarray",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/harmonized/hypoxia-cross-platform_harmonized.csv",
+      "sha256": "7e99a94f9269b1019138bf403decd2e31388300e27760fb591c26869e6e57983",
+      "size_bytes": 226696218
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/studies/hypoxia_cross_platform_catalog.csv",
+      "sha256": "71bc65ac66ea8b551ec7f7b74f56e2918e609af8275b8508c8abadc54891583b",
+      "size_bytes": 14557
+    }
+  ],
+  "metadata": {
+    "generator": "degora-score-db"
+  }
+}

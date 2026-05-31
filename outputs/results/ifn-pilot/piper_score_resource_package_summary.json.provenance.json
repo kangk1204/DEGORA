@@ -1,0 +1,23 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/piper_score_resource_package_summary.json",
+  "artifact_sha256": "977ace53006bdc36c35b212369eb34efd8a75d4bd0d8a662b61af79283008abb",
+  "artifact_size_bytes": 554,
+  "command": "make -C outputs/code resource-package RESOURCE_SCORE_CSV=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/piper_gene_scores.csv RESOURCE_SCORE_DB=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/piper_scores.db RESOURCE_OUTDIR=/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot RESOURCE_TOP_N=20 RESOURCE_API_URL=",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/piper_gene_scores.csv",
+      "sha256": "4de2d91954e12785932341d0a1005b14de7662b4a2d1edab1de2a407555f8d1f",
+      "size_bytes": 9841975
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/piper_scores.db",
+      "sha256": "66bc8e0429e9885cb6bd8d8ad9f973d671f463e5e8aeb62243fdca1552a9e983",
+      "size_bytes": 138997760
+    }
+  ],
+  "metadata": {
+    "generator": "piper-resource-package"
+  }
+}

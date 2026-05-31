@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pandas as pd
 
+from degora.gold import HIF1A_UP_TARGETS
 from scripts.write_comparator_summary import SUMMARY_COLUMNS, build_summary
 
 
@@ -44,7 +45,10 @@ def test_comparator_summary_reports_runnable_and_blocked_methods(tmp_path) -> No
     summary = build_summary(baseline_dir)
 
     assert summary.columns.tolist() == SUMMARY_COLUMNS
-    assert summary.loc[summary["method_id"].eq("degora_slice"), "recall_at_50"].iloc[0] == 0.1
+    # VEGFA and HK2 are the two locked positives recovered within the top 50;
+    # recall is relative to the size of the locked HIF1A_UP_TARGETS panel.
+    expected_recall_at_50 = 2 / len(HIF1A_UP_TARGETS)
+    assert summary.loc[summary["method_id"].eq("degora_slice"), "recall_at_50"].iloc[0] == expected_recall_at_50
     awmeta = summary.loc[summary["method_id"].eq("awmeta")].iloc[0]
     assert awmeta["run_status"] == "blocked"
     assert awmeta["failure_mode"] == "awmeta_variance_inputs_missing"

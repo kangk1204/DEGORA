@@ -1,0 +1,66 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/ifn-cross-platform/slice_harmonized.csv",
+  "artifact_sha256": "a87db4b95c546856798ebfe372d03750c2cfcabe653ad13d61e22590d291387f",
+  "artifact_size_bytes": 64721736,
+  "command": "make -C outputs/code slice CATALOG=/home/keunsoo/projects/09_PIPER/data/studies/ifn_cross_platform_catalog.csv OUTDIR=outputs/results/ifn-cross-platform HARMONIZED_DIR=data/deg/harmonized SLICE_MIN_STUDIES=2",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/studies/ifn_cross_platform_catalog.csv",
+      "sha256": "f7577d21249ab43876c1c922f92ef337b6f2345f54390cd8a97e11c10324f70c",
+      "size_bytes": 5114
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/ifn/GSE147507_IFNB_12h_vs_mock_derived_logcpm_welch.csv",
+      "sha256": "0236b4d37018c4dc9b12bec1d73f0128381a2a0f8b231bff8c1afacd51130c15",
+      "size_bytes": 1699591
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/ifn/GSE147507_IFNB_4h_vs_mock_derived_logcpm_welch.csv",
+      "sha256": "e7726907b07de9a4460a3170df85e4523afb42ade93022684c5a66021eda21a7",
+      "size_bytes": 1731621
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/ifn/GSE147507_IFNB_6h_vs_mock_derived_logcpm_welch.csv",
+      "sha256": "a971bbba87312e38ac42143673f3cdd017f1b5f1c3272df2c741477c7f7bd438",
+      "size_bytes": 1709032
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/ifn/GSE221804_IFNA_24h_vs_un_derived_logcpm_welch.csv",
+      "sha256": "0339b707bed4e9498b5049729b2278cfd87cfd982fd04fc19f38d382d112e7a1",
+      "size_bytes": 1827747
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/ifn/GSE221804_IFNA_2h_vs_un_derived_logcpm_welch.csv",
+      "sha256": "4e6fea2c9ced25bf703de5fe9a4e9c3ac8827ac473a6231a57a25bd24ac34f95",
+      "size_bytes": 1810313
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/ifn/GSE221804_IFNA_4h_vs_un_derived_logcpm_welch.csv",
+      "sha256": "d27fa8b20a6808f3a6333462f41ba73224a0f0a3857b6213f858b6d6f2c9d973",
+      "size_bytes": 1821001
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/ifn/GSE221804_IFNA_8h_vs_un_derived_logcpm_welch.csv",
+      "sha256": "66f057dba805722c3ffbeac0c432d6915fed3c4c2f9099c381f7318812fc8cd3",
+      "size_bytes": 1820396
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/microarray_cross_platform/GSE71634_PBMC_IFNB_18h_vs_unstimulated_microarray_welch.csv",
+      "sha256": "abca8ee886bb3a9ae4199b6a9b099d21476ceecfc9696e2657b3fea984e23c71",
+      "size_bytes": 3890952
+    }
+  ],
+  "metadata": {
+    "generator": "slice",
+    "min_studies": 2
+  }
+}

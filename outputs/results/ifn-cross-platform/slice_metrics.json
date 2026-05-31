@@ -1,0 +1,118 @@
+{
+  "assay_type_counts": {
+    "RNA-seq": 7,
+    "microarray": 1
+  },
+  "catalog_path": "/home/keunsoo/projects/09_PIPER/data/studies/ifn_cross_platform_catalog.csv",
+  "excluded_catalog_rows": [],
+  "gene_symbol_collapse_warnings": [],
+  "gold_panel_gene_count": 0,
+  "gold_panel_reason": "catalog is not an Excel workbook with a GoldPanel sheet",
+  "gold_panel_source": "",
+  "gold_panel_status": "not_provided",
+  "min_studies": 2,
+  "n_active_catalog_rows": 8,
+  "n_catalog_rows": 8,
+  "n_consensus_genes": 12777,
+  "n_harmonized_rows": 101745,
+  "pipeline_counts": {
+    "logCPM_Welch_derived_from_public_counts": 7,
+    "welch_microarray_normalized_matrix": 1
+  },
+  "pvalue_clipped_rows": 0,
+  "rank_universe_warnings": [],
+  "recall_at_100": {
+    "reason": "no locked topic-specific GoldPanel was provided; do not interpret hypoxia-specific recall for this run",
+    "status": "not_applicable"
+  },
+  "recall_at_50": {
+    "reason": "no locked topic-specific GoldPanel was provided; do not interpret hypoxia-specific recall for this run",
+    "status": "not_applicable"
+  },
+  "source_filter_summary": {
+    "IFN_GSE147507_NHBE_IFNB_12h": {
+      "applied": false,
+      "column": null,
+      "keep": null,
+      "rows_after": 11080,
+      "rows_before": 11080
+    },
+    "IFN_GSE147507_NHBE_IFNB_4h": {
+      "applied": false,
+      "column": null,
+      "keep": null,
+      "rows_after": 11252,
+      "rows_before": 11252
+    },
+    "IFN_GSE147507_NHBE_IFNB_6h": {
+      "applied": false,
+      "column": null,
+      "keep": null,
+      "rows_after": 11092,
+      "rows_before": 11092
+    },
+    "IFN_GSE221804_HUHWT_IFNA_24h": {
+      "applied": false,
+      "column": null,
+      "keep": null,
+      "rows_after": 11953,
+      "rows_before": 11953
+    },
+    "IFN_GSE221804_HUHWT_IFNA_2h": {
+      "applied": false,
+      "column": null,
+      "keep": null,
+      "rows_after": 11822,
+      "rows_before": 11822
+    },
+    "IFN_GSE221804_HUHWT_IFNA_4h": {
+      "applied": false,
+      "column": null,
+      "keep": null,
+      "rows_after": 11892,
+      "rows_before": 11892
+    },
+    "IFN_GSE221804_HUHWT_IFNA_8h": {
+      "applied": false,
+      "column": null,
+      "keep": null,
+      "rows_after": 11898,
+      "rows_before": 11898
+    },
+    "IFN_GSE71634_PBMC_IFNB_18h": {
+      "applied": false,
+      "column": null,
+      "keep": null,
+      "rows_after": 20756,
+      "rows_before": 20756
+    }
+  },
+  "source_input_files": [
+    "/home/keunsoo/projects/09_PIPER/data/deg/raw/ifn/GSE147507_IFNB_12h_vs_mock_derived_logcpm_welch.csv",
+    "/home/keunsoo/projects/09_PIPER/data/deg/raw/ifn/GSE147507_IFNB_4h_vs_mock_derived_logcpm_welch.csv",
+    "/home/keunsoo/projects/09_PIPER/data/deg/raw/ifn/GSE147507_IFNB_6h_vs_mock_derived_logcpm_welch.csv",
+    "/home/keunsoo/projects/09_PIPER/data/deg/raw/ifn/GSE221804_IFNA_24h_vs_un_derived_logcpm_welch.csv",
+    "/home/keunsoo/projects/09_PIPER/data/deg/raw/ifn/GSE221804_IFNA_2h_vs_un_derived_logcpm_welch.csv",
+    "/home/keunsoo/projects/09_PIPER/data/deg/raw/ifn/GSE221804_IFNA_4h_vs_un_derived_logcpm_welch.csv",
+    "/home/keunsoo/projects/09_PIPER/data/deg/raw/ifn/GSE221804_IFNA_8h_vs_un_derived_logcpm_welch.csv",
+    "/home/keunsoo/projects/09_PIPER/data/deg/raw/microarray_cross_platform/GSE71634_PBMC_IFNB_18h_vs_unstimulated_microarray_welch.csv"
+  ],
+  "source_input_type_counts": {
+    "derived_count_table": 7,
+    "normalized_expression_matrix": 1
+  },
+  "study_row_counts": {
+    "IFN_GSE147507_NHBE_IFNB_12h": 11080,
+    "IFN_GSE147507_NHBE_IFNB_4h": 11252,
+    "IFN_GSE147507_NHBE_IFNB_6h": 11092,
+    "IFN_GSE221804_HUHWT_IFNA_24h": 11953,
+    "IFN_GSE221804_HUHWT_IFNA_2h": 11822,
+    "IFN_GSE221804_HUHWT_IFNA_4h": 11892,
+    "IFN_GSE221804_HUHWT_IFNA_8h": 11898,
+    "IFN_GSE71634_PBMC_IFNB_18h": 20756
+  },
+  "table_scope_counts": {
+    "full_results": 8
+  },
+  "warnings": []
+}

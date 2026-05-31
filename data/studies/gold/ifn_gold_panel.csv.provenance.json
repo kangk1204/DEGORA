@@ -1,10 +1,10 @@
 {
   "artifact_path": "data/studies/gold/ifn_gold_panel.csv",
-  "artifact_sha256": "5c3879acfdf5b58de11600ad384d43573026623f2f415db12118e411c29bf6ca",
-  "artifact_size_bytes": 4164,
-  "command": "PYTHONPATH=outputs/code python outputs/code/scripts/write_ifn_derived_deg.py --raw-dir data/deg/raw/ifn --catalog data/studies/ifn_derived_catalog.csv --gold data/studies/gold/ifn_gold_panel.csv --summary outputs/results/ifn-pilot/ifn_derived_deg_summary.json",
+  "artifact_sha256": "6ff68be3e320aeba2deaa15beadfc2d3e4a32ec8ad9e098394e237c1f00db56f",
+  "artifact_size_bytes": 8465,
+  "command": "make -C outputs/code expanded-gold-panels",
   "inputs": [],
   "metadata": {
-    "generator": "ifn-derived-gold-panel"
+    "generator": "expanded-core-gold-panel:ifn_gold_panel.csv"
   }
 }

@@ -1,0 +1,28 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/cross-platform-microarray/gse19519_tunicamycin_microarray_summary.json",
+  "artifact_sha256": "87a5685abc768742c8a8ddc9da747ff10eb84c16906f796f026bba79350743aa",
+  "artifact_size_bytes": 1153,
+  "command": "PYTHONPATH=outputs/code python outputs/code/scripts/write_cross_platform_microarray_benchmarks.py --output-dir outputs/results/cross-platform-microarray",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/microarray_cross_platform/GSE19519_ER_STRESS_LCL_probe_gene_matrix.csv",
+      "sha256": "697194183ecd41b7921d840937eb52492072dc1f8a5148882732dc07f33a4237",
+      "size_bytes": 171906182
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/microarray_cross_platform/GSE19519_LCL_tunicamycin_8h_vs_DMSO_microarray_welch.csv",
+      "sha256": "bdea82886bee3ab0dc4b504dbd8aa628fb3c1a910293079948b1530f48ee553d",
+      "size_bytes": 4005623
+    }
+  ],
+  "metadata": {
+    "generator": "microarray-normalized-matrix-summary",
+    "normalization": "GEO_series_matrix_log2_processed",
+    "paper_id": "GSE19519_ER_STRESS",
+    "platform": "GPL570",
+    "source_url": "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE19519",
+    "study_id": "ER_GSE19519_LCL_TUNICAMYCIN_8h"
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/hypoxia_repressed_direction_validation.csv",
+  "artifact_sha256": "efa0a9874f4925aaec129e12b2df59bdfcbe24096e68c09426632abccee9e554",
+  "artifact_size_bytes": 6327,
+  "command": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_gold_comparator_summary.py --baseline-dir outputs/results/hypoxia-hif1-benchmark/baselines --gold data/studies/gold/hypoxia_hif1_repressed_panel.csv --gold-gene-column gene_symbol --degora-score-csv outputs/results/hypoxia-hif1-benchmark/degora_gene_scores.csv --degora-score-label v1_2_source_unit_mean --title 'Hypoxia repressed-marker direction validation (RNA-seq)' --output-csv outputs/results/hypoxia-hif1-benchmark/hypoxia_repressed_direction_validation.csv --output-md outputs/results/hypoxia-hif1-benchmark/hypoxia_repressed_direction_validation.md",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/baselines"
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/studies/gold/hypoxia_hif1_repressed_panel.csv",
+      "sha256": "7cfa52e9338bd20ee75e0cb7532b30028a68761a2c0d30b03b754fd54c50534d",
+      "size_bytes": 2927
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/degora_gene_scores.csv",
+      "sha256": "828bc53ae3e515e38c7243b156b4f252a0bb1b2c3bc7072a6c3c0202b8821f82",
+      "size_bytes": 25490764
+    }
+  ],
+  "metadata": {
+    "generator": "gold-comparator-summary",
+    "gold": "data/studies/gold/hypoxia_hif1_repressed_panel.csv"
+  }
+}

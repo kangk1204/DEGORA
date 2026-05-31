@@ -1,0 +1,21 @@
+gene_symbol	n_studies	n_source_units	support_label	source_units	raw_evidence_row_count	direction_label
+CMPK2	7	2	2 / 2 source units	GSE147507_NHBE_IFNB;GSE221804_HUHWT_IFNA	7	100.0% up-concordant
+MX1	7	2	2 / 2 source units	GSE147507_NHBE_IFNB;GSE221804_HUHWT_IFNA	7	100.0% up-concordant
+TAP1	7	2	2 / 2 source units	GSE147507_NHBE_IFNB;GSE221804_HUHWT_IFNA	7	100.0% up-concordant
+IFIT1	7	2	2 / 2 source units	GSE147507_NHBE_IFNB;GSE221804_HUHWT_IFNA	7	100.0% up-concordant
+RSAD2	7	2	2 / 2 source units	GSE147507_NHBE_IFNB;GSE221804_HUHWT_IFNA	7	100.0% up-concordant
+IFIT3	7	2	2 / 2 source units	GSE147507_NHBE_IFNB;GSE221804_HUHWT_IFNA	7	100.0% up-concordant
+OASL	7	2	2 / 2 source units	GSE147507_NHBE_IFNB;GSE221804_HUHWT_IFNA	7	100.0% up-concordant
+IFIH1	7	2	2 / 2 source units	GSE147507_NHBE_IFNB;GSE221804_HUHWT_IFNA	7	100.0% up-concordant
+OAS1	7	2	2 / 2 source units	GSE147507_NHBE_IFNB;GSE221804_HUHWT_IFNA	7	100.0% up-concordant
+GBP1	7	2	2 / 2 source units	GSE147507_NHBE_IFNB;GSE221804_HUHWT_IFNA	7	100.0% up-concordant
+OAS3	7	2	2 / 2 source units	GSE147507_NHBE_IFNB;GSE221804_HUHWT_IFNA	7	100.0% up-concordant
+APOL6	7	2	2 / 2 source units	GSE147507_NHBE_IFNB;GSE221804_HUHWT_IFNA	7	100.0% up-concordant
+TRIM21	7	2	2 / 2 source units	GSE147507_NHBE_IFNB;GSE221804_HUHWT_IFNA	7	100.0% up-concordant
+ISG15	7	2	2 / 2 source units	GSE147507_NHBE_IFNB;GSE221804_HUHWT_IFNA	7	100.0% up-concordant
+UBE2L6	7	2	2 / 2 source units	GSE147507_NHBE_IFNB;GSE221804_HUHWT_IFNA	7	100.0% up-concordant
+HELZ2	7	2	2 / 2 source units	GSE147507_NHBE_IFNB;GSE221804_HUHWT_IFNA	7	100.0% up-concordant
+IFI6	7	2	2 / 2 source units	GSE147507_NHBE_IFNB;GSE221804_HUHWT_IFNA	7	100.0% up-concordant
+SAMD9	7	2	2 / 2 source units	GSE147507_NHBE_IFNB;GSE221804_HUHWT_IFNA	7	100.0% up-concordant
+DDX60	7	2	2 / 2 source units	GSE147507_NHBE_IFNB;GSE221804_HUHWT_IFNA	7	100.0% up-concordant
+PARP14	7	2	2 / 2 source units	GSE147507_NHBE_IFNB;GSE221804_HUHWT_IFNA	7	100.0% up-concordant

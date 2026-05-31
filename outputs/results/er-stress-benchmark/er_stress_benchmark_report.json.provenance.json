@@ -1,0 +1,23 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/er_stress_benchmark_report.json",
+  "artifact_sha256": "faf158fe14f4172e31f4e8c660102d370343f55acdf2a13ffc8e87e9fd47cf0f",
+  "artifact_size_bytes": 11356,
+  "command": "PYTHONPATH=outputs/code python outputs/code/scripts/write_er_stress_benchmark_report.py --primary-summary outputs/results/er-stress-benchmark-primary/er_stress_primary_gold_comparator_summary.csv --full-summary outputs/results/er-stress-benchmark/er_stress_gold_comparator_summary.csv --output-json outputs/results/er-stress-benchmark/er_stress_benchmark_report.json --output-md outputs/results/er-stress-benchmark/er_stress_benchmark_report.md",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary/er_stress_primary_gold_comparator_summary.csv",
+      "sha256": "b8e1c07d74ca134c3ff4048051fc6e9364bbddabd0e7058f65ede9d33ee26be6",
+      "size_bytes": 6136
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/er_stress_gold_comparator_summary.csv",
+      "sha256": "c0c7e1ac2762e79c9e345b1800bc0f8557b42c6c93f183051b24a94507653ef0",
+      "size_bytes": 5847
+    }
+  ],
+  "metadata": {
+    "generator": "er-stress-upr-benchmark-report"
+  }
+}

@@ -1,0 +1,17 @@
+gene_symbol,panel_role,expected_direction,locked_at_utc,evidence_basis,notes
+PPARGC1B,mitochondrial_biogenesis,down,2026-05-30T00:00:00+00:00,Zhang 2007 Cancer Cell PMID 17482131 (HIF->MXI1->MYC->PGC-1beta),Cleanest hypoxia-repressed node; loss collapses mitochondrial biogenesis
+PPARGC1A,mitochondrial_biogenesis,down,2026-05-30T00:00:00+00:00,Zhang 2007 PMID 17482131; Chung 2015 MCB PMID 25963661 (BHLHE40/DEC1),Master biogenesis coactivator; cardiomyocyte context can invert (declared caveat)
+TFAM,mitochondrial_biogenesis,down,2026-05-30T00:00:00+00:00,Zhang 2007 PMID 17482131; Semenza 2011 BBA PMID 20732359,Mitochondrial transcription factor A; falls as PGC-1/NRF1 program collapses
+NRF1,mitochondrial_biogenesis,down,2026-05-30T00:00:00+00:00,Zhang 2007 PMID 17482131; Semenza 2011 PMID 20732359,Nuclear respiratory factor 1; downstream of PGC-1 coactivator loss
+COX4I1,oxidative_phosphorylation,down,2026-05-30T00:00:00+00:00,Fukuda 2007 Cell PMID 17418790 (LON-mediated COX4-1->COX4-2 switch),Constitutive COX4 isoform degraded/replaced under HIF
+COX5B,oxidative_phosphorylation,down,2026-05-30T00:00:00+00:00,Zhang 2007 Cancer Cell PMID 17482131,Nuclear-encoded cytochrome-c-oxidase subunit; MYC/PGC-1beta target
+NDUFA4,oxidative_phosphorylation,down,2026-05-30T00:00:00+00:00,Tello 2011 Cell Metab PMID 22100406 (NDUFA4L2 replacement),Constitutive complex-I-associated subunit displaced by HIF-induced paralog
+MLH1,dna_mismatch_repair,down,2026-05-30T00:00:00+00:00,Nakamura 2008 Oncogene PMID 18345027 (DEC1/DEC2 promoter repression),Mismatch-repair gene directly repressed by hypoxia-inducible repressors
+MSH2,dna_mismatch_repair,down,2026-05-30T00:00:00+00:00,Bindra & Glazer 2007 Cancer Lett PMID 17275176 (Myc/Max network),Mismatch-repair shutdown under hypoxia
+MSH6,dna_mismatch_repair,down,2026-05-30T00:00:00+00:00,Bindra & Glazer 2007 Cancer Lett PMID 17275176,Co-repressed with MSH2 via Myc/Max network
+RAD51,homologous_recombination,down,2026-05-30T00:00:00+00:00,Bindra 2007 Oncogene PMID 17001309 (E2F4/p130 repressor complex),Core HR recombinase repressed under hypoxia
+BRCA1,homologous_recombination,down,2026-05-30T00:00:00+00:00,Bindra 2005 Cancer Res PMID 16357170 (E2F-mediated repression),HR gene transcriptionally down-regulated under hypoxia
+BRCA2,homologous_recombination,down,2026-05-30T00:00:00+00:00,Chan 2008 Cancer Res PMID 18199558,Chronic hypoxia decreases HR-protein expression
+RAD54L,homologous_recombination,down,2026-05-30T00:00:00+00:00,Meng 2005 Radiother Oncol PMID 16026872,Double-strand-break repair gene down-regulated under hypoxia
+E2F1,myc_target_cell_cycle,down,2026-05-30T00:00:00+00:00,Gordan 2007 Cancer Cell PMID 17418410 (HIF-1alpha-MYC disruption),MYC target repressed when HIF-1alpha antagonizes MYC
+ODC1,myc_target_metabolism,down,2026-05-30T00:00:00+00:00,Gordan 2007 Cancer Cell PMID 17418410,Classic MYC target; reduced MYC promoter occupancy under HIF-1alpha

@@ -1,0 +1,23 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-cross-platform/degora_source_quality_diagnostics.tsv",
+  "artifact_sha256": "a4696a643880eb3e632dd9c60e2af021bb775f1321ac86f04f6b98675be05c30",
+  "artifact_size_bytes": 1204,
+  "command": "PYTHONPATH=outputs/code python outputs/code/scripts/write_cross_platform_microarray_benchmarks.py --output-dir outputs/results/cross-platform-microarray",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/harmonized/er-stress-cross-platform_harmonized.csv",
+      "sha256": "5cb5add1b0c36cb3c75dd9854cc6ed85f8d1dc1659ce4926694d27755e4a335c",
+      "size_bytes": 75117443
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/studies/er_stress_upr_cross_platform_catalog.csv",
+      "sha256": "a61352b8b5faa407c8ef426fe85ebfa661825b240d8d5feff2f602445f56faec",
+      "size_bytes": 6669
+    }
+  ],
+  "metadata": {
+    "generator": "degora-score-db"
+  }
+}

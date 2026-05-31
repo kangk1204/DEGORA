@@ -1,0 +1,18 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/ifn-cross-platform/tool-feasibility/ifn-cross-platform_study_tool_feasibility_matrix.csv",
+  "artifact_sha256": "cc01e3480ac2b6ec2ec139ffc05df5288533473d6f4eee0f47efe70777dcbb34",
+  "artifact_size_bytes": 4873,
+  "command": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_study_tool_feasibility_matrix.py --harmonized outputs/results/ifn-cross-platform/slice_harmonized.csv --corpus ifn-cross-platform --output-csv outputs/results/ifn-cross-platform/tool-feasibility/ifn-cross-platform_study_tool_feasibility_matrix.csv --output-md outputs/results/ifn-cross-platform/tool-feasibility/ifn-cross-platform_study_tool_feasibility_matrix.md",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/ifn-cross-platform/slice_harmonized.csv",
+      "sha256": "a87db4b95c546856798ebfe372d03750c2cfcabe653ad13d61e22590d291387f",
+      "size_bytes": 64721736
+    }
+  ],
+  "metadata": {
+    "corpus": "ifn-cross-platform",
+    "generator": "study-tool-feasibility"
+  }
+}

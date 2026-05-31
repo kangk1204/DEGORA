@@ -75,8 +75,16 @@ def _check_manuscript_text(text: str, failures: list[str], warnings: list[str]) 
         failures.append("manuscript still contains [REFERENCE NEEDED] placeholders")
     if HYPOXIA_STALE_PATTERN.search(text):
         failures.append("manuscript contains a stale hypoxia 0.80-style claim")
-    if "Citation Audit Still Needed" in text:
-        warnings.append("dataset-level citation audit is still marked as pending")
+    pending_markers = (
+        "Citation Audit Still Needed",
+        "Before journal submission",
+        "Submission Checklist",
+    )
+    if any(marker in text for marker in pending_markers):
+        warnings.append(
+            "pre-submission packaging still pending per the manuscript (dataset-level "
+            "GEO citations, Zenodo DOI deposit, and/or reference-style finalization)"
+        )
     if "Data and Code Availability" not in text:
         failures.append("manuscript lacks a Data and Code Availability section")
 

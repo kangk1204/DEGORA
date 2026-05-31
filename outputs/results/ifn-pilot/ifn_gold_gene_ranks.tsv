@@ -1,0 +1,20 @@
+piper_rank	gene_symbol	evidence_tier	piper_score	top_percent_label	support_label	direction_label	n_source_units	n_contrasts_observed	weighted_lfc
+2	MX1	D	86.416213	top 0.0098%	2 / 2 source units	100.0% up-concordant	2	7	7.326935721630493
+4	IFIT1	D	85.850189	top 0.020%	2 / 2 source units	100.0% up-concordant	2	7	7.351018129403976
+5	RSAD2	D	85.849916	top 0.024%	2 / 2 source units	100.0% up-concordant	2	7	6.773955725283712
+6	IFIT3	D	85.64205	top 0.029%	2 / 2 source units	100.0% up-concordant	2	7	6.732939397559504
+7	OASL	D	85.122314	top 0.034%	2 / 2 source units	100.0% up-concordant	2	7	5.447275837010329
+8	IFIH1	D	84.998223	top 0.039%	2 / 2 source units	100.0% up-concordant	2	7	5.317605933033606
+9	OAS1	D	84.947162	top 0.044%	2 / 2 source units	100.0% up-concordant	2	7	4.954035750425756
+11	OAS3	D	84.598249	top 0.054%	2 / 2 source units	100.0% up-concordant	2	7	4.915727511317136
+14	ISG15	D	84.268183	top 0.069%	2 / 2 source units	100.0% up-concordant	2	7	5.42092176427253
+17	IFI6	D	84.21175	top 0.083%	2 / 2 source units	100.0% up-concordant	2	7	6.48425224230818
+23	MX2	D	83.475337	top 0.113%	2 / 2 source units	100.0% up-concordant	2	7	4.126101288296583
+27	OAS2	D	83.293807	top 0.132%	2 / 2 source units	100.0% up-concordant	2	7	4.8619318836286745
+29	IFIT2	D	83.241291	top 0.142%	2 / 2 source units	100.0% up-concordant	2	7	6.463632671811755
+31	IFI44L	D	83.184383	top 0.152%	2 / 2 source units	100.0% up-concordant	2	7	4.950542409629382
+32	STAT1	D	83.089135	top 0.157%	2 / 2 source units	100.0% up-concordant	2	7	3.0769353834588347
+39	IFI44	D	82.163003	top 0.191%	2 / 2 source units	100.0% up-concordant	2	7	4.1323896396571485
+48	IFI27	D	81.199906	top 0.235%	2 / 2 source units	100.0% up-concordant	2	7	2.973910129008613
+62	STAT2	D	80.107788	top 0.304%	2 / 2 source units	100.0% up-concordant	2	7	2.1305495131968906
+317	IRF7	D	68.041209	top 1.55%	2 / 2 source units	78.6% up-concordant	2	7	2.1535560215330807

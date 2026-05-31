@@ -1,0 +1,159 @@
+{
+  "command": "PYTHONPATH=outputs/code python outputs/code/figures/make_cross_platform_microarray_figure.py --results-dir outputs/results/cross-platform-microarray --output-dir outputs/figures/manuscript/DEGORA_CROSS_PLATFORM",
+  "figure_id": "DEGORA_CROSS_PLATFORM",
+  "generated_at": "2026-05-31T05:48:16.596588+00:00",
+  "inputs": [
+    "outputs/results/cross-platform-microarray/cross_platform_benchmark_summary.csv",
+    "outputs/results/cross-platform-microarray/cross_platform_marker_rank_shifts.csv",
+    "outputs/results/cross-platform-microarray/cross_platform_dataset_sources.csv"
+  ],
+  "known_limitations": [
+    "Microarray DEG values are derived from GEO processed series matrices with a Welch fallback; limma full tables remain preferred when available.",
+    "GSE19519 tunicamycin and thapsigargin rows share one source unit to avoid source inflation.",
+    "Recall is against compact locked panels and does not estimate false-positive rates."
+  ],
+  "outputs": [
+    "outputs/figures/manuscript/DEGORA_CROSS_PLATFORM/degora_cross_platform.png",
+    "outputs/figures/manuscript/DEGORA_CROSS_PLATFORM/degora_cross_platform.pdf",
+    "outputs/figures/manuscript/DEGORA_CROSS_PLATFORM/degora_cross_platform.svg",
+    "outputs/figures/manuscript/DEGORA_CROSS_PLATFORM/degora_cross_platform_A_recall.png",
+    "outputs/figures/manuscript/DEGORA_CROSS_PLATFORM/degora_cross_platform_A_recall.pdf",
+    "outputs/figures/manuscript/DEGORA_CROSS_PLATFORM/degora_cross_platform_A_recall.svg",
+    "outputs/figures/manuscript/DEGORA_CROSS_PLATFORM/degora_cross_platform_B_rank_shift.png",
+    "outputs/figures/manuscript/DEGORA_CROSS_PLATFORM/degora_cross_platform_B_rank_shift.pdf",
+    "outputs/figures/manuscript/DEGORA_CROSS_PLATFORM/degora_cross_platform_B_rank_shift.svg",
+    "outputs/figures/manuscript/DEGORA_CROSS_PLATFORM/degora_cross_platform_C_support.png",
+    "outputs/figures/manuscript/DEGORA_CROSS_PLATFORM/degora_cross_platform_C_support.pdf",
+    "outputs/figures/manuscript/DEGORA_CROSS_PLATFORM/degora_cross_platform_C_support.svg",
+    "outputs/figures/manuscript/DEGORA_CROSS_PLATFORM/degora_cross_platform_D_sources.png",
+    "outputs/figures/manuscript/DEGORA_CROSS_PLATFORM/degora_cross_platform_D_sources.pdf",
+    "outputs/figures/manuscript/DEGORA_CROSS_PLATFORM/degora_cross_platform_D_sources.svg",
+    "outputs/figures/manuscript/DEGORA_CROSS_PLATFORM/degora_cross_platform_source_data.xlsx",
+    "outputs/figures/manuscript/DEGORA_CROSS_PLATFORM/degora_cross_platform_recall_long.csv",
+    "outputs/figures/manuscript/DEGORA_CROSS_PLATFORM/degora_cross_platform_marker_rank_shifts.csv",
+    "outputs/figures/manuscript/DEGORA_CROSS_PLATFORM/degora_cross_platform_legend.docx",
+    "outputs/figures/manuscript/DEGORA_CROSS_PLATFORM/degora_cross_platform_manifest.json",
+    "outputs/figures/manuscript/DEGORA_CROSS_PLATFORM/degora_cross_platform_validation.txt"
+  ],
+  "panel_claims": [
+    "A, recall values are read from cross_platform_benchmark_summary.csv.",
+    "B, marker top-percent shifts are computed from quality-weighted DEGORA ranks in RNA-seq-only and mixed corpora.",
+    "C, source support is summarized across locked gold-panel marker rows.",
+    "D, added microarray sample counts are read from cross_platform_dataset_sources.csv."
+  ],
+  "script": "outputs/code/figures/make_cross_platform_microarray_figure.py",
+  "source_data": [
+    "outputs/figures/manuscript/DEGORA_CROSS_PLATFORM/degora_cross_platform_source_data.xlsx",
+    "outputs/figures/manuscript/DEGORA_CROSS_PLATFORM/degora_cross_platform_recall_long.csv",
+    "outputs/figures/manuscript/DEGORA_CROSS_PLATFORM/degora_cross_platform_marker_rank_shifts.csv"
+  ],
+  "transformations": {
+    "rank_shift": "positive rank_delta or top_percent_delta means the marker moved upward after microarray addition",
+    "recall": "long-form recall@10/20/50/100 from the selected DEGORA ranking per benchmark mode",
+    "support": "median source units and evidence reliability among locked marker genes"
+  },
+  "validation": {
+    "benchmark_rows": [
+      {
+        "direction_recall_at_100": 0.9285714285714286,
+        "method_id": "degora_quality_weighted_score",
+        "mode": "RNA-seq only",
+        "n_contrasts_total": 7,
+        "n_gene_scores": 9860,
+        "n_source_units_total": 2,
+        "recall_at_10": 0.2857142857142857,
+        "recall_at_100": 0.9285714285714286,
+        "recall_at_20": 0.4285714285714285,
+        "recall_at_50": 0.8214285714285714,
+        "setting_id": "quality_weighted_secondary",
+        "top10": "RSAD2;CMPK2;MX1;TAP1;IFIT1;IFIT3;DDX60;OASL;IFIH1;OAS1",
+        "topic": "IFN"
+      },
+      {
+        "direction_recall_at_100": 0.9285714285714286,
+        "method_id": "degora_quality_weighted_score",
+        "mode": "RNA-seq + microarray",
+        "n_contrasts_total": 8,
+        "n_gene_scores": 12777,
+        "n_source_units_total": 3,
+        "recall_at_10": 0.3571428571428571,
+        "recall_at_100": 0.9285714285714286,
+        "recall_at_20": 0.6071428571428571,
+        "recall_at_50": 0.7857142857142857,
+        "setting_id": "quality_weighted_secondary",
+        "top10": "CMPK2;RSAD2;IFI44L;IFIT1;OASL;IFI27;OAS2;OAS3;IFI6;HERC5",
+        "topic": "IFN"
+      },
+      {
+        "direction_recall_at_100": 0.59375,
+        "method_id": "degora_quality_weighted_score",
+        "mode": "RNA-seq only",
+        "n_contrasts_total": 6,
+        "n_gene_scores": 11910,
+        "n_source_units_total": 3,
+        "recall_at_10": 0.21875,
+        "recall_at_100": 0.59375,
+        "recall_at_20": 0.34375,
+        "recall_at_50": 0.5,
+        "setting_id": "quality_weighted_secondary",
+        "top10": "HSPA5;KLHDC7B;OSCAR;HSP90B1;PDIA4;HERPUD1;HYOU1;CRELD2;CALR;DDIT3",
+        "topic": "ER stress"
+      },
+      {
+        "direction_recall_at_100": 0.78125,
+        "method_id": "degora_quality_weighted_score",
+        "mode": "RNA-seq + microarray",
+        "n_contrasts_total": 8,
+        "n_gene_scores": 14239,
+        "n_source_units_total": 4,
+        "recall_at_10": 0.25,
+        "recall_at_100": 0.78125,
+        "recall_at_20": 0.40625,
+        "recall_at_50": 0.59375,
+        "setting_id": "quality_weighted_secondary",
+        "top10": "DDIT3;HSPA5;HERPUD1;HYOU1;TRIB3;PDIA4;SEL1L;SLC6A9;MANF;CCPG1",
+        "topic": "ER stress"
+      },
+      {
+        "direction_recall_at_100": 0.8484848484848485,
+        "method_id": "degora_quality_weighted_score",
+        "mode": "RNA-seq only",
+        "n_contrasts_total": 19,
+        "n_gene_scores": 32687,
+        "n_source_units_total": 15,
+        "recall_at_10": 0.2121212121212121,
+        "recall_at_100": 0.8484848484848485,
+        "recall_at_20": 0.3636363636363636,
+        "recall_at_50": 0.7575757575757576,
+        "setting_id": "quality_weighted_secondary",
+        "top10": "EGLN3;NDRG1;ANGPTL4;PFKFB4;TMEM45A;AK4;ANKRD37;HK2;ADM;VEGFA",
+        "topic": "Hypoxia"
+      },
+      {
+        "direction_recall_at_100": 0.8484848484848485,
+        "method_id": "degora_quality_weighted_score",
+        "mode": "RNA-seq + microarray",
+        "n_contrasts_total": 21,
+        "n_gene_scores": 34785,
+        "n_source_units_total": 17,
+        "recall_at_10": 0.2121212121212121,
+        "recall_at_100": 0.8484848484848485,
+        "recall_at_20": 0.3636363636363636,
+        "recall_at_50": 0.7575757575757576,
+        "setting_id": "quality_weighted_secondary",
+        "top10": "EGLN3;ANGPTL4;NDRG1;TMEM45A;PFKFB4;ANKRD37;ADM;HK2;VEGFA;AK4",
+        "topic": "Hypoxia"
+      }
+    ],
+    "median_rank_delta": {
+      "ER stress": 13.0,
+      "Hypoxia": 1.0,
+      "IFN": 2.0
+    },
+    "median_top_percent_delta": {
+      "ER stress": 0.137618,
+      "Hypoxia": 0.00741,
+      "IFN": 0.059369
+    }
+  }
+}

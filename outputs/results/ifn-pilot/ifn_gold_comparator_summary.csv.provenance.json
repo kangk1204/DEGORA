@@ -1,0 +1,28 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/ifn_gold_comparator_summary.csv",
+  "artifact_sha256": "4546cd95fe98f54078d8b95b83d3ed468c4c0ac05f1daf38e5bcc0fc5629155f",
+  "artifact_size_bytes": 13014,
+  "command": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_gold_comparator_summary.py --baseline-dir outputs/results/ifn-pilot/baselines --gold data/studies/gold/ifn_gold_panel.csv --gold-gene-column gene_symbol --degora-score-csv outputs/results/ifn-pilot/degora_gene_scores.csv --degora-score-label v1_2_source_unit_mean --title 'IFN locked gold-panel comparator summary' --output-csv outputs/results/ifn-pilot/ifn_gold_comparator_summary.csv --output-md outputs/results/ifn-pilot/ifn_gold_comparator_summary.md",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/baselines"
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/studies/gold/ifn_gold_panel.csv",
+      "sha256": "6ff68be3e320aeba2deaa15beadfc2d3e4a32ec8ad9e098394e237c1f00db56f",
+      "size_bytes": 8465
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/degora_gene_scores.csv",
+      "sha256": "716bb4198404e315f60bf9f0c82735c02510e3e9970782c83938bf49e115865d",
+      "size_bytes": 7151954
+    }
+  ],
+  "metadata": {
+    "generator": "gold-comparator-summary",
+    "gold": "data/studies/gold/ifn_gold_panel.csv"
+  }
+}

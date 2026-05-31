@@ -1,0 +1,29 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/figures/hypoxia-hif1-benchmark/hypoxia_hif1_gold_recall_curve_top1000_validation.txt",
+  "artifact_sha256": "9e4c5a6a1d4e58bc0a5122d9f5d6cb47af928f051efe0d773019d8e05c21a33b",
+  "artifact_size_bytes": 3823,
+  "command": "PYTHONPATH=outputs/code python outputs/code/figures/make_gold_recall_curve.py --baseline-dir outputs/results/hypoxia-hif1-benchmark/baselines --gold data/studies/gold/hypoxia_hif1_gold_panel.csv --gold-gene-column gene_symbol --piper-score-csv outputs/results/hypoxia-hif1-benchmark/piper_gene_scores.csv --output-dir outputs/figures/hypoxia-hif1-benchmark --figure-id 'Hypoxia HIF1 benchmark recall curve' --output-stem hypoxia_hif1_gold_recall_curve_top1000 --title 'Hypoxia / HIF1 locked gold recall' --max-k 1000",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/baselines"
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/studies/gold/hypoxia_hif1_gold_panel.csv",
+      "sha256": "a0fdbe9b65db282c397d74f47797f0e20d5db96d5ac99080af3894f33ddcc6da",
+      "size_bytes": 4759
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/hypoxia-hif1-benchmark/piper_gene_scores.csv",
+      "sha256": "a07cb0dbe310cab2acb2a6ca933826ed080235c5126fb9686d9869798b82b6f0",
+      "size_bytes": 19674614
+    }
+  ],
+  "metadata": {
+    "figure_id": "Hypoxia HIF1 benchmark recall curve",
+    "generator": "gold-recall-curve",
+    "max_k": 1000
+  }
+}

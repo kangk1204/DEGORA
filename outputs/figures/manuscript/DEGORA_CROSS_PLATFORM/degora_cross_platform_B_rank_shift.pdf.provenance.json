@@ -1,0 +1,30 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/figures/manuscript/DEGORA_CROSS_PLATFORM/degora_cross_platform_B_rank_shift.pdf",
+  "artifact_sha256": "e28f6a801793d9ce3bfdc88380a87d8691e0b8d4c8100a3cdd87e629ffa1b58d",
+  "artifact_size_bytes": 29414,
+  "command": "PYTHONPATH=outputs/code python outputs/code/figures/make_cross_platform_microarray_figure.py --results-dir outputs/results/cross-platform-microarray --output-dir outputs/figures/manuscript/DEGORA_CROSS_PLATFORM",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/cross-platform-microarray/cross_platform_benchmark_summary.csv",
+      "sha256": "dc5de2ac0048ed0b29ff64f57c1be844eb88cec0f53d96d670a552ce511752c9",
+      "size_bytes": 1534
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/cross-platform-microarray/cross_platform_marker_rank_shifts.csv",
+      "sha256": "4884ca840f939d709179acfd88b6b391a38c506f891a206566109e6e3652d00a",
+      "size_bytes": 9064
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/cross-platform-microarray/cross_platform_dataset_sources.csv",
+      "sha256": "10b46787aedd3ce1c464eb4765b1a6341b379767a50641f2b9f0f6f50b510b36",
+      "size_bytes": 935
+    }
+  ],
+  "metadata": {
+    "figure_id": "DEGORA_CROSS_PLATFORM",
+    "generator": "cross-platform-microarray-figure"
+  }
+}

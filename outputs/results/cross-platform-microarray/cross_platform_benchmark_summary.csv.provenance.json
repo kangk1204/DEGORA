@@ -1,0 +1,23 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/cross-platform-microarray/cross_platform_benchmark_summary.csv",
+  "artifact_sha256": "dc5de2ac0048ed0b29ff64f57c1be844eb88cec0f53d96d670a552ce511752c9",
+  "artifact_size_bytes": 1534,
+  "command": "PYTHONPATH=outputs/code python outputs/code/scripts/write_cross_platform_microarray_benchmarks.py --output-dir outputs/results/cross-platform-microarray",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/ifn-pilot/ifn_gold_comparator_summary.csv",
+      "sha256": "4546cd95fe98f54078d8b95b83d3ed468c4c0ac05f1daf38e5bcc0fc5629155f",
+      "size_bytes": 13014
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark-primary/er_stress_primary_gold_comparator_summary.csv",
+      "sha256": "2c2c1fc2d4c2864c58bb319003b75be7986cab637c800f85408f34b8930a2152",
+      "size_bytes": 12136
+    }
+  ],
+  "metadata": {
+    "generator": "cross-platform-benchmark-summary"
+  }
+}

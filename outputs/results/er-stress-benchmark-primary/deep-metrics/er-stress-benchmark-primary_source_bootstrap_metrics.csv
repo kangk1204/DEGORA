@@ -1,0 +1,5 @@
+corpus,method_id,setting_id,metric,n_bootstrap,mean,ci_low,ci_high,seed,bootstrap_unit
+er-stress-benchmark-primary,fisher,default,aurc_at_max_k,50,0.7634477777777778,0.4986013888888888,0.8778333333333335,1729,source_unit_id
+er-stress-benchmark-primary,fisher,default,recall_at_100,50,0.5511111111111111,0.24722222222222223,0.7777777777777778,1729,source_unit_id
+er-stress-benchmark-primary,weighted_stouffer,default,aurc_at_max_k,50,0.73141,0.4973513888888888,0.8851111111111112,1729,source_unit_id
+er-stress-benchmark-primary,weighted_stouffer,default,recall_at_100,50,0.5433333333333333,0.24722222222222223,0.8333333333333334,1729,source_unit_id

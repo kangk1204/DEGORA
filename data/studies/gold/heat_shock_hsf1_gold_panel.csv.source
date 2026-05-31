@@ -1,1 +1,1 @@
-PYTHONPATH=outputs/code python outputs/code/scripts/write_heat_shock_benchmark.py --raw-dir data/deg/raw/heat_shock --catalog data/studies/heat_shock_hsf1_catalog.csv --gold data/studies/gold/heat_shock_hsf1_gold_panel.csv --output-dir outputs/results/heat-shock-benchmark
+make -C outputs/code expanded-gold-panels

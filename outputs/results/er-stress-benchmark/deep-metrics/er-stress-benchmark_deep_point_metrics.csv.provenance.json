@@ -1,0 +1,34 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/deep-metrics/er-stress-benchmark_deep_point_metrics.csv",
+  "artifact_sha256": "62130a6262f34332f6af93ad5f92781bee8727f367e021577257a9584dfc3160",
+  "artifact_size_bytes": 5149,
+  "command": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_benchmark_deep_metrics.py --corpus er-stress-benchmark --baseline-dir outputs/results/er-stress-benchmark/baselines --harmonized data/deg/harmonized/er-stress-benchmark_harmonized.csv --gold data/studies/gold/er_stress_upr_gold_panel.csv --gold-gene-column gene_symbol --piper-score-csv outputs/results/er-stress-benchmark/piper_gene_scores.csv --output-dir outputs/results/er-stress-benchmark/deep-metrics --title 'ER Stress Full Deep Benchmark Metrics' --min-studies 2 --max-k 1000 --n-bootstrap 50 --bootstrap-methods weighted_stouffer fisher --seed 1729",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/baselines"
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/harmonized/er-stress-benchmark_harmonized.csv",
+      "sha256": "df4891ae55b66a080e806c5ab9fd8571885d69d412b424ee7121c465e8973c34",
+      "size_bytes": 33628424
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/studies/gold/er_stress_upr_gold_panel.csv",
+      "sha256": "0bd4242553e68350a4cbac410069039883b20536839f2e0aa96cfccf93d4b4f1",
+      "size_bytes": 5204
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/outputs/results/er-stress-benchmark/piper_gene_scores.csv",
+      "sha256": "9af6d485380fde232d75719cd451dc2f66e16406342abefb81494cef65e6c2e1",
+      "size_bytes": 5650676
+    }
+  ],
+  "metadata": {
+    "corpus": "er-stress-benchmark",
+    "generator": "benchmark-deep-metrics"
+  }
+}

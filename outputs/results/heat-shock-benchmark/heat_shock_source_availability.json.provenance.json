@@ -1,0 +1,59 @@
+{
+  "artifact_path": "/home/keunsoo/projects/09_PIPER/outputs/results/heat-shock-benchmark/heat_shock_source_availability.json",
+  "artifact_sha256": "1649bebe6cadc35dcc24bc983a36490cdce8d726e1ec98d8d22fd0db56d4e0b9",
+  "artifact_size_bytes": 5069,
+  "command": "PYTHONPATH=outputs/code python outputs/code/scripts/write_heat_shock_benchmark.py --raw-dir data/deg/raw/heat_shock --catalog data/studies/heat_shock_hsf1_catalog.csv --gold data/studies/gold/heat_shock_hsf1_gold_panel.csv --output-dir outputs/results/heat-shock-benchmark",
+  "inputs": [
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/studies/heat_shock_hsf1_catalog.csv",
+      "sha256": "b4429d1cbd7128bec46d8352ff08e3c116e1eb6f16c6277857cffd0cb6433d2f",
+      "size_bytes": 3816
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/studies/gold/heat_shock_hsf1_gold_panel.csv",
+      "sha256": "43b84b05728a989184d741a1fea4d48dee450d17aba9797b3a8d23bf074d2c7d",
+      "size_bytes": 5766
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/heat_shock/GSE164834_raw_counts_GRCh38.p13_NCBI.tsv.gz",
+      "sha256": "8fbb10b182556ee8b1e318d49bafb391ab393b24780182759d7baa46059139c5",
+      "size_bytes": 861127
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/heat_shock/GSE124609_raw_counts_GRCh38.p13_NCBI.tsv.gz",
+      "sha256": "94ff6d24acb9ace2f609aef182daeb10969eea3147ef9975b3d9774ae482019e",
+      "size_bytes": 426988
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/heat_shock/GSE132447_raw_counts_GRCh38.p13_NCBI.tsv.gz",
+      "sha256": "783ccb9dfe91e859118ffb1e6244e5f4b54d8b44b69590e3e841964f187886e3",
+      "size_bytes": 858308
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/deg/raw/heat_shock/Human.GRCh38.p13.annot.tsv.gz",
+      "sha256": "a0b6ff49b0851334c709edbd52ae9c80ae998d66d9a30185de364ffb4a59efea",
+      "size_bytes": 4417321
+    },
+    {
+      "exists": true,
+      "path": "/home/keunsoo/projects/09_PIPER/data/studies/gold/heat_shock_hsf1_gold_panel.csv",
+      "sha256": "43b84b05728a989184d741a1fea4d48dee450d17aba9797b3a8d23bf074d2c7d",
+      "size_bytes": 5766
+    }
+  ],
+  "metadata": {
+    "benchmark_topic": "heat shock / HSF1 transcriptional response",
+    "claim_scope": "gold_panel_prioritization_in_a_prelocked_heat_shock_hsf1_benchmark",
+    "generator": "heat-shock-hsf1-preparation-summary",
+    "gold_panel_locked_before_scoring": true,
+    "primary_min_studies": 2,
+    "score_interpretation": "prioritization_index_not_calibrated_probability",
+    "time_course_policy": "Related time points or related phenotypes from one accession share a paper_id/source-unit and are mean-aggregated by the score; no max-signal source-unit selection is used."
+  }
+}
