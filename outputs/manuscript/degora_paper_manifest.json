@@ -3,8 +3,8 @@
     {
       "exists": true,
       "path": "outputs/manuscript/main.md",
-      "sha256": "e0ead033419760e1033cd7210a50d2e125d00a327c2d207d54e5d988b9c1851e",
-      "size_bytes": 42008
+      "sha256": "8739c5e27e70476904a98aaca7fe7ac64498c0060d0760e95773b45b608b7601",
+      "size_bytes": 42330
     },
     {
       "exists": true,
@@ -69,7 +69,7 @@
   ],
   "command": "env PYTHONPATH=outputs/code python outputs/code/scripts/write_manuscript_package.py --manuscript outputs/manuscript/main.md --tables-dir outputs/tables/manuscript --figures-dir outputs/figures/manuscript --output-dir outputs/manuscript",
   "failures": [],
-  "generated_at": "2026-05-31T08:04:49.156671+00:00",
+  "generated_at": "2026-05-31T09:43:01.417186+00:00",
   "manuscript": "outputs/manuscript/main.md",
   "pre_submission_tasks": [
     "final source-study and GEO accession citation audit",
