@@ -1,0 +1,27 @@
+﻿name: degora
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  package-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - name: Install DEGORA
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r outputs/code/requirements.txt
+          python -m pip install -e outputs/code
+      - name: Run public test suite
+        run: make check
+      - name: Exercise demo workflow
+        run: |
+          degora demo degora-demo
+          degora validate degora-demo/degora_demo_config.xlsx
+          degora run degora-demo/degora_demo_config.xlsx

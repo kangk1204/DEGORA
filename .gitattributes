@@ -1,0 +1,19 @@
+* text=auto eol=lf
+
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+*.db binary
+*.docx binary
+*.gz binary
+*.jpeg binary
+*.jpg binary
+*.parquet binary
+*.pdf binary
+*.png binary
+*.pptx binary
+*.xlsx binary
+*.zip binary
+
+data/deg/raw/ifn/hgnc_complete_set.txt -whitespace
+data/deg/raw/microarray/GPL17077_platform.txt -whitespace
