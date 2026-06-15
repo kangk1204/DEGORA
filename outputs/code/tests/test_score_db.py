@@ -142,6 +142,7 @@ def test_degora_score_component_golden_values() -> None:
     assert vegfa["evidence_score"] == pytest.approx(0.583257, abs=1e-6)
     assert vegfa["rank_score_component"] == pytest.approx(0.968377, abs=1e-6)
     assert vegfa["effect_score"] == pytest.approx(0.629470, abs=1e-6)
+    # Golden value from the deterministic _harmonized() fixture and degora_score_v1_2_source_unit_mean formula.
     assert vegfa["degora_score"] == pytest.approx(85.305316, abs=1e-6)
     assert vegfa["quality_weighted_degora_score"] == pytest.approx(85.298205, abs=1e-6)
     assert vegfa["source_quality_support_score"] == pytest.approx(1.0, abs=1e-6)
