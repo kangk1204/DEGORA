@@ -5,6 +5,7 @@ from __future__ import annotations
 import errno
 import json
 import math
+import secrets
 import sqlite3
 import sys
 from contextlib import closing
@@ -20,6 +21,7 @@ INDEX_HTML = """<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
   <title>DEGORA</title>
   <link rel="icon" href="data:,">
   <style>
@@ -540,6 +542,7 @@ INDEX_HTML = """<!doctype html>
   <div id="tip" role="tooltip"></div>
   <script>
     const $ = (id) => document.getElementById(id);
+    const API_TOKEN = new URLSearchParams(window.location.search).get("token") || "";
     const fmt = (value, digits = 3) => {
       if (value === null || value === undefined || Number.isNaN(Number(value))) return "";
       const n = Number(value);
@@ -668,7 +671,8 @@ INDEX_HTML = """<!doctype html>
     }
 
     async function getJson(path) {
-      const response = await fetch(path);
+      const options = API_TOKEN ? { headers: { "X-DEGORA-Token": API_TOKEN } } : {};
+      const response = await fetch(path, options);
       if (!response.ok) {
         let message = await response.text();
         try {
@@ -1094,9 +1098,21 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
             return
         super().log_message(format, *args)
 
+    def _token_authorized(self, parsed: Any) -> bool:
+        expected = self.server.access_token
+        if not expected:
+            return True
+        supplied = self.headers.get("X-DEGORA-Token", "")
+        if not supplied:
+            supplied = parse_qs(parsed.query).get("token", [""])[0]
+        return secrets.compare_digest(str(supplied), expected)
+
     def do_GET(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
         try:
+            if not self._token_authorized(parsed):
+                self._send_json({"error": "missing or invalid DEGORA access token"}, status=HTTPStatus.UNAUTHORIZED)
+                return
             if parsed.path in {"/", "/index.html"}:
                 self._send_html(INDEX_HTML)
             elif parsed.path == "/api/health":
@@ -1123,6 +1139,7 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
         encoded = html.encode("utf-8")
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("Content-Length", str(len(encoded)))
         self.end_headers()
         self.wfile.write(encoded)
@@ -1223,10 +1240,18 @@ class DegoraHttpServer(ThreadingHTTPServer):
     # can allow two listeners on the same port, so a busy-port probe would lie.
     allow_reuse_address = False
 
-    def __init__(self, server_address: tuple[str, int], db_path: str | Path, *, quiet: bool = False) -> None:
+    def __init__(
+        self,
+        server_address: tuple[str, int],
+        db_path: str | Path,
+        *,
+        quiet: bool = False,
+        access_token: str | None = None,
+    ) -> None:
         super().__init__(server_address, DegoraRequestHandler)
         self.db_path = Path(db_path).resolve()
         self.quiet = quiet
+        self.access_token = access_token
 
 
 MAX_PORT_ATTEMPTS = 20
@@ -1239,6 +1264,7 @@ def create_server(
     *,
     quiet: bool = False,
     auto_port: bool = True,
+    access_token: str | None = None,
 ) -> DegoraHttpServer:
     """Bind the local server, auto-avoiding a port already held by another server.
 
@@ -1249,13 +1275,13 @@ def create_server(
     """
 
     if port == 0 or not auto_port:
-        return DegoraHttpServer((host, port), db_path, quiet=quiet)
+        return DegoraHttpServer((host, port), db_path, quiet=quiet, access_token=access_token)
 
     candidates = [port + offset for offset in range(MAX_PORT_ATTEMPTS)] + [0]
     last_error: OSError | None = None
     for index, candidate in enumerate(candidates):
         try:
-            server = DegoraHttpServer((host, candidate), db_path, quiet=quiet)
+            server = DegoraHttpServer((host, candidate), db_path, quiet=quiet, access_token=access_token)
         except OSError as exc:
             if exc.errno not in (errno.EADDRINUSE, errno.EACCES):
                 raise
@@ -1278,22 +1304,39 @@ def create_server(
 LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1", "::ffff:127.0.0.1"})
 
 
-def serve(db_path: str | Path, host: str = "127.0.0.1", port: int = 8765, *, quiet: bool = False) -> None:
+def serve(
+    db_path: str | Path,
+    host: str = "127.0.0.1",
+    port: int = 8765,
+    *,
+    quiet: bool = False,
+    allow_network: bool = False,
+    access_token: str | None = None,
+) -> None:
     db_path = Path(db_path)
     if not db_path.exists():
         # Fail before binding so a missing DB never serves (and never leaks its path over HTTP).
         raise FileNotFoundError(f"DEGORA database does not exist: {db_path}")
+    token = access_token
     if host not in LOOPBACK_HOSTS:
+        if not allow_network:
+            raise PermissionError(
+                f"Refusing to serve DEGORA on non-loopback host {host!r} without --allow-network. "
+                "Use the default 127.0.0.1 for local use, or pass --allow-network to expose the "
+                "read-only browser/API with token protection."
+            )
+        token = token or secrets.token_urlsafe(24)
         print(
-            f"WARNING: serving on {host} exposes this no-authentication, read-only DEGORA "
-            "database browser to your network. Anyone who can reach this port can read every "
-            "gene, evidence row, study, and source URL. Use the default 127.0.0.1 unless you "
-            "intend public access.",
+            f"WARNING: serving on {host} exposes this read-only DEGORA database browser to your "
+            "network. A per-run access token is required; keep the printed URL private.",
             file=sys.stderr,
         )
-    server = create_server(db_path, host=host, port=port, quiet=quiet)
+    server = create_server(db_path, host=host, port=port, quiet=quiet, access_token=token)
     address, bound_port = server.server_address
-    print(f"DEGORA browser/API: http://{address}:{bound_port}", flush=True)
+    url = f"http://{address}:{bound_port}"
+    if token:
+        url = f"{url}?token={token}"
+    print(f"DEGORA browser/API: {url}", flush=True)
     print(f"Database: {server.db_path}", flush=True)
     try:
         server.serve_forever()

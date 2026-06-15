@@ -1460,7 +1460,7 @@ def degora_score_table(
         "priority_score_weights": PRIORITY_SCORE_WEIGHTS,
         "evidence_reliability_score_weights": RELIABILITY_SCORE_WEIGHTS,
         "quality_weighted_score_formula": QUALITY_WEIGHTED_SCORE_FORMULA,
-        "quality_weighted_score_warning": "Quality-weighted ranking is the default release score; degora_score remains available as the unweighted/reference prioritization index.",
+        "quality_weighted_score_warning": "Quality-weighted ranking is the default displayed priority score; degora_score remains available as the unweighted/reference prioritization index.",
         "source_quality_weight_rules": {
             "source_input_type_weights": SOURCE_INPUT_TYPE_QUALITY_WEIGHTS,
             "table_scope_multipliers": TABLE_SCOPE_QUALITY_MULTIPLIERS,

@@ -206,22 +206,21 @@ def write_demo_workspace(path: str | Path, *, force: bool = False) -> dict[str, 
         write_note_sheet(writer, "ColumnGuide", _guide_rows())
     _autosize_workbook(config_path)
 
-    readme_path = output_dir / "README.rst"
+    readme_path = output_dir / "README.md"
     readme_path.write_text(
         "\n".join(
             [
-                "DEGORA Demo",
-                "===========",
+                "# DEGORA Demo",
                 "",
                 "This folder contains tiny synthetic IFN-like DEG tables.",
                 "",
                 "Run:",
                 "",
-                ".. code-block:: bash",
-                "",
+                "```bash",
                 f"degora validate {DEMO_CONFIG_NAME}",
                 f"degora run {DEMO_CONFIG_NAME}",
                 "degora serve results/degora_scores.db",
+                "```",
                 "",
                 "Search for ISG15, IFIT1, MX1, or OAS1 in the browser.",
                 "The demo has four contrast rows but two independent source units.",

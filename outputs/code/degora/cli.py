@@ -217,7 +217,13 @@ def _run_from_config(args: argparse.Namespace, *, serve_after: bool = False) -> 
 
     if serve_after:
         port = args.port if args.port is not None else _int_setting(settings.get("browser_port"), 8765)
-        serve_db(Path(summary["db_path"]), host=args.host, port=port)
+        serve_db(
+            Path(summary["db_path"]),
+            host=args.host,
+            port=port,
+            allow_network=args.allow_network,
+            access_token=args.token,
+        )
     return 0
 
 
@@ -255,11 +261,15 @@ def build_parser() -> argparse.ArgumentParser:
     launch.add_argument("--serve", action="store_true", help="Start the browser/API after the run finishes.")
     launch.add_argument("--host", default="127.0.0.1")
     launch.add_argument("--port", type=int)
+    launch.add_argument("--allow-network", action="store_true", help="Allow non-loopback browser/API binding with token protection.")
+    launch.add_argument("--token", help="Access token for non-loopback browser/API binding; generated when omitted.")
 
     serve = subparsers.add_parser("serve", help="Open the local browser/API for an existing score DB.")
     serve.add_argument("db")
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8765)
+    serve.add_argument("--allow-network", action="store_true", help="Allow non-loopback binding with token protection.")
+    serve.add_argument("--token", help="Access token for non-loopback binding; generated when omitted.")
 
     return parser
 
@@ -292,9 +302,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "launch":
             return _run_from_config(args, serve_after=args.serve)
         if args.command == "serve":
-            serve_db(Path(args.db), host=args.host, port=args.port)
+            serve_db(Path(args.db), host=args.host, port=args.port, allow_network=args.allow_network, access_token=args.token)
             return 0
-    except (DegoraConfigError, FileExistsError, FileNotFoundError) as exc:
+    except (DegoraConfigError, FileExistsError, FileNotFoundError, PermissionError) as exc:
         print(str(exc), file=sys.stderr)
         return 2
     raise AssertionError(f"Unhandled command: {args.command}")

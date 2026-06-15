@@ -123,7 +123,7 @@ def write_source_sidecar(
     """Write command-first ``.source`` and optional JSON provenance sidecars.
 
     The ``.source`` sidecar intentionally keeps the exact regeneration command on
-    the first line to preserve the repository's source-audit contract.
+    the first line so it can be copied and rerun directly.
     """
 
     command = _validate_single_line_command(command)

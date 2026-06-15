@@ -74,9 +74,7 @@ def test_demo_command_writes_runnable_workspace(tmp_path, capsys) -> None:
     config = demo_dir / "degora_demo_config.xlsx"
     assert config.exists()
     assert (demo_dir / "deg_tables" / "demo_ifn_a_4h.csv").exists()
-    readme = demo_dir / "README.rst"
-    assert readme.exists()
-    assert ".. code-block:: bash" in readme.read_text()
+    assert (demo_dir / "README.md").exists()
     assert main(["validate", str(config)]) == 0
     assert main(["run", str(config)]) == 0
     assert "non-fatal input warnings" not in capsys.readouterr().err

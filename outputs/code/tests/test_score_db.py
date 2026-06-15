@@ -117,7 +117,7 @@ def test_degora_score_prioritizes_repeated_directional_source_unit_support() -> 
     assert metadata["independent_unit_for_consensus"].startswith("source_unit_id")
     assert metadata["n_contrasts_total"] == 3
     assert metadata["n_source_units_total"] == 2
-    assert "max-|z|" in metadata["source_unit_collapse_rule"]
+    assert "no max-|z|" in metadata["source_unit_collapse_rule"]
     assert "stouffer_padj" in metadata["high_confidence_rule"]
     assert "evidence_tier_rules" in metadata
     assert "quality_weighted_score_formula" in metadata
@@ -482,6 +482,41 @@ def test_direction_confidence_penalizes_discordant_sources() -> None:
 
     assert consistent["direction_confidence_index"] > conflict["direction_confidence_index"]
     assert consistent["evidence_reliability_score"] > conflict["evidence_reliability_score"]
+
+
+def test_source_coherence_guardrail_flags_low_quality_outlier_source() -> None:
+    rows = []
+    for source_unit, source_type, lfc_values in [
+        ("A", "author_deg_table", [3.0, 2.0, 1.0]),
+        ("B", "author_deg_table", [2.5, 1.5, 0.5]),
+        ("C", "normalized_expression_matrix", [-3.0, -2.0, -1.0]),
+    ]:
+        for gene, lfc in zip(["G1", "G2", "G3"], lfc_values, strict=False):
+            rows.append(
+                {
+                    "study_id": source_unit,
+                    "paper_id": source_unit,
+                    "gene_symbol": gene,
+                    "lfc": lfc,
+                    "signed_z": lfc,
+                    "pvalue": 0.01,
+                    "padj": 0.05,
+                    "normalized_rank": 0.01,
+                    "n_ctrl": 4,
+                    "n_treat": 4,
+                    "n_genes_in_study": 1000,
+                    "source_input_type": source_type,
+                    "table_scope": "full_results",
+                }
+            )
+    harmonized = pd.DataFrame(rows)
+
+    _scores, evidence, metadata = degora_score_table(harmonized, min_studies=1)
+    source_c = evidence.loc[evidence["source_unit_id"].eq("C")].iloc[0]
+
+    assert metadata["n_source_quality_outliers"] == 1
+    assert bool(source_c["source_outlier_flag"]) is True
+    assert source_c["source_coherence_weight"] == 0.5
 
 
 def test_direction_confidence_counts_sources_against_consensus_direction() -> None:

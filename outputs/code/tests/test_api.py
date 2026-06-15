@@ -146,6 +146,41 @@ def test_meta_redacts_local_paths_when_bound_non_loopback(tmp_path) -> None:
     assert str(tmp_path) not in json.dumps(meta)
 
 
+def test_serve_requires_explicit_network_allow_for_non_loopback(tmp_path) -> None:
+    harmonized_path = tmp_path / "harmonized.csv"
+    _harmonized().to_csv(harmonized_path, index=False)
+    db = tmp_path / "degora_scores.db"
+    write_score_database(harmonized_path, tmp_path, db_path=db)
+
+    with pytest.raises(PermissionError, match="--allow-network"):
+        serve(db, host="0.0.0.0", port=0, quiet=True)
+
+
+def test_access_token_protects_api_when_configured(tmp_path) -> None:
+    harmonized_path = tmp_path / "harmonized.csv"
+    _harmonized().to_csv(harmonized_path, index=False)
+    write_score_database(harmonized_path, tmp_path, db_path=tmp_path / "degora_scores.db")
+
+    server = create_server(tmp_path / "degora_scores.db", port=0, quiet=True, access_token="secret-token")
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    host, port = server.server_address
+    base_url = f"http://{host}:{port}"
+
+    try:
+        with pytest.raises(HTTPError) as exc_info:
+            _get_json(f"{base_url}/api/health")
+        assert exc_info.value.code == 401
+
+        health = _get_json(f"{base_url}/api/health?token=secret-token")
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+    assert health["status"] == "ok"
+
+
 def test_network_api_redacts_source_paths_in_studies_and_gene_evidence(tmp_path) -> None:
     secret_source = tmp_path / "Users" / "keunsoo" / "Projects_main" / "source.csv"
     harmonized = _harmonized()

@@ -1,4 +1,4 @@
-"""Locked validation gene panels from the DEGORA methodology specification.
+"""Locked validation gene panels from METHODOLOGY_SPEC.md section 3.2.
 
 HIF1A_UP_TARGETS holds the CORE-EXPANDED hypoxia/HIF canonical panel that
 matches data/studies/gold/hypoxia_hif1_gold_panel.csv. It is evaluation-only
