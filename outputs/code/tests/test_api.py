@@ -8,6 +8,7 @@ from urllib.error import HTTPError
 import pandas as pd
 import pytest
 
+from degora import __version__
 import degora.api as api
 from degora.api import LOCAL_PATH_REDACTION, LOOPBACK_HOSTS, create_server, serve
 from degora.score_db import write_score_database
@@ -97,6 +98,8 @@ def test_local_api_serves_health_gene_list_and_detail(tmp_path) -> None:
     assert "initPanelResize();" in html
     assert "JSON.parse(message)" in html
     assert health["status"] == "ok"
+    assert health["degora_version"] == __version__
+    assert health["database_degora_version"] == __version__
     assert health["gene_count"] == 2
     # Health must not leak the absolute on-disk db path; only the filename is exposed.
     assert "db_path" not in health

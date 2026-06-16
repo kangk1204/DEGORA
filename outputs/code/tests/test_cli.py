@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 
 import pandas as pd
+import pytest
 from openpyxl import load_workbook
 
+from degora import __version__
 from degora.cli import _print_run_warnings, main
 from degora.excel_template import TEMPLATE_SHEETS, write_template
 
@@ -66,6 +69,14 @@ def test_template_command_writes_beginner_workbook(tmp_path) -> None:
     assert guide_required["padj_column"] == "no; checked if filled"
 
 
+def test_version_option_prints_package_version(capsys) -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        main(["--version"])
+
+    assert exc_info.value.code == 0
+    assert f"DEGORA {__version__}" in capsys.readouterr().out
+
+
 def test_demo_command_writes_runnable_workspace(tmp_path, capsys) -> None:
     demo_dir = tmp_path / "demo"
 
@@ -77,7 +88,9 @@ def test_demo_command_writes_runnable_workspace(tmp_path, capsys) -> None:
     assert (demo_dir / "README.md").exists()
     assert main(["validate", str(config)]) == 0
     assert main(["run", str(config)]) == 0
-    assert "non-fatal input warnings" not in capsys.readouterr().err
+    captured = capsys.readouterr()
+    assert f"- DEGORA version: {__version__}" in captured.out
+    assert "non-fatal input warnings" not in captured.err
 
     db = demo_dir / "results" / "degora_scores.db"
     assert db.exists()
@@ -88,6 +101,8 @@ def test_demo_command_writes_runnable_workspace(tmp_path, capsys) -> None:
     assert {"Run_summary", "Gene_scores", "Gene_evidence", "Source_units"}.issubset(set(workbook.sheetnames))
     guide_rows = list(workbook["Workbook_guide"].iter_rows(min_row=2, values_only=True))
     assert any(row[0] == "Gene_scores" and "main prioritized gene list" in row[3] for row in guide_rows)
+    summary_rows = {row[0]: row[1] for row in workbook["Run_summary"].iter_rows(min_row=2, values_only=True)}
+    assert summary_rows["degora_version"] == __version__
     dictionary_rows = list(workbook["Column_dictionary"].iter_rows(min_row=2, values_only=True))
     assert any(
         row[0] == "Gene_scores"
@@ -100,6 +115,10 @@ def test_demo_command_writes_runnable_workspace(tmp_path, capsys) -> None:
     assert gene_score_headers["quality_weighted_degora_score"].comment is not None
     assert "Values:" in gene_score_headers["quality_weighted_degora_score"].comment.text
     assert workbook["Column_dictionary"]["A1"].comment is not None
+    metadata = json.loads((demo_dir / "results" / "degora_score_metadata.json").read_text())
+    summary = json.loads((demo_dir / "results" / "degora_score_db_summary.json").read_text())
+    assert metadata["degora_version"] == __version__
+    assert summary["degora_version"] == __version__
     with sqlite3.connect(db) as connection:
         top_genes = [
             row[0]
@@ -141,11 +160,15 @@ def test_run_command_builds_score_database_from_excel_config(tmp_path) -> None:
     assert (tmp_path / "results" / "degora_gene_scores.csv").exists()
     assert (tmp_path / "results" / "degora_score_metadata.json").exists()
     assert (tmp_path / "results" / "DEGORA_output.xlsx").exists()
+    metadata = json.loads((tmp_path / "results" / "degora_score_metadata.json").read_text())
+    assert metadata["degora_version"] == __version__
     with sqlite3.connect(db) as connection:
         top_gene = connection.execute("SELECT gene_symbol FROM genes ORDER BY degora_rank LIMIT 1").fetchone()[0]
         source_units = connection.execute("SELECT COUNT(DISTINCT source_unit_id) FROM studies").fetchone()[0]
+        sqlite_meta = dict(connection.execute("SELECT key, value FROM meta").fetchall())
     assert top_gene == "ISG15"
     assert source_units == 2
+    assert sqlite_meta["degora_version"] == __version__
 
 
 def test_run_command_can_skip_default_excel_export(tmp_path) -> None:

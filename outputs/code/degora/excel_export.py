@@ -10,6 +10,7 @@ from typing import Any
 import pandas as pd
 from openpyxl.comments import Comment
 
+from . import runtime_version_info
 from .excel_io import read_config_sheet
 from .provenance import write_source_sidecar
 
@@ -296,7 +297,9 @@ def _summary_rows(
     evidence: pd.DataFrame,
     studies: pd.DataFrame,
     gold: pd.DataFrame,
+    version_info: dict[str, str] | None = None,
 ) -> pd.DataFrame:
+    version_info = version_info or runtime_version_info()
     rank_col = "quality_weighted_degora_rank" if "quality_weighted_degora_rank" in genes.columns else "degora_rank"
     top = (
         genes.sort_values(rank_col).head(20)["gene_symbol"].tolist()
@@ -305,6 +308,8 @@ def _summary_rows(
     )
     rows: list[dict[str, Any]] = [
         {"field": "result_dir", "value": str(result_dir.resolve())},
+        {"field": "degora_version", "value": version_info.get("degora_version", "")},
+        {"field": "degora_code_revision", "value": version_info.get("degora_code_revision", "")},
         {"field": "n_scored_genes", "value": int(len(genes))},
         {"field": "n_gene_evidence_rows", "value": int(len(evidence))},
         {
@@ -483,10 +488,14 @@ def export_run_workbook(
     studies = _read_table(db_path, "studies")
     meta = _read_table(db_path, "meta")
     metadata = _read_json(metadata_json)
+    version_info = {
+        **runtime_version_info(),
+        **{key: str(metadata.get(key, "")) for key in ("degora_version", "degora_code_revision") if metadata.get(key)},
+    }
     diagnostics = pd.read_csv(diagnostics_tsv, sep="\t") if diagnostics_tsv.exists() else pd.DataFrame()
     gold = _read_gold_from_config(config_path)
     lookup = _curated_lookup(gold, genes)
-    summary = _summary_rows(result_dir, genes, evidence, studies, gold)
+    summary = _summary_rows(result_dir, genes, evidence, studies, gold, version_info)
     metadata_frame = _metadata_table(metadata)
     sheet_frames = {
         "Run_summary": summary,
@@ -518,6 +527,7 @@ def export_run_workbook(
         if path is not None and path.exists()
     ]
     manifest_data = {
+        **version_info,
         "generated_at": "deterministic",
         "script": "degora.excel_export.export_run_workbook",
         "command": command,
@@ -541,6 +551,8 @@ def export_run_workbook(
         "\n".join(
             [
                 f"n_scored_genes={len(genes)}",
+                f"degora_version={version_info.get('degora_version', '')}",
+                f"degora_code_revision={version_info.get('degora_code_revision', '')}",
                 f"n_gene_evidence_rows={len(evidence)}",
                 f"n_source_units={studies['source_unit_id'].nunique() if 'source_unit_id' in studies.columns else 0}",
                 f"n_curated_genes={len(gold)}",
@@ -550,8 +562,9 @@ def export_run_workbook(
         encoding="utf-8",
         newline="\n",
     )
+    sidecar_metadata = {"generator": "degora-run-workbook", **version_info}
     for artifact in [output, manifest, validation]:
-        write_source_sidecar(artifact, command, inputs=inputs, metadata={"generator": "degora-run-workbook"})
+        write_source_sidecar(artifact, command, inputs=inputs, metadata=sidecar_metadata)
     return {
         "output": output.as_posix(),
         "manifest": manifest.as_posix(),

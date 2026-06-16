@@ -7,16 +7,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-import pandas as pd
-
-from .api import serve as serve_db
-from .demo import write_demo_workspace
-from .excel_export import DEFAULT_WORKBOOK_NAME, export_run_workbook
-from .excel_io import read_config_sheet
-from .excel_template import write_template
-from .provenance import shell_command
-from .score_db import write_score_database
-from .slice_runner import DegoraConfigError, run_slice, validate_catalog_inputs
+from . import format_version_info, runtime_version_info
 
 
 DEFAULT_OUTPUT_DIR = Path("outputs/results/degora-run")
@@ -29,6 +20,10 @@ def _setting_key(value: Any) -> str:
 
 
 def _sheet_settings(path: Path, sheet: str, key_column: str) -> dict[str, str]:
+    import pandas as pd
+
+    from .excel_io import read_config_sheet
+
     try:
         frame = read_config_sheet(path, sheet)
     except ValueError:
@@ -72,6 +67,8 @@ def _int_setting(value: str | None, default: int) -> int:
     try:
         return int(float(value))
     except ValueError as exc:
+        from .slice_runner import DegoraConfigError
+
         raise DegoraConfigError(
             "numeric setting is invalid",
             problems=[f"Expected a whole number, but got {value!r}."],
@@ -160,6 +157,13 @@ def _print_validation_summary(validation: dict[str, Any], *, include_excluded: b
 
 
 def _run_from_config(args: argparse.Namespace, *, serve_after: bool = False) -> int:
+    from .api import serve as serve_db
+    from .excel_export import DEFAULT_WORKBOOK_NAME, export_run_workbook
+    from .provenance import shell_command
+    from .score_db import write_score_database
+    from .slice_runner import run_slice, validate_catalog_inputs
+
+    version_info = runtime_version_info()
     config = Path(args.config)
     config_base = config.resolve().parent
     settings = read_excel_settings(config)
@@ -219,6 +223,7 @@ def _run_from_config(args: argparse.Namespace, *, serve_after: bool = False) -> 
 
     print("")
     print("DEGORA run complete")
+    print(f"- DEGORA version: {format_version_info(version_info)}")
     print(f"- Results folder: {output_dir.resolve()}")
     print(f"- Score table: {Path(summary['score_csv']).resolve()}")
     print(f"- Database: {Path(summary['db_path']).resolve()}")
@@ -245,6 +250,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="degora",
         description="DEGORA: Excel-first integration of published DEG tables.",
     )
+    parser.add_argument("--version", action="version", version=f"DEGORA {format_version_info()}")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     template = subparsers.add_parser("template", help="Create an easy Excel config template.")
@@ -293,11 +299,15 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         if args.command == "template":
+            from .excel_template import write_template
+
             path = write_template(args.output, force=args.force)
             print(f"Wrote Excel template: {path}")
             print("Next: edit the Contrasts sheet, then run: degora validate <your_config.xlsx>")
             return 0
         if args.command == "demo":
+            from .demo import write_demo_workspace
+
             demo = write_demo_workspace(args.output, force=args.force)
             print(f"Wrote DEGORA demo: {demo['demo_dir']}")
             print("")
@@ -308,6 +318,8 @@ def main(argv: list[str] | None = None) -> int:
             print("  degora serve results/degora_scores.db")
             return 0
         if args.command == "validate":
+            from .slice_runner import validate_catalog_inputs
+
             validation = validate_catalog_inputs(Path(args.config))
             print("DEGORA config OK")
             _print_validation_summary(validation, include_excluded=True)
@@ -317,11 +329,18 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "launch":
             return _run_from_config(args, serve_after=args.serve)
         if args.command == "serve":
+            from .api import serve as serve_db
+
             serve_db(Path(args.db), host=args.host, port=args.port, allow_network=args.allow_network, access_token=args.token)
             return 0
-    except (DegoraConfigError, FileExistsError, FileNotFoundError, PermissionError) as exc:
+    except (FileExistsError, FileNotFoundError, PermissionError) as exc:
         print(str(exc), file=sys.stderr)
         return 2
+    except Exception as exc:
+        if exc.__class__.__name__ == "DegoraConfigError" and exc.__class__.__module__.endswith(".slice_runner"):
+            print(str(exc), file=sys.stderr)
+            return 2
+        raise
     raise AssertionError(f"Unhandled command: {args.command}")
 
 

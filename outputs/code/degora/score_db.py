@@ -12,6 +12,7 @@ import pandas as pd
 from scipy.stats import beta, norm
 from scipy.stats import t as t_dist
 
+from . import runtime_version_info
 from .aggregate import (
     SOURCE_UNIT_COLLAPSE_RULE,
     collapse_gene_source_units,
@@ -1606,8 +1607,10 @@ def write_score_database(
     else:
         harmonized = pd.read_csv(harmonized_path, low_memory=False)
     gene_scores, evidence, metadata = degora_score_table(harmonized, min_studies=min_studies)
+    version_info = runtime_version_info()
     metadata.update(
         {
+            **version_info,
             "harmonized_path": str(harmonized_path),
             "catalog_path": str(catalog_path) if catalog_path else "",
             "db_path": str(db_path),
@@ -1645,10 +1648,12 @@ def write_score_database(
     inputs: list[Path] = [harmonized_path]
     if catalog_path is not None:
         inputs.append(catalog_path)
+    sidecar_metadata = {"generator": "degora-score-db", **version_info}
     for artifact in (score_csv, metadata_json, diagnostics_tsv, diagnostics_json, db_path):
-        write_source_sidecar(artifact, command, inputs=inputs, metadata={"generator": "degora-score-db"})
+        write_source_sidecar(artifact, command, inputs=inputs, metadata=sidecar_metadata)
 
     summary = {
+        **version_info,
         "score_csv": str(score_csv.resolve()),
         "metadata_json": str(metadata_json.resolve()),
         "source_quality_diagnostics_tsv": str(diagnostics_tsv.resolve()),
@@ -1663,5 +1668,5 @@ def write_score_database(
     }
     summary_path = output_dir / "degora_score_db_summary.json"
     summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
-    write_source_sidecar(summary_path, command, inputs=inputs, metadata={"generator": "degora-score-db"})
+    write_source_sidecar(summary_path, command, inputs=inputs, metadata=sidecar_metadata)
     return summary

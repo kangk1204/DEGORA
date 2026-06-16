@@ -15,6 +15,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
+from . import format_version_info, runtime_version_info
+
 
 INDEX_HTML = """<!doctype html>
 <html lang="en">
@@ -688,6 +690,7 @@ INDEX_HTML = """<!doctype html>
       const health = await getJson("/api/health");
       $("meta").innerHTML = [
         health.db_name,
+        `DEGORA ${health.database_degora_version || health.degora_version}`,
         `${health.gene_count.toLocaleString()} genes`,
         `${health.study_count.toLocaleString()} studies`,
         `${health.source_unit_count.toLocaleString()} source units`
@@ -1153,14 +1156,22 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
         self.wfile.write(encoded)
 
     def _health(self) -> dict[str, Any]:
+        version_info = runtime_version_info()
         with closing(_connect(self.server.db_path)) as connection:
             gene_count = connection.execute("SELECT COUNT(*) FROM genes").fetchone()[0]
             study_count = connection.execute("SELECT COUNT(*) FROM studies").fetchone()[0]
             source_unit_count = connection.execute("SELECT COUNT(DISTINCT source_unit_id) FROM studies").fetchone()[0]
             top_gene = connection.execute("SELECT gene_symbol FROM genes ORDER BY degora_rank LIMIT 1").fetchone()
+            meta_rows = connection.execute(
+                "SELECT key, value FROM meta WHERE key IN ('degora_version', 'degora_code_revision')"
+            ).fetchall()
+        db_version_info = {str(key): str(value) for key, value in meta_rows}
         return {
             "status": "ok",
             "db_name": self.server.db_path.name,
+            **version_info,
+            "database_degora_version": db_version_info.get("degora_version", ""),
+            "database_degora_code_revision": db_version_info.get("degora_code_revision", ""),
             "gene_count": gene_count,
             "study_count": study_count,
             "source_unit_count": source_unit_count,
@@ -1337,6 +1348,7 @@ def serve(
     if token:
         url = f"{url}?token={token}"
     print(f"DEGORA browser/API: {url}", flush=True)
+    print(f"DEGORA version: {format_version_info()}", flush=True)
     print(f"Database: {server.db_path}", flush=True)
     try:
         try:

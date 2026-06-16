@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from degora import __version__
 from degora.score_db import _write_sqlite, degora_score_table, write_score_database
 
 
@@ -359,6 +360,9 @@ def test_write_score_database_emits_sqlite_and_sidecars(tmp_path) -> None:
     assert (tmp_path / "degora_source_quality_diagnostics.json").exists()
     assert (tmp_path / "degora_scores.db.source").exists()
     assert summary["n_gene_scores"] == 3
+    assert summary["degora_version"] == __version__
+    metadata_json = json.loads((tmp_path / "degora_score_metadata.json").read_text())
+    assert metadata_json["degora_version"] == __version__
 
     with sqlite3.connect(db_path) as connection:
         top_gene = connection.execute("SELECT gene_symbol FROM genes ORDER BY degora_rank LIMIT 1").fetchone()[0]
@@ -380,6 +384,7 @@ def test_write_score_database_emits_sqlite_and_sidecars(tmp_path) -> None:
     assert "source_recommended_weight" in quality_columns
     assert "source_reliability_weight" in quality_columns
     assert json.loads(metadata["score_weights"])["support_score"] == 0.30
+    assert metadata["degora_version"] == __version__
     assert "priority_score_weights" in metadata
     assert json.loads(metadata["source_quality_weight_rules"])["source_input_type_weights"]["normalized_expression_matrix"] == 0.35
     assert "evidence_tier_rules" in metadata
