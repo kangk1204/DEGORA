@@ -83,8 +83,23 @@ def test_demo_command_writes_runnable_workspace(tmp_path, capsys) -> None:
     assert db.exists()
     workbook_path = demo_dir / "results" / "DEGORA_output.xlsx"
     assert workbook_path.exists()
-    workbook = load_workbook(workbook_path, read_only=True)
+    workbook = load_workbook(workbook_path)
+    assert workbook.sheetnames[:2] == ["Workbook_guide", "Column_dictionary"]
     assert {"Run_summary", "Gene_scores", "Gene_evidence", "Source_units"}.issubset(set(workbook.sheetnames))
+    guide_rows = list(workbook["Workbook_guide"].iter_rows(min_row=2, values_only=True))
+    assert any(row[0] == "Gene_scores" and "main prioritized gene list" in row[3] for row in guide_rows)
+    dictionary_rows = list(workbook["Column_dictionary"].iter_rows(min_row=2, values_only=True))
+    assert any(
+        row[0] == "Gene_scores"
+        and row[2] == "quality_weighted_degora_score"
+        and "relative index, not a probability" in row[3]
+        for row in dictionary_rows
+    )
+    assert workbook["Gene_scores"].freeze_panes == "A2"
+    gene_score_headers = {cell.value: cell for cell in workbook["Gene_scores"][1]}
+    assert gene_score_headers["quality_weighted_degora_score"].comment is not None
+    assert "Values:" in gene_score_headers["quality_weighted_degora_score"].comment.text
+    assert workbook["Column_dictionary"]["A1"].comment is not None
     with sqlite3.connect(db) as connection:
         top_genes = [
             row[0]
