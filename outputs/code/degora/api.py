@@ -1339,6 +1339,9 @@ def serve(
     print(f"DEGORA browser/API: {url}", flush=True)
     print(f"Database: {server.db_path}", flush=True)
     try:
-        server.serve_forever()
+        try:
+            server.serve_forever()
+        except KeyboardInterrupt:
+            print("\nStopped DEGORA browser/API.", flush=True)
     finally:
         server.server_close()

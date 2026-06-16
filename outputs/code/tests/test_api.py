@@ -8,6 +8,7 @@ from urllib.error import HTTPError
 import pandas as pd
 import pytest
 
+import degora.api as api
 from degora.api import LOCAL_PATH_REDACTION, LOOPBACK_HOSTS, create_server, serve
 from degora.score_db import write_score_database
 
@@ -154,6 +155,31 @@ def test_serve_requires_explicit_network_allow_for_non_loopback(tmp_path) -> Non
 
     with pytest.raises(PermissionError, match="--allow-network"):
         serve(db, host="0.0.0.0", port=0, quiet=True)
+
+
+def test_serve_handles_keyboard_interrupt_cleanly(tmp_path, monkeypatch, capsys) -> None:
+    db = tmp_path / "degora_scores.db"
+    db.write_bytes(b"stub")
+    state = {"closed": False}
+
+    class InterruptingServer:
+        db_path = db
+        server_address = ("127.0.0.1", 8765)
+
+        def serve_forever(self) -> None:
+            raise KeyboardInterrupt
+
+        def server_close(self) -> None:
+            state["closed"] = True
+
+    monkeypatch.setattr(api, "create_server", lambda *args, **kwargs: InterruptingServer())
+
+    serve(db, quiet=True)
+
+    captured = capsys.readouterr()
+    assert "DEGORA browser/API: http://127.0.0.1:8765" in captured.out
+    assert "Stopped DEGORA browser/API." in captured.out
+    assert state["closed"]
 
 
 def test_access_token_protects_api_when_configured(tmp_path) -> None:
