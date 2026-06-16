@@ -11,6 +11,7 @@ import pandas as pd
 
 from .api import serve as serve_db
 from .demo import write_demo_workspace
+from .excel_export import DEFAULT_WORKBOOK_NAME, export_run_workbook
 from .excel_io import read_config_sheet
 from .excel_template import write_template
 from .provenance import shell_command
@@ -205,12 +206,24 @@ def _run_from_config(args: argparse.Namespace, *, serve_after: bool = False) -> 
         min_studies=min_studies,
         command=command,
     )
+    workbook_path = output_dir / DEFAULT_WORKBOOK_NAME
+    workbook_summary: dict[str, Any] | None = None
+    if not getattr(args, "no_excel", False):
+        workbook_summary = export_run_workbook(
+            output_dir,
+            workbook_path,
+            config_path=config,
+            db_path=db_path,
+            command=command,
+        )
 
     print("")
     print("DEGORA run complete")
     print(f"- Results folder: {output_dir.resolve()}")
     print(f"- Score table: {Path(summary['score_csv']).resolve()}")
     print(f"- Database: {Path(summary['db_path']).resolve()}")
+    if workbook_summary is not None:
+        print(f"- Excel workbook: {Path(workbook_summary['output']).resolve()}")
     print(f"- Top genes: {', '.join(summary['top_genes'][:10])}")
     print("")
     print(f"Open browser/API with: degora serve {Path(summary['db_path']).resolve()}")
@@ -251,6 +264,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--harmonized-dir")
     run.add_argument("--db")
     run.add_argument("--min-studies", type=int)
+    run.add_argument("--no-excel", action="store_true", help="Skip the default DEGORA_output.xlsx audit workbook.")
 
     launch = subparsers.add_parser("launch", help="Run analysis, then optionally start the browser.")
     launch.add_argument("config")
@@ -258,6 +272,7 @@ def build_parser() -> argparse.ArgumentParser:
     launch.add_argument("--harmonized-dir")
     launch.add_argument("--db")
     launch.add_argument("--min-studies", type=int)
+    launch.add_argument("--no-excel", action="store_true", help="Skip the default DEGORA_output.xlsx audit workbook.")
     launch.add_argument("--serve", action="store_true", help="Start the browser/API after the run finishes.")
     launch.add_argument("--host", default="127.0.0.1")
     launch.add_argument("--port", type=int)

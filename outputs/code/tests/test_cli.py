@@ -81,6 +81,10 @@ def test_demo_command_writes_runnable_workspace(tmp_path, capsys) -> None:
 
     db = demo_dir / "results" / "degora_scores.db"
     assert db.exists()
+    workbook_path = demo_dir / "results" / "DEGORA_output.xlsx"
+    assert workbook_path.exists()
+    workbook = load_workbook(workbook_path, read_only=True)
+    assert {"Run_summary", "Gene_scores", "Gene_evidence", "Source_units"}.issubset(set(workbook.sheetnames))
     with sqlite3.connect(db) as connection:
         top_genes = [
             row[0]
@@ -121,11 +125,26 @@ def test_run_command_builds_score_database_from_excel_config(tmp_path) -> None:
     assert db.exists()
     assert (tmp_path / "results" / "degora_gene_scores.csv").exists()
     assert (tmp_path / "results" / "degora_score_metadata.json").exists()
+    assert (tmp_path / "results" / "DEGORA_output.xlsx").exists()
     with sqlite3.connect(db) as connection:
         top_gene = connection.execute("SELECT gene_symbol FROM genes ORDER BY degora_rank LIMIT 1").fetchone()[0]
         source_units = connection.execute("SELECT COUNT(DISTINCT source_unit_id) FROM studies").fetchone()[0]
     assert top_gene == "ISG15"
     assert source_units == 2
+
+
+def test_run_command_can_skip_default_excel_export(tmp_path) -> None:
+    source_a = tmp_path / "source_a.csv"
+    source_b = tmp_path / "source_b.csv"
+    _write_source(source_a, ["ISG15", "IFIT1", "RPL13A"], 1.0)
+    _write_source(source_b, ["ISG15", "IFIT1", "RPL13A"], 0.8)
+    config = tmp_path / "config.xlsx"
+    _write_config(config, source_a, source_b)
+
+    assert main(["run", str(config), "--no-excel"]) == 0
+
+    assert (tmp_path / "results" / "degora_scores.db").exists()
+    assert not (tmp_path / "results" / "DEGORA_output.xlsx").exists()
 
 
 def test_validate_missing_config_returns_clean_error(tmp_path, capsys) -> None:
