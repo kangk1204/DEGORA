@@ -23,7 +23,18 @@ This path does not require a GitHub account. You also do not need to know Git.
 Install Python before downloading DEGORA.
 
 **Windows users:** use WSL Ubuntu, not native Windows PowerShell or Command
-Prompt. In Windows Terminal, open Ubuntu and run:
+Prompt.
+
+If you have never used WSL, install it once first. Open **PowerShell as
+Administrator** (right-click the Start button → *Terminal (Admin)*) and run:
+
+```powershell
+wsl --install
+```
+
+Reboot if Windows asks. Then open **Ubuntu** from the Start menu, create a Linux
+username and password when prompted, and run every DEGORA command below in that
+Ubuntu window. Install the tools DEGORA needs:
 
 ```bash
 sudo apt update
@@ -71,6 +82,15 @@ python -m pip install --upgrade pip
 python -m pip install -e outputs/code
 ```
 
+If the first line fails with `ensurepip is not available` (common on a fresh
+Ubuntu/WSL), install the venv and pip packages, delete the partial `.venv`
+folder, and try again:
+
+```bash
+sudo apt install -y python3-venv python3-pip
+rm -rf .venv
+```
+
 Create and run the demo analysis:
 
 ```bash
@@ -80,8 +100,12 @@ degora run degora-demo/degora_demo_config.xlsx
 degora serve degora-demo/results/degora_scores.db
 ```
 
-Open the URL printed by the last command, usually
-[http://127.0.0.1:8765](http://127.0.0.1:8765).
+`degora run` finishes in a few seconds and prints the top demo genes
+(`ISG15, IFIT1, MX1, OAS1, STAT1, ...`), which are canonical interferon-response
+genes. The last command then starts a local dashboard server: open the URL it
+prints, usually [http://127.0.0.1:8765](http://127.0.0.1:8765). The server keeps
+running and holds the terminal; press **Ctrl+C** in the terminal to stop it when
+you are done.
 
 ### 4. Returning Later
 
@@ -189,7 +213,8 @@ degora serve results/degora_scores.db
 ```
 
 Use the exact database path printed by `degora run` if your output folder has a
-different name.
+different name. As with the demo, the dashboard server holds the terminal until
+you press **Ctrl+C** to stop it.
 
 ## Development Checks
 
