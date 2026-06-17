@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 import threading
 import urllib.request
 from urllib.error import HTTPError
@@ -119,6 +120,64 @@ def test_local_api_serves_health_gene_list_and_detail(tmp_path) -> None:
     assert len(detail["evidence"]) == 2
     assert {row["assay_type"] for row in detail["evidence"]} == {"RNA-seq", "microarray"}
     assert all("contributing_study_ids" in row for row in detail["evidence"])
+
+
+def test_api_uses_quality_weighted_primary_rank_and_score(tmp_path) -> None:
+    db = tmp_path / "degora_scores.db"
+    with sqlite3.connect(db) as connection:
+        pd.DataFrame(
+            [
+                {
+                    "gene_symbol": "OLD_TOP",
+                    "degora_rank": 1,
+                    "degora_score": 100.0,
+                    "quality_weighted_degora_rank": 2,
+                    "quality_weighted_degora_score": 10.0,
+                    "quality_weighted_top_percent": 100.0,
+                    "quality_weighted_consensus_direction": "up",
+                    "quality_weighted_sign_concordance": 0.5,
+                    "n_source_units": 1,
+                    "consensus_direction": "up",
+                    "sign_concordance": 0.5,
+                },
+                {
+                    "gene_symbol": "PRIMARY_TOP",
+                    "degora_rank": 2,
+                    "degora_score": 1.0,
+                    "quality_weighted_degora_rank": 1,
+                    "quality_weighted_degora_score": 99.0,
+                    "quality_weighted_top_percent": 50.0,
+                    "quality_weighted_consensus_direction": "down",
+                    "quality_weighted_sign_concordance": 1.0,
+                    "n_source_units": 1,
+                    "consensus_direction": "down",
+                    "sign_concordance": 1.0,
+                },
+            ]
+        ).to_sql("genes", connection, index=False)
+        pd.DataFrame({"source_unit_id": ["P1"], "study_id": ["S1"]}).to_sql("studies", connection, index=False)
+        pd.DataFrame({"key": ["degora_version"], "value": [__version__]}).to_sql("meta", connection, index=False)
+
+    server = create_server(db, port=0, quiet=True)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    host, port = server.server_address
+    base_url = f"http://{host}:{port}"
+
+    try:
+        health = _get_json(f"{base_url}/api/health")
+        by_rank = _get_json(f"{base_url}/api/genes?sort=rank&order=asc&limit=2")
+        by_score = _get_json(f"{base_url}/api/genes?sort=score&order=desc&limit=2")
+        min_score = _get_json(f"{base_url}/api/genes?min_score=90&limit=2")
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+    assert health["top_gene"] == "PRIMARY_TOP"
+    assert [gene["gene_symbol"] for gene in by_rank["genes"]] == ["PRIMARY_TOP", "OLD_TOP"]
+    assert [gene["gene_symbol"] for gene in by_score["genes"]] == ["PRIMARY_TOP", "OLD_TOP"]
+    assert [gene["gene_symbol"] for gene in min_score["genes"]] == ["PRIMARY_TOP"]
 
 
 def test_meta_redacts_local_paths_when_bound_non_loopback(tmp_path) -> None:

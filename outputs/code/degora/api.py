@@ -16,6 +16,13 @@ from typing import Any
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
 from . import format_version_info, runtime_version_info
+from .score_db import (
+    PRIMARY_CONCORDANCE_COLUMN,
+    PRIMARY_DIRECTION_COLUMN,
+    PRIMARY_RANK_COLUMN,
+    PRIMARY_SCORE_COLUMN,
+    PRIMARY_TOP_PERCENT_COLUMN,
+)
 
 
 INDEX_HTML = """<!doctype html>
@@ -491,13 +498,13 @@ INDEX_HTML = """<!doctype html>
             </colgroup>
             <thead>
               <tr>
-                <th class="sortable" data-tip="DEGORA rank among all scored genes (1 = strongest)." aria-sort="ascending"><button class="sort-head" type="button" data-sort="rank">Rank <span class="sort-indicator" aria-hidden="true">^</span></button></th>
+                <th class="sortable" data-tip="Primary quality-weighted DEGORA rank among all scored genes (1 = strongest)." aria-sort="ascending"><button class="sort-head" type="button" data-sort="rank">Rank <span class="sort-indicator" aria-hidden="true">^</span></button></th>
                 <th class="sortable" data-tip="Confidence tier from rank, support, and direction (A strongest to D weakest)." aria-sort="none"><button class="sort-head" type="button" data-sort="tier">Tier <span class="sort-indicator" aria-hidden="true"></span></button></th>
                 <th class="sortable" data-tip="Gene symbol." aria-sort="none"><button class="sort-head" type="button" data-sort="gene">Gene <span class="sort-indicator" aria-hidden="true"></span></button></th>
-                <th class="num sortable" data-tip="Position as a percent of all scored genes (e.g. top 1%)." aria-sort="none"><button class="sort-head" type="button" data-sort="top">Top <span class="sort-indicator" aria-hidden="true"></span></button></th>
+                <th class="num sortable" data-tip="Primary quality-weighted rank position as a percent of all scored genes (e.g. top 1%)." aria-sort="none"><button class="sort-head" type="button" data-sort="top">Top <span class="sort-indicator" aria-hidden="true"></span></button></th>
                 <th class="num sortable" data-tip="DEGORA quality-weighted prioritization score: a relative index, not a probability." aria-sort="none"><button class="sort-head" type="button" data-sort="score">Score <span class="sort-indicator" aria-hidden="true"></span></button></th>
                 <th class="num sortable" data-tip="Number of independent source units supporting the gene (one paper = one unit)." aria-sort="none"><button class="sort-head" type="button" data-sort="units">Units <span class="sort-indicator" aria-hidden="true"></span></button></th>
-                <th class="num sortable" data-tip="Direction concordance: percent of supporting evidence agreeing on the consensus direction." aria-sort="none"><button class="sort-head" type="button" data-sort="sign">Sign <span class="sort-indicator" aria-hidden="true"></span></button></th>
+                <th class="num sortable" data-tip="Quality-weighted direction concordance: percent of supporting evidence agreeing on the consensus direction." aria-sort="none"><button class="sort-head" type="button" data-sort="sign">Sign <span class="sort-indicator" aria-hidden="true"></span></button></th>
                 <th class="num sortable" data-tip="Sample-size-weighted mean log2 fold-change across supporting source units." aria-sort="none"><button class="sort-head" type="button" data-sort="lfc">LFC <span class="sort-indicator" aria-hidden="true"></span></button></th>
               </tr>
             </thead>
@@ -562,6 +569,36 @@ INDEX_HTML = """<!doctype html>
     const safeClass = (value) => String(value ?? "").replace(/[^A-Za-z0-9_-]/g, "");
     const badge = (direction) => `<span class="badge ${safeClass(direction)}">${esc(direction)}</span>`;
     const tier = (value) => `<span class="tier ${safeClass(value)}">${esc(value)}</span>`;
+    const firstPresent = (...values) => values.find((value) => value !== null && value !== undefined && value !== "");
+    const primaryRank = (gene) => firstPresent(gene.quality_weighted_degora_rank, gene.degora_rank);
+    const primaryScore = (gene) => firstPresent(gene.quality_weighted_degora_score, gene.degora_score);
+    const primaryTopPercent = (gene) => firstPresent(gene.quality_weighted_top_percent, gene.top_percent);
+    const primaryConcordance = (gene) => firstPresent(gene.quality_weighted_sign_concordance, gene.sign_concordance);
+    const primaryDirection = (gene) => firstPresent(gene.quality_weighted_consensus_direction, gene.consensus_direction, "flat");
+    const primaryDirectionConfidence = (gene) => firstPresent(gene.quality_weighted_direction_confidence_index, gene.direction_confidence_index);
+    function primaryRankLabel(gene) {
+      const rank = primaryRank(gene);
+      if (rank === null || rank === undefined || rank === "") return gene.rank_label || "";
+      return `#${Number(rank).toLocaleString()}`;
+    }
+    function topPercentLabel(gene) {
+      const value = primaryTopPercent(gene);
+      if (value === null || value === undefined || value === "" || Number.isNaN(Number(value))) {
+        return gene.top_percent_label || "";
+      }
+      const n = Number(value);
+      if (n < 0.01) return `top ${n.toFixed(4)}%`;
+      if (n < 1.0) return `top ${n.toFixed(3)}%`;
+      return `top ${n.toFixed(2)}%`;
+    }
+    function primaryDirectionLabel(gene) {
+      const concordance = primaryConcordance(gene);
+      const direction = primaryDirection(gene);
+      if (concordance === null || concordance === undefined || concordance === "" || Number.isNaN(Number(concordance))) {
+        return gene.direction_label || direction;
+      }
+      return `${fmt(Number(concordance) * 100, 1)}% ${direction}-concordant`;
+    }
     const SPLIT_STORAGE_KEY = "degoraPanelSplitPercentV2";
     const DEFAULT_SPLIT_PERCENT = 60;
 
@@ -721,13 +758,13 @@ INDEX_HTML = """<!doctype html>
     function geneRowHtml(gene) {
       return `
         <tr data-gene="${esc(gene.gene_symbol)}" tabindex="0" aria-label="Show evidence for ${esc(gene.gene_symbol)}">
-          <td class="num">${esc(gene.degora_rank)}</td>
+          <td class="num">${esc(primaryRank(gene))}</td>
           <td>${tier(gene.evidence_tier)}</td>
           <td class="gene">${esc(gene.gene_symbol)}</td>
-          <td class="num">${esc(gene.top_percent_label)}</td>
-          <td class="num">${fmt(gene.degora_score, 2)}</td>
+          <td class="num">${esc(topPercentLabel(gene))}</td>
+          <td class="num">${fmt(primaryScore(gene), 2)}</td>
           <td class="num">${esc(gene.n_source_units)}</td>
-          <td class="num">${fmt(gene.sign_concordance * 100, 1)}%</td>
+          <td class="num">${fmt(Number(primaryConcordance(gene)) * 100, 1)}%</td>
           <td class="num">${fmt(gene.weighted_lfc, 2)}</td>
         </tr>`;
     }
@@ -860,21 +897,21 @@ INDEX_HTML = """<!doctype html>
       `).join("");
       $("detail").innerHTML = `
         <div class="kv">
-          <div class="metric" data-tip="DEGORA rank of this gene among all scored genes (1 = strongest)."><span>Rank</span><strong>${esc(gene.rank_label)}</strong></div>
-          <div class="metric" data-tip="Where this gene sits as a percent of all scored genes (e.g. top 1%)."><span>Top fraction</span><strong>${esc(gene.top_percent_label)}</strong></div>
+          <div class="metric" data-tip="Primary quality-weighted DEGORA rank of this gene among all scored genes (1 = strongest)."><span>Rank</span><strong>${esc(primaryRankLabel(gene))}</strong></div>
+          <div class="metric" data-tip="Where the primary quality-weighted rank sits as a percent of all scored genes (e.g. top 1%)."><span>Top fraction</span><strong>${esc(topPercentLabel(gene))}</strong></div>
           <div class="metric" data-tip="Coarse confidence tier (A strongest to D weakest) from rank, support, and direction."><span>Evidence tier</span><strong>${tier(gene.evidence_tier)}</strong></div>
-          <div class="metric" data-tip="The DEGORA quality-weighted prioritization score: a relative index, not a probability."><span>Score</span><strong>${fmt(gene.degora_score, 2)}</strong></div>
+          <div class="metric" data-tip="The DEGORA quality-weighted prioritization score: a relative index, not a probability."><span>Score</span><strong>${fmt(primaryScore(gene), 2)}</strong></div>
           <div class="metric" data-tip="How many independent source units support this gene (one paper = one unit)."><span>Source support</span><strong>${esc(gene.support_label)}</strong></div>
-          <div class="metric" data-tip="Consensus regulation direction (up/down/flat) across the supporting sources."><span>Direction</span><strong>${esc(gene.direction_label)}</strong></div>
+          <div class="metric" data-tip="Primary quality-weighted consensus regulation direction (up/down/flat) across the supporting sources."><span>Direction</span><strong>${esc(primaryDirectionLabel(gene))}</strong></div>
           <div class="metric" data-tip="Evidence-strength component combining repeated support and signal magnitude."><span>Evidence</span><strong>${fmt(gene.evidence_score, 2)}</strong></div>
           <div class="metric" data-tip="Contribution from how highly this gene ranked within each source's DEG list."><span>Rank signal</span><strong>${fmt(gene.rank_score_component, 2)}</strong></div>
           <div class="metric" data-tip="Sample-size-weighted mean log2 fold-change across supporting source units."><span>Weighted LFC</span><strong>${fmt(gene.weighted_lfc, 2)}</strong></div>
           <div class="metric" data-tip="Effect/rank/direction-focused prioritization score."><span>Priority</span><strong>${fmt(gene.priority_score, 2)}</strong></div>
           <div class="metric" data-tip="Combines support, source quality, direction confidence, and leave-one-source-out rank stability."><span>Reliability</span><strong>${fmt(gene.evidence_reliability_score, 2)}</strong></div>
-          <div class="metric" data-tip="Direction-consistency index, shrunk toward 50% when evidence is weak or discordant."><span>Direction confidence</span><strong>${fmt(gene.direction_confidence_index * 100, 1)}%</strong></div>
+          <div class="metric" data-tip="Quality-weighted direction-consistency index, shrunk toward 50% when evidence is weak or discordant."><span>Direction confidence</span><strong>${fmt(Number(primaryDirectionConfidence(gene)) * 100, 1)}%</strong></div>
           <div class="metric" data-tip="How stable the rank stays when each source unit is left out one at a time (higher = more robust)."><span>LOO stability</span><strong>${fmt(gene.loo_rank_stability_score * 100, 1)}%</strong></div>
         </div>
-        <p class="sources">${badge(gene.consensus_direction)} DEGORA score is a relative prioritization score, not a probability.</p>
+        <p class="sources">${badge(primaryDirection(gene))} DEGORA quality-weighted score is a relative prioritization score, not a probability.</p>
         <p class="sources">${esc(gene.source_units || "")}</p>
         <div class="ev-scroll">
         <table>
@@ -1064,23 +1101,36 @@ def _escape_like_literal(value: str) -> str:
 
 
 GENE_SORT_COLUMNS = {
-    "rank": ("degora_rank", "ASC"),
-    "tier": ("evidence_tier", "ASC"),
-    "gene": ("gene_symbol", "ASC"),
-    "top": ("top_percent", "ASC"),
-    "score": ("degora_score", "DESC"),
-    "units": ("n_source_units", "DESC"),
-    "sign": ("sign_concordance", "DESC"),
-    "lfc": ("weighted_lfc", "DESC"),
+    "rank": (PRIMARY_RANK_COLUMN, "ASC", "degora_rank"),
+    "tier": ("evidence_tier", "ASC", "evidence_tier"),
+    "gene": ("gene_symbol", "ASC", "gene_symbol"),
+    "top": (PRIMARY_TOP_PERCENT_COLUMN, "ASC", "top_percent"),
+    "score": (PRIMARY_SCORE_COLUMN, "DESC", "degora_score"),
+    "units": ("n_source_units", "DESC", "n_source_units"),
+    "sign": (PRIMARY_CONCORDANCE_COLUMN, "DESC", "sign_concordance"),
+    "lfc": ("weighted_lfc", "DESC", "weighted_lfc"),
 }
 
 
-def _gene_order_clause(params: dict[str, list[str]]) -> tuple[str, str, str]:
+def _table_columns(connection: sqlite3.Connection, table: str) -> set[str]:
+    return {str(row[1]) for row in connection.execute(f"PRAGMA table_info({table})").fetchall()}
+
+
+def _column_or_fallback(preferred: str, fallback: str, available: set[str]) -> str:
+    if preferred in available:
+        return preferred
+    if fallback in available:
+        return fallback
+    raise ValueError(f"database is missing required gene column: {preferred} or {fallback}")
+
+
+def _gene_order_clause(params: dict[str, list[str]], available_columns: set[str]) -> tuple[str, str, str]:
     sort_key = _text_param(params, "sort", "rank", maximum=32).lower()
     if sort_key not in GENE_SORT_COLUMNS:
         allowed = ", ".join(sorted(GENE_SORT_COLUMNS))
         raise ValueError(f"sort must be one of: {allowed}")
-    column, default_order = GENE_SORT_COLUMNS[sort_key]
+    preferred_column, default_order, fallback_column = GENE_SORT_COLUMNS[sort_key]
+    column = _column_or_fallback(preferred_column, fallback_column, available_columns)
     raw_order = _text_param(params, "order", default_order.lower(), maximum=8).lower()
     if raw_order in {"asc", "ascending"}:
         order = "ASC"
@@ -1088,7 +1138,8 @@ def _gene_order_clause(params: dict[str, list[str]]) -> tuple[str, str, str]:
         order = "DESC"
     else:
         raise ValueError("order must be asc or desc")
-    return f"{column} IS NULL ASC, {column} {order}, degora_rank ASC, gene_symbol ASC", sort_key, order.lower()
+    rank_column = _column_or_fallback(PRIMARY_RANK_COLUMN, "degora_rank", available_columns)
+    return f"{column} IS NULL ASC, {column} {order}, {rank_column} ASC, gene_symbol ASC", sort_key, order.lower()
 
 
 class DegoraRequestHandler(BaseHTTPRequestHandler):
@@ -1158,10 +1209,14 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
     def _health(self) -> dict[str, Any]:
         version_info = runtime_version_info()
         with closing(_connect(self.server.db_path)) as connection:
+            columns = _table_columns(connection, "genes")
+            rank_column = _column_or_fallback(PRIMARY_RANK_COLUMN, "degora_rank", columns)
             gene_count = connection.execute("SELECT COUNT(*) FROM genes").fetchone()[0]
             study_count = connection.execute("SELECT COUNT(*) FROM studies").fetchone()[0]
             source_unit_count = connection.execute("SELECT COUNT(DISTINCT source_unit_id) FROM studies").fetchone()[0]
-            top_gene = connection.execute("SELECT gene_symbol FROM genes ORDER BY degora_rank LIMIT 1").fetchone()
+            top_gene = connection.execute(
+                f"SELECT gene_symbol FROM genes ORDER BY {rank_column} IS NULL ASC, {rank_column} ASC, gene_symbol ASC LIMIT 1"
+            ).fetchone()
             meta_rows = connection.execute(
                 "SELECT key, value FROM meta WHERE key IN ('degora_version', 'degora_code_revision')"
             ).fetchall()
@@ -1200,21 +1255,25 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
         min_score = _float_param(params, "min_score", 0.0, minimum=0.0)
         direction = _text_param(params, "direction", maximum=16).lower()
         query = _text_param(params, "q", maximum=128).upper()
-        order_clause, sort_key, sort_order = _gene_order_clause(params)
 
-        where = ["n_source_units >= ?", "degora_score >= ?"]
-        values: list[Any] = [min_units, min_score]
-        if direction:
-            if direction not in {"up", "down", "flat"}:
-                raise ValueError("direction must be up, down, or flat")
-            where.append("consensus_direction = ?")
-            values.append(direction)
-        if query:
-            where.append("gene_symbol LIKE ? ESCAPE '\\'")
-            values.append(f"%{_escape_like_literal(query)}%")
-
-        where_clause = " AND ".join(where)
         with closing(_connect(self.server.db_path)) as connection:
+            columns = _table_columns(connection, "genes")
+            score_column = _column_or_fallback(PRIMARY_SCORE_COLUMN, "degora_score", columns)
+            direction_column = _column_or_fallback(PRIMARY_DIRECTION_COLUMN, "consensus_direction", columns)
+            order_clause, sort_key, sort_order = _gene_order_clause(params, columns)
+
+            where = ["n_source_units >= ?", f"{score_column} >= ?"]
+            values: list[Any] = [min_units, min_score]
+            if direction:
+                if direction not in {"up", "down", "flat"}:
+                    raise ValueError("direction must be up, down, or flat")
+                where.append(f"{direction_column} = ?")
+                values.append(direction)
+            if query:
+                where.append("gene_symbol LIKE ? ESCAPE '\\'")
+                values.append(f"%{_escape_like_literal(query)}%")
+
+            where_clause = " AND ".join(where)
             count = connection.execute(f"SELECT COUNT(*) FROM genes WHERE {where_clause}", values).fetchone()[0]
             rows = _row_dicts(
                 connection.execute(

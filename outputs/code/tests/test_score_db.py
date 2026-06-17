@@ -363,13 +363,18 @@ def test_write_score_database_emits_sqlite_and_sidecars(tmp_path) -> None:
     assert summary["degora_version"] == __version__
     metadata_json = json.loads((tmp_path / "degora_score_metadata.json").read_text())
     assert metadata_json["degora_version"] == __version__
+    assert metadata_json["primary_rank_column"] == "quality_weighted_degora_rank"
+    score_csv = pd.read_csv(tmp_path / "degora_gene_scores.csv")
+    assert score_csv["quality_weighted_degora_rank"].tolist() == sorted(score_csv["quality_weighted_degora_rank"].tolist())
+    assert summary["primary_rank_column"] == "quality_weighted_degora_rank"
+    assert summary["top_genes"] == score_csv.head(20)["gene_symbol"].tolist()
 
     with sqlite3.connect(db_path) as connection:
-        top_gene = connection.execute("SELECT gene_symbol FROM genes ORDER BY degora_rank LIMIT 1").fetchone()[0]
-        top_label = connection.execute("SELECT top_percent_label FROM genes ORDER BY degora_rank LIMIT 1").fetchone()[0]
-        quality_rank = connection.execute("SELECT quality_weighted_degora_rank FROM genes ORDER BY degora_rank LIMIT 1").fetchone()[0]
-        priority_score = connection.execute("SELECT priority_score FROM genes ORDER BY degora_rank LIMIT 1").fetchone()[0]
-        reliability_score = connection.execute("SELECT evidence_reliability_score FROM genes ORDER BY degora_rank LIMIT 1").fetchone()[0]
+        top_gene = connection.execute("SELECT gene_symbol FROM genes ORDER BY quality_weighted_degora_rank LIMIT 1").fetchone()[0]
+        top_label = connection.execute("SELECT top_percent_label FROM genes ORDER BY quality_weighted_degora_rank LIMIT 1").fetchone()[0]
+        quality_rank = connection.execute("SELECT quality_weighted_degora_rank FROM genes ORDER BY quality_weighted_degora_rank LIMIT 1").fetchone()[0]
+        priority_score = connection.execute("SELECT priority_score FROM genes ORDER BY quality_weighted_degora_rank LIMIT 1").fetchone()[0]
+        reliability_score = connection.execute("SELECT evidence_reliability_score FROM genes ORDER BY quality_weighted_degora_rank LIMIT 1").fetchone()[0]
         evidence_rows = connection.execute("SELECT COUNT(*) FROM gene_evidence WHERE gene_symbol = 'VEGFA'").fetchone()[0]
         quality_columns = [row[1] for row in connection.execute("PRAGMA table_info(gene_evidence)").fetchall()]
         metadata = dict(connection.execute("SELECT key, value FROM meta").fetchall())

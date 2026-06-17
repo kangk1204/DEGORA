@@ -34,6 +34,16 @@ SCORE_WEIGHTS = {
     "rank_score_component": 0.15,
     "effect_score": 0.10,
 }
+
+PRIMARY_RANK_COLUMN = "quality_weighted_degora_rank"
+PRIMARY_SCORE_COLUMN = "quality_weighted_degora_score"
+PRIMARY_TOP_PERCENT_COLUMN = "quality_weighted_top_percent"
+PRIMARY_DIRECTION_COLUMN = "quality_weighted_consensus_direction"
+PRIMARY_CONCORDANCE_COLUMN = "quality_weighted_sign_concordance"
+PRIMARY_RANK_DESCRIPTION = (
+    "quality_weighted_degora_rank is the manuscript-facing primary rank. "
+    "degora_rank and degora_score are retained as unweighted/reference outputs."
+)
 PRIORITY_SCORE_WEIGHTS = {
     "direction_score": 0.25,
     "evidence_score": 0.30,
@@ -160,6 +170,42 @@ GENE_SCORE_COLUMNS = [
     "slice_rank",
     "high_confidence",
 ]
+
+
+def primary_ranked_scores(frame: pd.DataFrame) -> pd.DataFrame:
+    """Return scores in the user-facing primary rank order."""
+
+    out = frame.copy()
+    if out.empty:
+        return out.reset_index(drop=True)
+    if PRIMARY_RANK_COLUMN in out.columns:
+        out["_primary_rank_sort"] = pd.to_numeric(out[PRIMARY_RANK_COLUMN], errors="coerce")
+        out["_primary_rank_sort"] = out["_primary_rank_sort"].where(out["_primary_rank_sort"].gt(0))
+        if out["_primary_rank_sort"].notna().any():
+            sort_columns = ["_primary_rank_sort"]
+            ascending = [True]
+            if "gene_symbol" in out.columns:
+                sort_columns.append("gene_symbol")
+                ascending.append(True)
+            return out.sort_values(sort_columns, ascending=ascending, na_position="last").drop(
+                columns=["_primary_rank_sort"]
+            ).reset_index(drop=True)
+        out = out.drop(columns=["_primary_rank_sort"])
+    if "degora_rank" in out.columns:
+        out["_fallback_rank_sort"] = pd.to_numeric(out["degora_rank"], errors="coerce")
+        out["_fallback_rank_sort"] = out["_fallback_rank_sort"].where(out["_fallback_rank_sort"].gt(0))
+        sort_columns = ["_fallback_rank_sort"]
+        ascending = [True]
+        if "gene_symbol" in out.columns:
+            sort_columns.append("gene_symbol")
+            ascending.append(True)
+        return out.sort_values(sort_columns, ascending=ascending, na_position="last").drop(
+            columns=["_fallback_rank_sort"]
+        ).reset_index(drop=True)
+    if "gene_symbol" in out.columns:
+        return out.sort_values("gene_symbol").reset_index(drop=True)
+    return out.reset_index(drop=True)
+
 
 GENE_EVIDENCE_COLUMNS = [
     "gene_symbol",
@@ -1202,6 +1248,9 @@ def degora_score_table(
             "score_version": SCORE_VERSION,
             "score_formula": SCORE_FORMULA,
             "score_weights": SCORE_WEIGHTS,
+            "primary_rank_column": PRIMARY_RANK_COLUMN,
+            "primary_score_column": PRIMARY_SCORE_COLUMN,
+            "primary_rank_interpretation": PRIMARY_RANK_DESCRIPTION,
             "priority_score_weights": PRIORITY_SCORE_WEIGHTS,
             "evidence_reliability_score_weights": RELIABILITY_SCORE_WEIGHTS,
             "min_studies": min_studies,
@@ -1458,6 +1507,9 @@ def degora_score_table(
         "score_version": SCORE_VERSION,
         "score_formula": SCORE_FORMULA,
         "score_weights": SCORE_WEIGHTS,
+        "primary_rank_column": PRIMARY_RANK_COLUMN,
+        "primary_score_column": PRIMARY_SCORE_COLUMN,
+        "primary_rank_interpretation": PRIMARY_RANK_DESCRIPTION,
         "priority_score_weights": PRIORITY_SCORE_WEIGHTS,
         "evidence_reliability_score_weights": RELIABILITY_SCORE_WEIGHTS,
         "quality_weighted_score_formula": QUALITY_WEIGHTED_SCORE_FORMULA,
@@ -1574,6 +1626,10 @@ def _write_sqlite(
                 connection.execute("CREATE UNIQUE INDEX idx_genes_symbol ON genes(gene_symbol)")
                 connection.execute("CREATE INDEX idx_genes_rank ON genes(degora_rank)")
                 connection.execute("CREATE INDEX idx_genes_score ON genes(degora_score DESC)")
+                if PRIMARY_RANK_COLUMN in gene_scores.columns:
+                    connection.execute(f"CREATE INDEX idx_genes_primary_rank ON genes({PRIMARY_RANK_COLUMN})")
+                if PRIMARY_SCORE_COLUMN in gene_scores.columns:
+                    connection.execute(f"CREATE INDEX idx_genes_primary_score ON genes({PRIMARY_SCORE_COLUMN} DESC)")
                 connection.execute("CREATE INDEX idx_evidence_gene ON gene_evidence(gene_symbol)")
                 connection.execute("CREATE INDEX idx_evidence_study ON gene_evidence(study_id)")
                 connection.execute("CREATE INDEX idx_studies_unit ON studies(source_unit_id)")
@@ -1607,6 +1663,7 @@ def write_score_database(
     else:
         harmonized = pd.read_csv(harmonized_path, low_memory=False)
     gene_scores, evidence, metadata = degora_score_table(harmonized, min_studies=min_studies)
+    gene_scores = primary_ranked_scores(gene_scores)
     version_info = runtime_version_info()
     metadata.update(
         {
@@ -1664,6 +1721,8 @@ def write_score_database(
         "n_contrasts": int(len(studies)),
         "n_source_units": int(metadata["n_source_units_total"]),
         "n_source_quality_outliers": int(metadata.get("n_source_quality_outliers", 0)),
+        "primary_rank_column": metadata.get("primary_rank_column", PRIMARY_RANK_COLUMN),
+        "primary_score_column": metadata.get("primary_score_column", PRIMARY_SCORE_COLUMN),
         "top_genes": gene_scores.head(20)["gene_symbol"].tolist(),
     }
     summary_path = output_dir / "degora_score_db_summary.json"
