@@ -12,14 +12,15 @@ import pandas as pd
 from .provenance import write_source_sidecar
 
 
-def _rank_strength(values: pd.Series, *, ascending: bool) -> pd.Series:
+def _rank_strength(values: pd.Series, *, ascending: bool, universe_size: int | None = None) -> pd.Series:
     """Return percentile-like rank strength where 1.0 is strongest."""
 
     ranks = values.rank(method="average", ascending=ascending)
-    n = int(values.notna().sum())
-    if n <= 1:
+    n_observed = int(values.notna().sum())
+    n_universe = max(n_observed, int(universe_size or n_observed))
+    if n_universe <= 1:
         return pd.Series(np.ones(len(values)), index=values.index, dtype=float)
-    return 1.0 - ((ranks - 1.0) / (n - 1.0))
+    return 1.0 - ((ranks - 1.0) / (n_universe - 1.0))
 
 
 def _collapse_study_gene(harmonized: pd.DataFrame) -> pd.DataFrame:
@@ -75,8 +76,8 @@ def rank_plane_points(harmonized: pd.DataFrame) -> pd.DataFrame:
             declared = pd.to_numeric(study["n_genes_in_study"], errors="coerce").dropna()
             if not declared.empty and declared.max() > 0:
                 rank_universe = int(max(rank_universe, round(float(declared.max()))))
-        study["p_rank_strength"] = _rank_strength(study["pvalue"], ascending=True)
-        study["effect_rank_strength"] = _rank_strength(study["lfc"].abs(), ascending=False)
+        study["p_rank_strength"] = _rank_strength(study["pvalue"], ascending=True, universe_size=rank_universe)
+        study["effect_rank_strength"] = _rank_strength(study["lfc"].abs(), ascending=False, universe_size=rank_universe)
         study["signed_effect_rank"] = np.sign(study["lfc"]) * study["effect_rank_strength"]
         study["rank_plane_delta"] = study["p_rank_strength"] - study["effect_rank_strength"]
         study["n_genes_in_rank_universe"] = rank_universe

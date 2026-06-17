@@ -59,3 +59,6 @@ def test_rank_plane_reports_declared_rank_universe() -> None:
     points = rank_plane_points(harmonized)
 
     assert points["n_genes_in_rank_universe"].unique().tolist() == [20_000]
+    ifit1 = points.loc[points["gene_symbol"].eq("IFIT1")].iloc[0]
+    assert ifit1["p_rank_strength"] == 1.0 - (1.0 / 19_999.0)
+    assert ifit1["effect_rank_strength"] == 1.0 - (1.0 / 19_999.0)
