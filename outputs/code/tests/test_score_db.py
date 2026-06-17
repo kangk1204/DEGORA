@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import json
 import sqlite3
 
@@ -8,7 +9,12 @@ import pandas as pd
 import pytest
 
 from degora import __version__
-from degora.score_db import _write_sqlite, degora_score_table, write_score_database
+from degora.score_db import (
+    _format_top_percent,
+    _write_sqlite,
+    degora_score_table,
+    write_score_database,
+)
 
 
 def test_write_sqlite_preserves_existing_db_on_failed_rebuild(tmp_path) -> None:
@@ -61,6 +67,29 @@ def _harmonized() -> pd.DataFrame:
             "source_url": ["https://example.test"] * 8,
         }
     )
+
+
+def test_rank_label_and_top_percent_label_track_primary_quality_rank() -> None:
+    # C7: rank_label and top_percent_label are the human-readable companions to the
+    # manuscript-primary quality_weighted rank, so they must be keyed to
+    # quality_weighted_degora_rank / quality_weighted_top_percent, not the unweighted
+    # degora_rank screening lane.
+    scores, _, _ = degora_score_table(_harmonized(), min_studies=2)
+    fixture_label_rank = (
+        scores["rank_label"].astype(str).str.extract(r"#([\d,]+)")[0].str.replace(",", "", regex=False).astype(int)
+    )
+    assert (fixture_label_rank == scores["quality_weighted_degora_rank"]).all()
+    assert (
+        scores["top_percent_label"] == scores["quality_weighted_top_percent"].map(_format_top_percent)
+    ).all()
+    # Lock the wiring explicitly so a revert to the unweighted lane is visible here even
+    # though this compact fixture does not force the two rank lanes apart: the label
+    # columns must NOT be sourced from degora_rank / top_percent.
+    from degora import score_db as _score_db_module
+
+    source = inspect.getsource(_score_db_module.degora_score_table)
+    assert 'scores["rank_label"] = scores["quality_weighted_degora_rank"].map(' in source
+    assert 'scores["top_percent_label"] = scores["quality_weighted_top_percent"].map(' in source
 
 
 def test_degora_score_prioritizes_repeated_directional_source_unit_support() -> None:

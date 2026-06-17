@@ -1448,7 +1448,11 @@ def degora_score_table(
     scores["priority_top_percent"] = (100.0 * scores["priority_rank"] / total_genes).round(6)
     scores["quality_weighted_top_percent"] = (100.0 * scores["quality_weighted_degora_rank"] / total_genes).round(6)
     scores["percentile"] = (100.0 * (1.0 - ((scores["degora_rank"] - 1.0) / total_genes))).round(6)
-    scores["top_percent_label"] = scores["top_percent"].map(_format_top_percent)
+    # top_percent_label is the human-readable companion to the manuscript-primary
+    # rank_label (quality_weighted_degora_rank), so derive it from the primary
+    # quality_weighted_top_percent rather than the unweighted screening top_percent;
+    # otherwise the label printed beside the primary rank reports the wrong percentile.
+    scores["top_percent_label"] = scores["quality_weighted_top_percent"].map(_format_top_percent)
     scores["evidence_tier"] = _evidence_tier(
         scores["top_percent"],
         scores["n_source_units"],
