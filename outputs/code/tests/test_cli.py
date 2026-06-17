@@ -63,6 +63,9 @@ def test_template_command_writes_beginner_workbook(tmp_path) -> None:
     contrast_headers = [cell.value for cell in workbook["Contrasts"][2]]
     guide_columns = [cell.value for cell in workbook["ColumnGuide"]["A"]]
     guide_required = {row[0].value: row[1].value for row in workbook["ColumnGuide"].iter_rows(min_row=3)}
+    gold_headers = [cell.value for cell in workbook["GoldPanel"][2]]
+    locked_column = gold_headers.index("locked") + 1
+    assert workbook["GoldPanel"].cell(row=3, column=locked_column).value == "no"
     assert "time_course_mode" in contrast_headers
     assert "time_course_mode" in guide_columns
     assert guide_required["p_column"] == "yes"

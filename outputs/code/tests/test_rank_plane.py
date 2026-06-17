@@ -45,6 +45,23 @@ def test_rank_plane_gene_and_study_summaries_are_deterministic() -> None:
     assert studies["joint_high_count"].min() >= 1
 
 
+def test_rank_plane_gene_summary_excludes_single_study_genes_by_default() -> None:
+    points = pd.DataFrame(
+        {
+            "study_id": ["S1", "S1", "S2"],
+            "gene_symbol": ["SINGLE", "SHARED", "SHARED"],
+            "p_rank_strength": [1.0, 0.9, 0.9],
+            "effect_rank_strength": [1.0, 0.9, 0.9],
+            "signed_effect_rank": [1.0, 0.9, 0.9],
+            "rank_plane_delta": [0.0, 0.0, 0.0],
+        }
+    )
+
+    genes = rank_plane_gene_summary(points, joint_threshold=0.75)
+
+    assert genes["gene_symbol"].tolist() == ["SHARED"]
+
+
 def test_rank_plane_reports_declared_rank_universe() -> None:
     harmonized = pd.DataFrame(
         {

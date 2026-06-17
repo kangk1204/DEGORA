@@ -76,7 +76,7 @@ SCORE_FORMULA = (
     "source unit without max-|z| representative selection."
 )
 QUALITY_WEIGHTED_SCORE_FORMULA = (
-    "Fixed source-quality-weighted ranking: same component "
+    "Fixed manuscript-facing source-quality-weighted ranking: same component "
     "formula as the unweighted DEGORA score, but source-unit evidence is weighted "
     "by predeclared source-quality features (source input type, table scope, and "
     "replicate count) together with a gold-panel-free source-coherence guardrail. "
@@ -173,7 +173,12 @@ GENE_SCORE_COLUMNS = [
 
 
 def primary_ranked_scores(frame: pd.DataFrame) -> pd.DataFrame:
-    """Return scores in the user-facing primary rank order."""
+    """Return scores in the user-facing primary rank order.
+
+    The schema keeps both the original unweighted DEGORA rank and the
+    quality-weighted rank. Output channels should use this helper when they need
+    an ordered top-gene table, while preserving the original columns unchanged.
+    """
 
     out = frame.copy()
     if out.empty:
@@ -205,7 +210,6 @@ def primary_ranked_scores(frame: pd.DataFrame) -> pd.DataFrame:
     if "gene_symbol" in out.columns:
         return out.sort_values("gene_symbol").reset_index(drop=True)
     return out.reset_index(drop=True)
-
 
 GENE_EVIDENCE_COLUMNS = [
     "gene_symbol",
@@ -560,7 +564,7 @@ def study_gene_evidence(harmonized: pd.DataFrame) -> pd.DataFrame:
     selected_frame = source_unit_rows_for_aggregation(frame)
     collapsed = collapse_gene_source_units(frame)
     meta = _metadata_for_study_gene_units(selected_frame)
-    out = collapsed.merge(meta, on=["gene_symbol", "source_unit_id"], how="left")
+    out = collapsed.merge(meta.drop(columns=["n_genes_in_study"], errors="ignore"), on=["gene_symbol", "source_unit_id"], how="left")
     out["aggregate_pvalue"] = 2.0 * norm.sf(np.abs(pd.to_numeric(out["signed_z"], errors="coerce")))
     out["aggregate_padj"] = np.nan
     out["source_quality_weight"] = _source_quality_weight_frame(out)
@@ -1439,7 +1443,7 @@ def degora_score_table(
     scores["quality_weighted_degora_rank"] = scores["gene_symbol"].map(quality_rank_map).fillna(0).astype(int)
     scores["degora_rank"] = np.arange(1, len(scores) + 1)
     total_genes = max(int(len(scores)), 1)
-    scores["rank_label"] = scores["degora_rank"].map(lambda rank: f"#{int(rank):,} / {total_genes:,}")
+    scores["rank_label"] = scores["quality_weighted_degora_rank"].map(lambda rank: f"#{int(rank):,} / {total_genes:,}")
     scores["top_percent"] = (100.0 * scores["degora_rank"] / total_genes).round(6)
     scores["priority_top_percent"] = (100.0 * scores["priority_rank"] / total_genes).round(6)
     scores["quality_weighted_top_percent"] = (100.0 * scores["quality_weighted_degora_rank"] / total_genes).round(6)
@@ -1513,7 +1517,7 @@ def degora_score_table(
         "priority_score_weights": PRIORITY_SCORE_WEIGHTS,
         "evidence_reliability_score_weights": RELIABILITY_SCORE_WEIGHTS,
         "quality_weighted_score_formula": QUALITY_WEIGHTED_SCORE_FORMULA,
-        "quality_weighted_score_warning": "Quality-weighted ranking is the default displayed priority score; degora_score remains available as the unweighted/reference prioritization index.",
+        "quality_weighted_score_warning": "Quality-weighted ranking is the manuscript-facing default for benchmark tables; degora_score remains available as the unweighted/reference prioritization index.",
         "source_quality_weight_rules": {
             "source_input_type_weights": SOURCE_INPUT_TYPE_QUALITY_WEIGHTS,
             "table_scope_multipliers": TABLE_SCOPE_QUALITY_MULTIPLIERS,

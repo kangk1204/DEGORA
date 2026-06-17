@@ -143,7 +143,7 @@ def _variant_frame(harmonized: pd.DataFrame, variant: str) -> tuple[pd.DataFrame
         notes = "Drops both Bauer contrasts."
     elif variant == "exclude_HYP008":
         frame = frame.loc[~frame["study_id"].eq("HYP008")].copy()
-        notes = "Drops hDASMC source with sign-flipped LFC."
+        notes = "Drops hDASMC source whose public log2FC required sign-flipping."
     elif variant == "exclude_padj_surrogates":
         frame = frame.loc[~frame["study_id"].isin(["HYP001", "HYP006", "HYP007"])].copy()
         notes = "Drops sources where nominal p-values are unavailable and padj is used as p surrogate."

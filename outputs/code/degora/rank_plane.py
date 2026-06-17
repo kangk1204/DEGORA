@@ -90,7 +90,7 @@ def rank_plane_points(harmonized: pd.DataFrame) -> pd.DataFrame:
     ).reset_index(drop=True)
 
 
-def rank_plane_gene_summary(points: pd.DataFrame, *, joint_threshold: float = 0.9) -> pd.DataFrame:
+def rank_plane_gene_summary(points: pd.DataFrame, *, joint_threshold: float = 0.9, min_studies: int = 2) -> pd.DataFrame:
     """Summarize rank-plane support for each gene across studies."""
 
     if points.empty:
@@ -133,6 +133,7 @@ def rank_plane_gene_summary(points: pd.DataFrame, *, joint_threshold: float = 0.
         * out["median_effect_rank_strength"]
         * out["effect_sign_concordance"]
     )
+    out = out.loc[out["n_studies"].ge(int(min_studies))].copy()
     return out.sort_values(
         ["rank_plane_score", "joint_high_fraction", "gene_symbol"],
         ascending=[False, False, True],

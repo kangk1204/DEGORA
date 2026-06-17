@@ -142,15 +142,15 @@ def _gold_rows() -> pd.DataFrame:
                 "gene_symbol": "ISG15",
                 "expected_direction": "up",
                 "role": "optional_marker",
-                "evidence_basis": "Example IFN marker; replace with your locked panel.",
-                "locked": "yes",
+                "evidence_basis": "Example IFN marker; set locked=yes only after replacing with your panel.",
+                "locked": "no",
             },
             {
                 "gene_symbol": "IFIT1",
                 "expected_direction": "up",
                 "role": "optional_marker",
-                "evidence_basis": "Example IFN marker; replace with your locked panel.",
-                "locked": "yes",
+                "evidence_basis": "Example IFN marker; set locked=yes only after replacing with your panel.",
+                "locked": "no",
             },
         ]
     )

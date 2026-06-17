@@ -551,7 +551,26 @@ INDEX_HTML = """<!doctype html>
   <div id="tip" role="tooltip"></div>
   <script>
     const $ = (id) => document.getElementById(id);
-    const API_TOKEN = new URLSearchParams(window.location.search).get("token") || "";
+    function readApiToken() {
+      const url = new URL(window.location.href);
+      const hashText = url.hash.startsWith("#") ? url.hash.slice(1) : url.hash;
+      const hashParams = new URLSearchParams(hashText);
+      let storedToken = "";
+      try { storedToken = window.sessionStorage.getItem("degoraApiToken") || ""; } catch (_) {}
+      const token = hashParams.get("token") || url.searchParams.get("token") || storedToken;
+      if (hashParams.has("token") || url.searchParams.has("token")) {
+        try { window.sessionStorage.setItem("degoraApiToken", token); } catch (_) {}
+      }
+      if (hashParams.has("token") || url.searchParams.has("token")) {
+        url.searchParams.delete("token");
+        hashParams.delete("token");
+        const cleanHash = hashParams.toString();
+        const cleanUrl = `${url.pathname}${url.search}${cleanHash ? `#${cleanHash}` : ""}`;
+        window.history.replaceState(null, "", cleanUrl);
+      }
+      return token;
+    }
+    const API_TOKEN = readApiToken();
     const fmt = (value, digits = 3) => {
       if (value === null || value === undefined || Number.isNaN(Number(value))) return "";
       const n = Number(value);
@@ -1164,10 +1183,11 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
         try:
-            if not self._token_authorized(parsed):
+            is_index = parsed.path in {"/", "/index.html"}
+            if not is_index and not self._token_authorized(parsed):
                 self._send_json({"error": "missing or invalid DEGORA access token"}, status=HTTPStatus.UNAUTHORIZED)
                 return
-            if parsed.path in {"/", "/index.html"}:
+            if is_index:
                 self._send_html(INDEX_HTML)
             elif parsed.path == "/api/health":
                 self._send_json(self._health())
@@ -1405,7 +1425,7 @@ def serve(
     address, bound_port = server.server_address
     url = f"http://{address}:{bound_port}"
     if token:
-        url = f"{url}?token={token}"
+        url = f"{url}#token={quote(token, safe='')}"
     print(f"DEGORA browser/API: {url}", flush=True)
     print(f"DEGORA version: {format_version_info()}", flush=True)
     print(f"Database: {server.db_path}", flush=True)

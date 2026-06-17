@@ -31,6 +31,7 @@ COLLAPSED_SOURCE_UNIT_COLUMNS = [
     "signed_z",
     "lfc",
     "normalized_rank",
+    "n_genes_in_study",
     "weight",
     "n_contrast_rows",
     "n_studies_in_source_unit",
@@ -147,11 +148,12 @@ def source_unit_rows_for_aggregation(harmonized: pd.DataFrame) -> pd.DataFrame:
             "signed_z",
             "lfc",
             "normalized_rank",
+            "n_genes_in_study",
             "_weight",
         ]
         for column in required_columns:
             if column not in frame.columns:
-                dtype = float if column in {"signed_z", "lfc", "normalized_rank", "_weight"} else "string"
+                dtype = float if column in {"signed_z", "lfc", "normalized_rank", "n_genes_in_study", "_weight"} else "string"
                 frame[column] = pd.Series(dtype=dtype)
         return frame
 
@@ -162,6 +164,10 @@ def source_unit_rows_for_aggregation(harmonized: pd.DataFrame) -> pd.DataFrame:
     frame["signed_z"] = pd.to_numeric(frame["signed_z"], errors="coerce")
     frame["lfc"] = pd.to_numeric(frame["lfc"], errors="coerce")
     frame["normalized_rank"] = pd.to_numeric(frame["normalized_rank"], errors="coerce")
+    if "n_genes_in_study" in frame.columns:
+        frame["n_genes_in_study"] = pd.to_numeric(frame["n_genes_in_study"], errors="coerce")
+    else:
+        frame["n_genes_in_study"] = np.nan
     # Drop non-finite effect values (mirrors harmonize.py): an inf signed_z would make
     # the Stouffer combination and heterogeneity stats inf/NaN with no error.
     frame.loc[~np.isfinite(frame["signed_z"]), "signed_z"] = np.nan
@@ -225,6 +231,7 @@ def collapse_gene_source_units(harmonized: pd.DataFrame) -> pd.DataFrame:
         sum_wlfc=("_wlfc", "sum"),
         sum_w_lfc=("_w_lfc_denominator", "sum"),
         normalized_rank=("normalized_rank", "mean"),
+        n_genes_in_study=("n_genes_in_study", "max"),
         weight=("_weight", "mean"),
         n_contrast_rows=("study_id", "size"),
         n_studies_in_source_unit=("study_id", "nunique"),

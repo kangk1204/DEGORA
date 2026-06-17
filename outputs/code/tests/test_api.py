@@ -256,17 +256,49 @@ def test_access_token_protects_api_when_configured(tmp_path) -> None:
     base_url = f"http://{host}:{port}"
 
     try:
+        with urllib.request.urlopen(base_url, timeout=5) as response:
+            html = response.read().decode("utf-8")
         with pytest.raises(HTTPError) as exc_info:
             _get_json(f"{base_url}/api/health")
         assert exc_info.value.code == 401
 
-        health = _get_json(f"{base_url}/api/health?token=secret-token")
+        request = urllib.request.Request(f"{base_url}/api/health", headers={"X-DEGORA-Token": "secret-token"})
+        with urllib.request.urlopen(request, timeout=5) as response:
+            health = json.loads(response.read().decode("utf-8"))
+        query_health = _get_json(f"{base_url}/api/health?token=secret-token")
     finally:
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
 
+    assert "readApiToken()" in html
     assert health["status"] == "ok"
+    assert query_health["status"] == "ok"
+
+
+def test_serve_prints_token_as_fragment_not_query(tmp_path, monkeypatch, capsys) -> None:
+    db = tmp_path / "degora_scores.db"
+    db.write_bytes(b"stub")
+    state = {"closed": False}
+
+    class InterruptingServer:
+        db_path = db
+        server_address = ("127.0.0.1", 8765)
+
+        def serve_forever(self) -> None:
+            raise KeyboardInterrupt
+
+        def server_close(self) -> None:
+            state["closed"] = True
+
+    monkeypatch.setattr(api, "create_server", lambda *args, **kwargs: InterruptingServer())
+
+    serve(db, quiet=True, access_token="secret token")
+
+    captured = capsys.readouterr()
+    assert "DEGORA browser/API: http://127.0.0.1:8765#token=secret%20token" in captured.out
+    assert "?token=" not in captured.out
+    assert state["closed"]
 
 
 def test_network_api_redacts_source_paths_in_studies_and_gene_evidence(tmp_path) -> None:

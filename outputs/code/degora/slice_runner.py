@@ -725,6 +725,19 @@ def _portable_cli_path(path: Path, repo_root: Path) -> str:
         return str(resolved)
 
 
+def _try_write_parquet(frame: pd.DataFrame, path: Path) -> str | None:
+    """Write an optional parquet mirror, returning a warning on engine failure."""
+
+    try:
+        frame.to_parquet(path, index=False)
+    except (ImportError, ValueError) as exc:
+        return (
+            "Optional harmonized parquet was not written because no usable parquet "
+            f"engine is available: {exc}"
+        )
+    return None
+
+
 def validate_catalog_inputs(catalog_path: Path) -> dict[str, Any]:
     """Validate catalog/config rows and source-table column mappings without writing outputs."""
 
@@ -908,7 +921,10 @@ def run_slice(catalog_path: Path, output_dir: Path, harmonized_dir: Path, min_st
     harmonized_csv = harmonized_dir / f"{harmonized_stem}.csv"
     harmonized_parquet = harmonized_dir / f"{harmonized_stem}.parquet"
     all_harmonized.to_csv(harmonized_csv, index=False)
-    all_harmonized.to_parquet(harmonized_parquet, index=False)
+    optional_output_warnings: list[str] = []
+    parquet_warning = _try_write_parquet(all_harmonized, harmonized_parquet)
+    if parquet_warning:
+        optional_output_warnings.append(parquet_warning)
 
     consensus = slice_consensus(all_harmonized, min_studies=min_studies)
     consensus_path = output_dir / "slice_consensus.csv"
@@ -975,10 +991,13 @@ def run_slice(catalog_path: Path, output_dir: Path, harmonized_dir: Path, min_st
         if "source_input_type" in catalog.columns
         else {},
         "warnings": input_warnings,
+        "optional_output_warnings": optional_output_warnings,
         "gold_panel_status": gold_panel["status"],
         "gold_panel_source": gold_panel["source"],
         "gold_panel_gene_count": len(gold_panel["genes"]),
         "gold_panel_reason": gold_panel["reason"],
+        "recall_rank_source": "slice_consensus_order",
+        "recall_rank_note": "slice_metrics recall is computed before score_db and is not the manuscript-facing quality-weighted DEGORA rank.",
         "recall_at_50": recall50,
         "recall_at_100": recall100,
     }
@@ -997,7 +1016,10 @@ def run_slice(catalog_path: Path, output_dir: Path, harmonized_dir: Path, min_st
             f"SLICE_MIN_STUDIES={min_studies}",
         ]
     )
-    for artifact in (harmonized_csv, harmonized_parquet, consensus_path, result_harmonized_path, metrics_path):
+    artifacts = [harmonized_csv, consensus_path, result_harmonized_path, metrics_path]
+    if harmonized_parquet.exists():
+        artifacts.insert(1, harmonized_parquet)
+    for artifact in artifacts:
         write_source_sidecar(
             artifact,
             command,
