@@ -323,6 +323,14 @@ def main(argv: list[str] | None = None) -> int:
             validation = validate_catalog_inputs(Path(args.config))
             print("DEGORA config OK")
             _print_validation_summary(validation, include_excluded=True)
+            warnings = [str(message).strip() for message in validation.get("warnings", []) if str(message).strip()]
+            if warnings:
+                print("", file=sys.stderr)
+                print("Non-fatal input warnings:", file=sys.stderr)
+                for message in warnings[:WARNING_DISPLAY_LIMIT]:
+                    print(f"- {message}", file=sys.stderr)
+                if len(warnings) > WARNING_DISPLAY_LIMIT:
+                    print(f"- ... {len(warnings) - WARNING_DISPLAY_LIMIT} more warning(s)", file=sys.stderr)
             return 0
         if args.command == "run":
             return _run_from_config(args)

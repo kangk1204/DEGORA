@@ -28,7 +28,7 @@ def _uses_padj_surrogate(row: pd.Series) -> bool:
     p_column = str(row.get("p_column", "")).strip().lower()
     padj_column = str(row.get("padj_column", "")).strip().lower()
     notes = str(row.get("notes", "")).lower()
-    return (p_column and p_column == padj_column) or "padj" in notes and "surrogate" in notes
+    return (p_column and p_column == padj_column) or ("padj" in notes and "surrogate" in notes)
 
 
 def target_support_by_study(harmonized: pd.DataFrame, catalog: pd.DataFrame) -> pd.DataFrame:

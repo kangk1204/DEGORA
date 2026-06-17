@@ -22,17 +22,25 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 def _resilient_write_text(path: Path, text: str) -> None:
+    # Write to a sibling temp file and atomically rename it onto the target, so a
+    # crash or interrupted write can never leave a truncated/invalid sidecar for the
+    # provenance checker to flag. os.replace is atomic on the same filesystem.
     last: OSError | None = None
+    tmp = path.with_name(path.name + ".tmp")
     for attempt in range(_SIDECAR_WRITE_ATTEMPTS):
         try:
-            with path.open("w", encoding="utf-8", newline="\n") as handle:
+            with tmp.open("w", encoding="utf-8", newline="\n") as handle:
                 handle.write(text)
+            tmp.replace(path)
             return
         except OSError as exc:
             if exc.errno not in _SIDECAR_WRITE_RETRY_ERRNOS:
                 raise
             last = exc
-            time.sleep(0.25 * (attempt + 1))
+            # No point sleeping after the final attempt -- the loop is exhausted and
+            # the code re-raises immediately, so the trailing backoff is dead time.
+            if attempt < _SIDECAR_WRITE_ATTEMPTS - 1:
+                time.sleep(0.25 * (attempt + 1))
     assert last is not None
     raise last
 
@@ -128,7 +136,13 @@ def write_source_sidecar(
 
     command = _validate_single_line_command(command)
     artifact = Path(artifact_path)
-    _resilient_write_text(artifact_source_path(artifact), command + "\n")
+    # Build the JSON record (which hashes the artifact and inputs) BEFORE writing
+    # either sidecar, so a hashing/serialization failure aborts before any file is
+    # created and cannot leave a .source without its matching .provenance.json.
+    json_text: str | None = None
     if write_json:
         record = provenance_record(artifact, command, inputs=inputs, metadata=metadata)
-        _resilient_write_text(artifact_provenance_path(artifact), json.dumps(record, indent=2, sort_keys=True) + "\n")
+        json_text = json.dumps(record, indent=2, sort_keys=True) + "\n"
+    _resilient_write_text(artifact_source_path(artifact), command + "\n")
+    if json_text is not None:
+        _resilient_write_text(artifact_provenance_path(artifact), json_text)

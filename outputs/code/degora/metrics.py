@@ -32,7 +32,8 @@ def recall_at_k(consensus: pd.DataFrame, positives: Iterable[str], k: int) -> di
                 break
     recovered = sorted(positives_set.intersection(top))
     return {
-        "k": k,
+        "k": k_eff,
+        "k_requested": k,
         "n_positives": len(positives_set),
         "n_recovered": len(recovered),
         "recall": len(recovered) / len(positives_set) if positives_set else 0.0,

@@ -139,7 +139,6 @@ def test_degora_score_prioritizes_repeated_directional_source_unit_support() -> 
     assert len(evidence.loc[evidence["gene_symbol"].eq("VEGFA")]) == 2
     p1 = evidence.loc[evidence["gene_symbol"].eq("VEGFA") & evidence["source_unit_id"].eq("P1")].iloc[0]
     assert np.isclose(p1["signed_z"], 5.5)
-    assert np.isnan(p1["aggregate_padj"])
     assert p1["min_source_padj"] == 1e-6
     assert p1["contributing_study_ids"] == "S1;S2"
     assert set(scores["evidence_tier"]) <= {"A", "B", "C", "D"}

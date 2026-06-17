@@ -816,10 +816,22 @@ def validate_catalog_inputs(catalog_path: Path) -> dict[str, Any]:
         "required_contrasts_columns": BEGINNER_REQUIRED_CONTRAST_COLUMNS,
         "required_source_table_mappings": _format_source_mapping_contract(REQUIRED_SOURCE_TABLE_MAPPINGS),
         "optional_source_table_mappings": _format_source_mapping_contract(OPTIONAL_SOURCE_TABLE_MAPPINGS),
+        # Surface the same non-fatal microarray advisories that run_slice emits, so the
+        # `degora validate` preflight flags them before a full run rather than after.
+        "warnings": _microarray_warnings(catalog),
     }
 
 
 def run_slice(catalog_path: Path, output_dir: Path, harmonized_dir: Path, min_studies: int) -> dict[str, Any]:
+    if int(min_studies) < 1:
+        # min_studies <= 0 disables the replication floor entirely (every gene passes
+        # n_studies.ge(min_studies)); reject it so a meaningless value is not recorded
+        # as legitimate. 1 is intentionally supported (single-source scoring).
+        raise DegoraConfigError(
+            "min_studies must be at least 1",
+            problems=[f"Got min_studies={min_studies!r}."],
+            fixes=["Use 1 to score single-source genes, or 2+ to require independent replication."],
+        )
     for label, directory in (("output", output_dir), ("harmonized", harmonized_dir)):
         try:
             directory.mkdir(parents=True, exist_ok=True)
@@ -1011,8 +1023,8 @@ def run_slice(catalog_path: Path, output_dir: Path, harmonized_dir: Path, min_st
             "outputs/code",
             "slice",
             f"CATALOG={_portable_cli_path(catalog_path, catalog_repo_root)}",
-            f"OUTDIR={output_dir}",
-            f"HARMONIZED_DIR={harmonized_dir}",
+            f"OUTDIR={_portable_cli_path(output_dir, catalog_repo_root)}",
+            f"HARMONIZED_DIR={_portable_cli_path(harmonized_dir, catalog_repo_root)}",
             f"SLICE_MIN_STUDIES={min_studies}",
         ]
     )

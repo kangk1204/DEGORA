@@ -30,7 +30,13 @@ def low_count_filter_summary(
     min_count: float = LOW_COUNT_FILTER_MIN_COUNT,
     min_samples: int = LOW_COUNT_FILTER_MIN_SAMPLES,
 ) -> dict[str, Any]:
-    """Return JSON-safe metadata for the count-derived expression filter."""
+    """Return JSON-safe metadata for the count-derived expression filter.
+
+    Pass the SAME min_count/min_samples that produced ``mask`` in low_count_filter_mask.
+    These kwargs default independently to the module constants, so a caller that uses a
+    custom threshold for the mask but the defaults here would emit provenance metadata
+    that misreports the filter actually applied.
+    """
 
     before = int(len(counts))
     after = int(mask.sum())

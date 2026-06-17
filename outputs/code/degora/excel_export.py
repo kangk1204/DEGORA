@@ -129,16 +129,16 @@ COLUMN_DEFINITIONS: dict[str, tuple[str, str, str]] = {
     "source_quality_weight_sum": ("Total source-quality weight contributing to the gene.", "non-negative number", "blank means unavailable"),
     "stouffer_z": ("Fixed-effect Stouffer combined z statistic.", "signed z score", "blank means unavailable"),
     "stouffer_p": ("P value from fixed-effect Stouffer combination.", "0-1", "blank means unavailable"),
-    "stouffer_padj": ("Multiple-testing adjusted Stouffer p value.", "0-1", "blank means unavailable"),
+    "stouffer_padj": ("BH-adjusted Stouffer p value; a ranking aid, not a calibrated FDR.", "0-1", "blank means unavailable"),
     "heterogeneity_q": ("Cochran-like heterogeneity Q across source units.", "non-negative number", "blank means unavailable"),
     "heterogeneity_df": ("Degrees of freedom for heterogeneity summary.", "integer", "blank means unavailable"),
-    "heterogeneity_i2": ("Descriptive I-squared heterogeneity across source units.", "0-1, higher is more heterogeneous", "blank means unavailable"),
+    "heterogeneity_i2": ("Descriptive (Q-df)/Q over sqrt(N)-weighted source-unit z values; positively biased, NOT a calibrated Higgins' I2 (cf. effect_meta_i2) -- audit/review-trigger only.", "0-1, higher is more heterogeneous", "blank means unavailable"),
     "heterogeneity_flag": ("Text flag summarizing source-unit heterogeneity.", "text label", "blank means not flagged"),
     "re_stouffer_z": ("Heterogeneity-aware random-effects Stouffer z statistic.", "signed z score", "blank means unavailable"),
     "re_stouffer_p": ("P value from random-effects Stouffer summary.", "0-1", "blank means unavailable"),
-    "re_stouffer_padj": ("Adjusted p value from random-effects Stouffer summary.", "0-1", "blank means unavailable"),
+    "re_stouffer_padj": ("BH-adjusted p from the random-effects Stouffer summary; a screening/triage field inheriting the small-k-biased heterogeneity_i2 shrinkage, not a calibrated FDR.", "0-1", "blank means unavailable"),
     "re_stouffer_shrinkage_factor": ("Shrinkage factor applied in heterogeneity-aware Stouffer summary.", "0-1", "blank means unavailable"),
-    "rra_rho": ("RobustRankAggreg-style rho statistic.", "0-1, lower is stronger", "blank means unavailable"),
+    "rra_rho": ("RobustRankAggreg-style rho statistic; a ranking aid, not a calibrated FDR or p-value. Use rra_neglog10_rho for top genes when rho underflows.", "0-1, lower is stronger", "blank means unavailable"),
     "rra_neglog10_rho": ("Negative log10 transform of RRA rho.", "higher is stronger", "blank means unavailable"),
     "rra_rank": ("Rank implied by RobustRankAggreg-style evidence.", "1 is strongest", "blank means unavailable"),
     "effect_meta_log2fc_re": ("Random-effects summary log2 fold change.", "log2 fold-change", "blank means insufficient effect data"),
@@ -146,15 +146,14 @@ COLUMN_DEFINITIONS: dict[str, tuple[str, str, str]] = {
     "effect_meta_ci_low": ("Lower bound of random-effects log2 fold-change confidence interval.", "log2 fold-change", "blank means unavailable"),
     "effect_meta_ci_high": ("Upper bound of random-effects log2 fold-change confidence interval.", "log2 fold-change", "blank means unavailable"),
     "effect_meta_tau2": ("Between-source variance estimate for effect summary.", "non-negative number", "blank means unavailable"),
-    "effect_meta_i2": ("I-squared heterogeneity for effect-size meta-summary.", "0-1", "blank means unavailable"),
+    "effect_meta_i2": ("Inverse-variance Cochran-Q Higgins' I2 of the random-effects log2FC meta-summary.", "0-1", "blank means unavailable"),
     "effect_meta_k": ("Number of source units contributing to effect-size summary.", "integer", "blank means unavailable"),
     "effect_meta_se_source": ("How the effect-size standard error was derived.", "text label", "blank means unavailable"),
-    "effect_meta_exact_weight_fraction": ("Fraction of effect-size weight from exact standard errors.", "0-1", "blank means unavailable"),
     "weighted_lfc": ("Weighted log2 fold-change summary used as an audit field.", "log2 fold-change", "blank means unavailable"),
     "rank_product": ("Rank-product style aggregate rank statistic.", "positive number, lower is stronger", "blank means unavailable"),
     "rank_score": ("Rank-based DEGORA reference score.", "higher is stronger", "blank means unavailable"),
     "slice_rank": ("Rank from the unweighted DEGORA slice/reference output.", "1 is highest priority", "blank means unavailable"),
-    "high_confidence": ("Whether the gene passes the high-confidence rule used by DEGORA.", "boolean/text", "blank means not flagged"),
+    "high_confidence": ("Whether the gene passes the high-confidence rule used by DEGORA.", "1 or 0 (stored as integer in SQLite)", "blank means not flagged"),
     "study_id": ("Input contrast or study identifier.", "text", "not expected"),
     "source_unit_id": ("Independent collapsed source unit; related contrasts share this ID to avoid overcounting.", "text", "not expected"),
     "paper_id": ("Publication or dataset identifier used as source-unit fallback when needed.", "text", "blank means unavailable"),
@@ -175,8 +174,7 @@ COLUMN_DEFINITIONS: dict[str, tuple[str, str, str]] = {
     "n_treat": ("Number of treatment/test samples represented by the source row.", "integer", "blank means unavailable"),
     "lfc": ("Source-level log2 fold change after harmonization.", "log2 fold-change", "blank means unavailable"),
     "signed_z": ("Signed evidence statistic derived from source p value and direction.", "signed z score", "blank means unavailable"),
-    "aggregate_pvalue": ("Source-unit aggregate p value for the gene.", "0-1", "blank means unavailable"),
-    "aggregate_padj": ("Adjusted aggregate p value for the gene/source unit.", "0-1", "blank means unavailable"),
+    "aggregate_pvalue": ("Two-sided p of the source-unit weighted-mean signed z; descriptive only, not a Stouffer/combined p.", "0-1", "blank means unavailable"),
     "min_source_pvalue": ("Smallest source p value among rows collapsed into the source unit.", "0-1", "blank means unavailable"),
     "min_source_padj": ("Smallest adjusted p value among collapsed source rows.", "0-1", "blank means unavailable"),
     "normalized_rank": ("Within-source normalized rank of the gene.", "0-1, lower is stronger", "blank means unavailable"),
@@ -188,7 +186,7 @@ COLUMN_DEFINITIONS: dict[str, tuple[str, str, str]] = {
     "source_recommended_weight": ("Recommended source weight after diagnostics.", "non-negative number", "blank means unavailable"),
     "source_reliability_weight": ("Weight component from source reliability diagnostics.", "non-negative number", "blank means unavailable"),
     "source_reliability_label": ("Text label for source reliability.", "text", "blank means unavailable"),
-    "source_outlier_flag": ("Whether source diagnostics flagged the row/source as an outlier.", "boolean/text", "blank means not flagged"),
+    "source_outlier_flag": ("Whether source diagnostics flagged the row/source as an outlier.", "1 or 0 (stored as integer in SQLite)", "blank means not flagged"),
     "direction": ("Direction of gene change in the source unit.", "up or down", "blank means unavailable"),
     "source_path": ("Local input file path used for provenance.", "path text", "blank means unavailable"),
     "source_url": ("Public source URL or accession link when available.", "URL/text", "blank means unavailable"),
@@ -207,6 +205,12 @@ COLUMN_DEFINITIONS: dict[str, tuple[str, str, str]] = {
     "n_studies_in_source_unit": ("Number of study IDs collapsed into the source unit.", "integer", "blank means unavailable"),
     "notes": ("Free-text notes retained from the source catalog.", "text", "blank means no note"),
     "present_in_degora_output": ("Whether a curated gene was present in the DEGORA ranked output.", "boolean", "false means absent from scored output"),
+    "n_genes": ("Number of distinct genes contributed by this source unit.", "integer", "blank means unavailable"),
+    "n_pairwise_comparisons": ("Number of other source units this one was compared against for coherence.", "integer", "blank means unavailable"),
+    "median_pairwise_lfc_spearman": ("Median Spearman correlation of log2FC between this source unit and other source units.", "-1 to 1, higher is more coherent", "blank means too few overlapping genes"),
+    "min_pairwise_lfc_spearman": ("Minimum pairwise log2FC Spearman correlation against other source units.", "-1 to 1", "blank means too few overlapping genes"),
+    "median_pairwise_sign_agreement": ("Median fraction of overlapping genes with the same log2FC sign across source-unit pairs.", "0-1, higher is more concordant", "blank means unavailable"),
+    "recommended_role": ("Suggested role for the source unit in analysis (primary or sensitivity).", "text label", "blank means unavailable"),
 }
 
 
@@ -284,7 +288,15 @@ def _curated_lookup(gold: pd.DataFrame, genes: pd.DataFrame) -> pd.DataFrame:
     ]
     present = [column for column in rank_columns if column in genes.columns]
     lookup = gold.merge(genes[present], on="gene_symbol", how="left")
-    rank = pd.to_numeric(lookup.get("quality_weighted_degora_rank"), errors="coerce")
+    # Coerce to a real Series first: when the rank column is absent (e.g. a legacy
+    # score CSV via the fallback path), lookup.get(...) returns None and
+    # pd.to_numeric(None) yields a scalar, whose .notna()/.le() would raise.
+    raw_rank = (
+        lookup["quality_weighted_degora_rank"]
+        if "quality_weighted_degora_rank" in lookup.columns
+        else pd.Series(pd.NA, index=lookup.index)
+    )
+    rank = pd.to_numeric(raw_rank, errors="coerce")
     lookup["present_in_degora_output"] = rank.notna()
     for cutoff in [10, 20, 50, 100]:
         lookup[f"top{cutoff}_hit"] = rank.le(cutoff).fillna(False)
@@ -314,7 +326,7 @@ def _summary_rows(
         {"field": "n_gene_evidence_rows", "value": int(len(evidence))},
         {
             "field": "n_source_units",
-            "value": int(studies["source_unit_id"].nunique()) if "source_unit_id" in studies.columns else "",
+            "value": int(studies["source_unit_id"].nunique()) if "source_unit_id" in studies.columns else 0,
         },
         {"field": "n_studies", "value": int(len(studies))},
         {"field": "n_curated_genes", "value": int(len(gold))},
@@ -492,7 +504,14 @@ def export_run_workbook(
         **runtime_version_info(),
         **{key: str(metadata.get(key, "")) for key in ("degora_version", "degora_code_revision") if metadata.get(key)},
     }
-    diagnostics = pd.read_csv(diagnostics_tsv, sep="\t") if diagnostics_tsv.exists() else pd.DataFrame()
+    diagnostics = pd.DataFrame()
+    if diagnostics_tsv.exists():
+        try:
+            diagnostics = pd.read_csv(diagnostics_tsv, sep="\t")
+        except (pd.errors.EmptyDataError, pd.errors.ParserError):
+            # Mirror the JSON/gold readers: a truncated or hand-edited TSV must not
+            # abort the whole workbook export; fall back to an empty Source_quality sheet.
+            diagnostics = pd.DataFrame()
     gold = _read_gold_from_config(config_path)
     lookup = _curated_lookup(gold, genes)
     summary = _summary_rows(result_dir, genes, evidence, studies, gold, version_info)

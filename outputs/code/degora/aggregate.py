@@ -96,7 +96,12 @@ def _duration_numeric(values: pd.Series) -> pd.Series:
 
 
 def _apply_time_course_mode(frame: pd.DataFrame) -> pd.DataFrame:
-    mode_column = "time_course_mode" if "time_course_mode" in frame.columns else "temporal_mode" if "temporal_mode" in frame.columns else ""
+    if "time_course_mode" in frame.columns:
+        mode_column = "time_course_mode"
+    elif "temporal_mode" in frame.columns:
+        mode_column = "temporal_mode"
+    else:
+        mode_column = ""
     if not mode_column:
         frame["time_course_mode"] = "mean"
         return frame
@@ -351,8 +356,11 @@ def stouffer_consensus(harmonized: pd.DataFrame, min_studies: int = 2) -> pd.Dat
 def rank_product_consensus(harmonized: pd.DataFrame, min_studies: int = 2) -> pd.DataFrame:
     """Deterministic rank-product style approximation for the slice.
 
-    This is intentionally labeled as an approximation; the full S1 baseline will
-    use RobustRankAggreg via R.
+    Note: ``rank_product`` here is the GEOMETRIC MEAN of per-source normalized ranks
+    (exp(mean(log(normalized_rank)))), not the classical product-of-ranks statistic
+    nor an RRA beta-order-statistic p-value. It is intentionally labeled as an
+    approximation; the calibrated rank lane is rra_rho (see score_db._rra_beta_layer),
+    and the full S1 baseline uses RobustRankAggreg via R.
     """
 
     by_study = _eligible_study_gene_stats(harmonized, min_studies)

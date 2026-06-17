@@ -113,10 +113,15 @@ def rank_plane_gene_summary(points: pd.DataFrame, *, joint_threshold: float = 0.
     consensus_sign = frame.groupby("gene_symbol")["signed_effect_rank"].median().rename("_median_signed")
     frame = frame.merge(consensus_sign, on="gene_symbol", how="left")
     frame["_consensus_sign"] = np.sign(frame["_median_signed"])
+    # A row whose signed_effect_rank is 0 (lfc == 0 tie) has no direction, so it is
+    # neutral -- not discordant. Exclude it from the concordance denominator (NaN,
+    # skipped by mean) instead of counting it against the gene, which previously
+    # deflated effect_sign_concordance and the multiplicative rank_plane_score even
+    # when no study actually disagreed on direction.
     frame["_sign_concordant"] = np.where(
-        frame["_consensus_sign"].ne(0),
-        np.sign(frame["signed_effect_rank"]).eq(frame["_consensus_sign"]),
-        False,
+        frame["_consensus_sign"].ne(0) & np.sign(frame["signed_effect_rank"]).ne(0),
+        np.sign(frame["signed_effect_rank"]).eq(frame["_consensus_sign"]).astype(float),
+        np.nan,
     )
 
     out = frame.groupby("gene_symbol", as_index=False).agg(
@@ -128,6 +133,10 @@ def rank_plane_gene_summary(points: pd.DataFrame, *, joint_threshold: float = 0.
         joint_high_fraction=("_joint_high", "mean"),
         effect_sign_concordance=("_sign_concordant", "mean"),
     )
+    # A gene with no directional studies at all (every row a tie) has undefined
+    # concordance (NaN from the skipna mean); treat it as no-consensus (0.0) so the
+    # composite score is defined rather than NaN.
+    out["effect_sign_concordance"] = out["effect_sign_concordance"].fillna(0.0)
     out["rank_plane_score"] = (
         out["median_p_rank_strength"]
         * out["median_effect_rank_strength"]
@@ -152,8 +161,10 @@ def rank_plane_study_summary(points: pd.DataFrame, *, joint_threshold: float = 0
             {
                 "study_id": study_id,
                 "n_genes": int(len(study)),
-                "spearman_p_vs_effect_rank": float(
-                    study["p_rank_strength"].corr(study["effect_rank_strength"], method="spearman")
+                "spearman_p_vs_effect_rank": (
+                    float(study["p_rank_strength"].corr(study["effect_rank_strength"], method="spearman"))
+                    if study["p_rank_strength"].nunique() > 1 and study["effect_rank_strength"].nunique() > 1
+                    else float("nan")
                 ),
                 "joint_high_count": int(
                     (

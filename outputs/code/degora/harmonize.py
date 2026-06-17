@@ -326,6 +326,16 @@ def _rank_universe_size(study_meta: dict[str, Any], observed_rows: int, scope: s
     declared_value = float(declared) if pd.notna(declared) and np.isfinite(float(declared)) and float(declared) > 0 else None
     if declared_value is not None:
         used = max(int(round(declared_value)), observed_rows)
+        if int(round(declared_value)) < observed_rows:
+            # A declared universe smaller than the reported rows is impossible for a
+            # real DEG list. Clamp up to observed rows (math stays correct) but surface
+            # the misconfiguration instead of silently advertising the unused declared
+            # value in rank_universe_size_declared or in a warning that claims it was used.
+            warning = (
+                f"declared rank_universe_size={int(round(declared_value))} < {observed_rows} reported "
+                "rows; using observed rows -- check the catalog rank_universe_size"
+            )
+            return used, float(used), warning
         warning = (
             "DEG-only table; normalized ranks use declared rank_universe_size and missing genes are unreported"
             if scope == DEG_ONLY_SCOPE
@@ -500,7 +510,16 @@ def harmonize_frame(frame: pd.DataFrame, mapping: TableMapping, study_meta: dict
     out = _collapse_duplicate_gene_symbols(out, study_meta)
 
     lfc_sign = np.sign(out["lfc"].to_numpy(dtype=float))
-    out["signed_z"] = lfc_sign * norm.isf(out["pvalue"].to_numpy(dtype=float) / 2.0)
+    # A log2FC of exactly 0 carries no usable direction; np.sign -> 0 would make
+    # signed_z == 0, which is finite and survives the guard below. Such a row would
+    # then add 0 to the Stouffer numerator but a full weight to the denominator
+    # (diluting the combined z) and inflate n_studies. Route lfc == 0 through NaN so
+    # aggregation/scoring drop it like any other non-finite signed_z.
+    out["signed_z"] = np.where(
+        lfc_sign == 0.0,
+        np.nan,
+        lfc_sign * norm.isf(out["pvalue"].to_numpy(dtype=float) / 2.0),
+    )
     out.loc[~np.isfinite(out["signed_z"]), "signed_z"] = np.nan
     out["abs_signed_z"] = out["signed_z"].abs()
     out["within_study_rank"] = out["abs_signed_z"].rank(method="average", ascending=False)
@@ -517,11 +536,14 @@ def harmonize_frame(frame: pd.DataFrame, mapping: TableMapping, study_meta: dict
     out["table_scope_value_column"] = str(scope["value_column"])
     out["n_rows_in_source_table"] = int(scope["n_rows"])
     out["n_reported_rows_after_filter"] = int(len(out))
-    out["n_scope_significant_rows_padj05"] = int(scope["n_le_0_05"])
+    # Counts rows at value_column <= 0.05, where value_column is padj when mapped
+    # else the raw p-value (see assess_table_scope). The neutral name avoids
+    # asserting an adjusted-p/FDR threshold for raw-p-only tables; the exact column
+    # used is recorded separately in table_scope_value_column.
+    out["n_scope_significant_rows_le_0_05"] = int(scope["n_le_0_05"])
     out["rank_universe_size_declared"] = rank_universe_declared if rank_universe_declared is not None else np.nan
     out["rank_universe_size_used"] = int(rank_universe_used)
     out["rank_universe_warning"] = rank_warning
-    out["sign_call"] = np.where(out["padj"].le(0.1), np.sign(out["lfc"]), 0.0)
     return out.sort_values(["study_id", "within_study_rank", "gene_symbol"]).reset_index(drop=True)
 
 

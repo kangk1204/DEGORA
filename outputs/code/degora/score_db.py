@@ -69,7 +69,8 @@ SCORE_FORMULA = (
     "100 * weighted_geometric_mean(support_score, direction_score, "
     "evidence_score, rank_score_component, effect_score); support is "
     "log-scaled by independent source units, direction is sign concordance, "
-    "evidence is Stouffer-z strength, rank is inverse rank product, and "
+    "evidence is Stouffer-z strength, rank is one minus the 0-1 rank product "
+    "(its complement, so higher is stronger), and "
     "effect is absolute weighted log2FC strength. The score is a transparent "
     "ranking aid, not a calibrated posterior probability. Consensus evidence "
     "is combined after aggregating related contrasts within each independent "
@@ -163,7 +164,6 @@ GENE_SCORE_COLUMNS = [
     "effect_meta_i2",
     "effect_meta_k",
     "effect_meta_se_source",
-    "effect_meta_exact_weight_fraction",
     "weighted_lfc",
     "rank_product",
     "rank_score",
@@ -234,7 +234,6 @@ GENE_EVIDENCE_COLUMNS = [
     "lfc",
     "signed_z",
     "aggregate_pvalue",
-    "aggregate_padj",
     "min_source_pvalue",
     "min_source_padj",
     "normalized_rank",
@@ -566,7 +565,6 @@ def study_gene_evidence(harmonized: pd.DataFrame) -> pd.DataFrame:
     meta = _metadata_for_study_gene_units(selected_frame)
     out = collapsed.merge(meta.drop(columns=["n_genes_in_study"], errors="ignore"), on=["gene_symbol", "source_unit_id"], how="left")
     out["aggregate_pvalue"] = 2.0 * norm.sf(np.abs(pd.to_numeric(out["signed_z"], errors="coerce")))
-    out["aggregate_padj"] = np.nan
     out["source_quality_weight"] = _source_quality_weight_frame(out)
     out["source_quality_label"] = out["source_quality_weight"].map(_quality_label)
     out["source_coherence_weight"] = 1.0
@@ -638,9 +636,10 @@ def _source_quality_diagnostics_from_evidence(evidence: pd.DataFrame) -> pd.Data
         for source_b in source_units[index + 1 :]:
             overlap = wide_lfc[[source_a, source_b]].dropna()
             sign_overlap = wide_sign[[source_a, source_b]].dropna()
-            if len(overlap) >= 3:
+            if len(overlap) >= 3 and overlap[source_a].nunique() > 1 and overlap[source_b].nunique() > 1:
                 lfc_spearman = float(overlap[source_a].corr(overlap[source_b], method="spearman"))
             else:
+                # Spearman is undefined (and scipy warns) when either side is constant.
                 lfc_spearman = np.nan
             if len(sign_overlap) > 0:
                 sign_agreement = float((sign_overlap[source_a] * sign_overlap[source_b] > 0).mean())
@@ -980,7 +979,6 @@ def _effect_meta_layer(evidence: pd.DataFrame, *, min_studies: int) -> pd.DataFr
         "effect_meta_i2",
         "effect_meta_k",
         "effect_meta_se_source",
-        "effect_meta_exact_weight_fraction",
     ]
     if evidence.empty:
         return pd.DataFrame(columns=columns)
@@ -1052,7 +1050,6 @@ def _effect_meta_layer(evidence: pd.DataFrame, *, min_studies: int) -> pd.DataFr
                 "effect_meta_i2": i2,
                 "effect_meta_k": int(len(y)),
                 "effect_meta_se_source": "derived_from_log2fc_and_two_sided_pvalue",
-                "effect_meta_exact_weight_fraction": 0.0,
             }
         )
     return pd.DataFrame.from_records(rows, columns=columns)
@@ -1166,6 +1163,12 @@ def _leave_one_source_out_stability(
             rank_map: dict[str, float] = {}
         else:
             components = components.loc[components["gene_symbol"].astype(str).isin(rank_records)].copy()
+            # LOO ranking uses a reduced tiebreak (priority_score, gene_symbol) vs the
+            # baseline priority_rank's (priority_score, n_source_units, direction_confidence_index,
+            # gene_symbol). Under exact priority_score ties the two orderings can differ, so
+            # loo_rank_stability_score is approximate for tie-clustered genes. The effect is
+            # second-order (shift is divided by the whole gene universe) and feeds only the
+            # auxiliary evidence_reliability_score.
             ranked = components.sort_values(["priority_score", "gene_symbol"], ascending=[False, True]).reset_index(drop=True)
             rank_map = dict(zip(ranked["gene_symbol"].astype(str), (ranked.index + 1).astype(float), strict=False))
         for gene in rank_records:
@@ -1265,7 +1268,7 @@ def degora_score_table(
             "n_nonfinite_lfc_capped_for_score": n_nonfinite_lfc_capped,
             "independent_unit_for_consensus": "source_unit_id (paper_id when available, otherwise study_id)",
             "source_unit_collapse_rule": SOURCE_UNIT_COLLAPSE_RULE,
-            "direction_concordance_rule": "evidence-strength-weighted concordance across independent source-unit representatives",
+            "direction_concordance_rule": "|signed_z|-strength-weighted concordance across independent source-unit representatives; the primary path is source-weight-free, while the quality-weighted variant additionally multiplies the strength by the source reliability weight",
             "heterogeneity_rule": "source-unit z heterogeneity is reported as a Cochran-Q-style descriptive index over collapsed source-unit z values, with Q weighted by the predeclared sqrt-sample-size source weights (range 1-4, default 1) rather than by inverse variance; under homogeneity E[Q] therefore exceeds df, so heterogeneity_i2 = (Q-df)/Q is a positively biased weighted-dispersion index that is not comparable to a calibrated Higgins' I2. It is an audit/review-trigger field, not a calibrated random-effects model",
             "heterogeneity_flag_rule": "heterogeneity_i2 >= 0.75 is labeled high_context_dependent_review; >= 0.50 is moderate_context_review; flags are descriptive review aids, not score gates",
             "quality_weighted_score_formula": QUALITY_WEIGHTED_SCORE_FORMULA,
@@ -1505,7 +1508,6 @@ def degora_score_table(
         "effect_meta_ci_high",
         "effect_meta_tau2",
         "effect_meta_i2",
-        "effect_meta_exact_weight_fraction",
     ]:
         scores[column] = pd.to_numeric(scores[column], errors="coerce").round(6)
     scores["effect_meta_k"] = pd.to_numeric(scores["effect_meta_k"], errors="coerce").fillna(0).astype(int)
@@ -1606,7 +1608,12 @@ def _active_study_table(catalog_path: Path | None, evidence: pd.DataFrame) -> pd
         "source_path",
         "source_url",
     ]
-    return evidence[columns].drop_duplicates("study_id").sort_values("study_id").reset_index(drop=True)
+    # Keep the SQLite "studies" schema invariant across catalog/no-catalog runs: the
+    # catalog branch carries a "notes" column, so the evidence-derived fallback adds an
+    # empty one rather than emitting a 17- vs 18-column table depending on the run path.
+    out = evidence[columns].drop_duplicates("study_id").sort_values("study_id").reset_index(drop=True)
+    out["notes"] = ""
+    return out
 
 
 def _write_sqlite(

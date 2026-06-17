@@ -529,7 +529,7 @@ INDEX_HTML = """<!doctype html>
       aria-label="Resize gene and evidence panels"
       aria-valuemin="25"
       aria-valuemax="75"
-      aria-valuenow="61"
+      aria-valuenow="60"
       tabindex="0"
       data-tip="Drag left or right to resize the gene and evidence panels. Double-click to reset."
     ></div>
@@ -1036,6 +1036,15 @@ def _looks_like_local_path(value: Any) -> bool:
     text = str(value).strip()
     if not text:
         return False
+    # Strip a file:/file:// scheme so file:///Users/... is recognized as a local path
+    # rather than slipping past the is_absolute() check as an opaque URL string.
+    lowered = text.lower()
+    if lowered.startswith("file://"):
+        text = text[len("file://"):]
+    elif lowered.startswith("file:"):
+        text = text[len("file:"):]
+    if not text:
+        return False
     if Path(text).is_absolute():
         return True
     if len(text) >= 3 and text[1] == ":" and text[2] in {"/", "\\"}:
@@ -1055,10 +1064,15 @@ def _contains_local_path(value: Any) -> bool:
     return any(_looks_like_local_path(part) for part in text.replace("\n", ";").split(";"))
 
 
+# Redact by VALUE, not by key suffix: free-text fields such as source_url,
+# contributing_source_urls, and notes can hold an absolute local path or a
+# file:// URL, which a key-suffix filter (_path/_dir only) would leak to a
+# network client. _looks_like_local_path requires absolute-path/drive-letter/UNC
+# shapes, so legitimate https:// URLs and plain text are preserved.
 def _redact_meta_for_network(meta: dict[str, str]) -> dict[str, str]:
     redacted = dict(meta)
     for key, value in meta.items():
-        if key.endswith(("_path", "_paths", "_dir", "_dirs")) and _contains_local_path(value):
+        if _contains_local_path(value):
             redacted[key] = LOCAL_PATH_REDACTION
     return redacted
 
@@ -1066,7 +1080,7 @@ def _redact_meta_for_network(meta: dict[str, str]) -> dict[str, str]:
 def _redact_record_paths_for_network(record: dict[str, Any]) -> dict[str, Any]:
     redacted = dict(record)
     for key, value in record.items():
-        if key.endswith(("_path", "_paths", "_dir", "_dirs")) and _contains_local_path(value):
+        if _contains_local_path(value):
             redacted[key] = LOCAL_PATH_REDACTION
     return redacted
 
@@ -1165,6 +1179,9 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
     """Serve the static browser UI and JSON endpoints."""
 
     server: "DegoraHttpServer"
+    # Reap half-open / slow-loris connections so a peer cannot pin a worker thread
+    # indefinitely (each connection gets its own thread; see DegoraHttpServer).
+    timeout = 30
 
     def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
         if self.server.quiet:
@@ -1214,6 +1231,16 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Referrer-Policy", "no-referrer")
+        # The page is fully self-contained (one inline style + script, data: favicon),
+        # so a strict CSP hardens --allow-network mode against MIME sniffing,
+        # clickjacking, and any future escaping regression without breaking the UI.
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header(
+            "Content-Security-Policy",
+            "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; "
+            "connect-src 'self'; img-src data:; base-uri 'none'; form-action 'none'",
+        )
         self.send_header("Content-Length", str(len(encoded)))
         self.end_headers()
         self.wfile.write(encoded)
@@ -1222,6 +1249,7 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
         encoded = json.dumps(_jsonable(payload), sort_keys=True).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Content-Length", str(len(encoded)))
         self.end_headers()
         self.wfile.write(encoded)
@@ -1329,6 +1357,9 @@ class DegoraHttpServer(ThreadingHTTPServer):
     # Keep auto-port fallback deterministic on Windows too: SO_REUSEADDR there
     # can allow two listeners on the same port, so a busy-port probe would lie.
     allow_reuse_address = False
+    # Per-connection worker threads must not outlive the process, so a stuck
+    # handler cannot keep the interpreter alive after Ctrl-C / shutdown.
+    daemon_threads = True
 
     def __init__(
         self,
