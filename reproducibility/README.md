@@ -6,16 +6,16 @@ tables the configs read are distributed separately as an archived data bundle.
 
 ```
 reproducibility/
-├── README.md                     # this file
-├── fetch_reproduction_data.sh    # downloads + unpacks the archived DEG tables
-└── datasets/
-    ├── 01_ifn_rnaseq/config.xlsx
-    ├── 02_ifn_rnaseq_array/config.xlsx
-    ├── 03_er_stress_rnaseq/config.xlsx
-    ├── 04_er_stress_rnaseq_array/config.xlsx
-    ├── 05_heat_shock_rnaseq/config.xlsx
-    ├── 06_hypoxia_hif1_rnaseq/config.xlsx
-    └── 07_hypoxia_hif1_rnaseq_array/config.xlsx
+  README.md                       this file
+  fetch_reproduction_data.sh      downloads + unpacks the archived DEG tables
+  datasets/
+    01_ifn_rnaseq/config.xlsx
+    02_ifn_rnaseq_array/config.xlsx
+    03_er_stress_rnaseq/config.xlsx
+    04_er_stress_rnaseq_array/config.xlsx
+    05_heat_shock_rnaseq/config.xlsx
+    06_hypoxia_hif1_rnaseq/config.xlsx
+    07_hypoxia_hif1_rnaseq_array/config.xlsx
 ```
 
 ## The seven datasets
@@ -53,7 +53,7 @@ degora run reproducibility/datasets/01_ifn_rnaseq/config.xlsx
 degora serve reproducibility/datasets/01_ifn_rnaseq/results/degora_scores.db
 ```
 
-Run the other datasets the same way — just change the folder name, e.g.
+Run the other datasets the same way - just change the folder name, e.g.
 `degora run reproducibility/datasets/05_heat_shock_rnaseq/config.xlsx`.
 
 Each run writes into that dataset's own `results/` subfolder: the ranked gene table

@@ -17,7 +17,7 @@ BUNDLE="degora_reproduction_data_${VERSION}"
 # TODO: replace PLACEHOLDER with the Zenodo record id once the archive is published.
 DEFAULT_URL="https://zenodo.org/records/PLACEHOLDER/files/${BUNDLE}.zip"
 URL="${DEGORA_REPRO_DATA_URL:-$DEFAULT_URL}"
-EXPECTED_SHA256="6675eb15253f18078b7c4f48d8009e71bccc239243f1fe6376fb4ef90cb12946"
+EXPECTED_SHA256="8e757e96319e215d18f9071d0bd84ac21ff393fc3881562de8174af946d52b82"
 
 # Locate the repo root (the folder that has both outputs/ and reproducibility/).
 here="$(cd "$(dirname "$0")/.." && pwd)"
@@ -50,17 +50,31 @@ MSG
   curl -L --fail -o "$zip_path" "$URL"
 fi
 
-# Verify the archive checksum when sha256sum is available (best-effort).
-if command -v sha256sum >/dev/null 2>&1; then
-  got="$(sha256sum "$zip_path" | awk '{print $1}')"
-  if [ "$got" != "$EXPECTED_SHA256" ]; then
-    echo "warning: bundle SHA-256 mismatch" >&2
-    echo "  expected $EXPECTED_SHA256" >&2
-    echo "  got      $got" >&2
-    echo "  continuing, but the archive may differ from the published version." >&2
-  else
-    echo "checksum OK ($got)"
-  fi
+# Verify the archive checksum (MANDATORY): a corrupted, truncated, or wrong-version
+# bundle must not silently reproduce. python3 is already required (used below to
+# unpack), so this check always runs regardless of whether sha256sum is installed.
+echo "Verifying bundle checksum..."
+got="$(python3 - "$zip_path" <<'PY'
+import hashlib, sys
+h = hashlib.sha256()
+with open(sys.argv[1], "rb") as fh:
+    for chunk in iter(lambda: fh.read(1 << 20), b""):
+        h.update(chunk)
+print(h.hexdigest())
+PY
+)"
+if [ "$got" = "$EXPECTED_SHA256" ]; then
+  echo "checksum OK ($got)"
+elif [ "${DEGORA_REPRO_DATA_SKIP_CHECKSUM:-0}" = "1" ]; then
+  echo "warning: SHA-256 mismatch, but DEGORA_REPRO_DATA_SKIP_CHECKSUM=1 is set; continuing." >&2
+  echo "  expected $EXPECTED_SHA256 ; got $got" >&2
+else
+  echo "error: bundle SHA-256 mismatch -- refusing to unpack a non-canonical archive." >&2
+  echo "  expected $EXPECTED_SHA256" >&2
+  echo "  got      $got" >&2
+  echo "  The download may be corrupted, truncated, or a different bundle version." >&2
+  echo "  (To use a different bundle on purpose, re-run with DEGORA_REPRO_DATA_SKIP_CHECKSUM=1.)" >&2
+  exit 1
 fi
 
 echo "Unpacking..."
