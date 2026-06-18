@@ -62,6 +62,11 @@ database (`degora_scores.db`), harmonized intermediate tables, provenance sideca
 Excel audit workbook. Recall of each topic's locked gold panel reproduces the corresponding
 row of Table 1 in the paper.
 
+Table 1 recall is measured on DEGORA's quality-weighted ranking: count the gold-panel genes
+that appear among the top 100 by the `quality_weighted_degora_rank` column of
+`degora_gene_scores.csv`, divided by the panel size. (The `recall_at_*` fields in
+`slice_metrics.json` use an earlier consensus ordering and are not the Table 1 values.)
+
 > The data archive is on Zenodo (DOI 10.5281/zenodo.20739978). If the automatic download
 > fails (for example, no network on the machine), download
 > `degora_reproduction_data_v1.zip` from <https://zenodo.org/records/20739978> and pass it
