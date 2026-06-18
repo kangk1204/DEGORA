@@ -17,7 +17,7 @@ BUNDLE="degora_reproduction_data_${VERSION}"
 # Zenodo record for the v1 reproduction-data archive (DOI 10.5281/zenodo.20739978).
 DEFAULT_URL="https://zenodo.org/records/20739978/files/${BUNDLE}.zip"
 URL="${DEGORA_REPRO_DATA_URL:-$DEFAULT_URL}"
-EXPECTED_SHA256="8e757e96319e215d18f9071d0bd84ac21ff393fc3881562de8174af946d52b82"
+EXPECTED_SHA256="db6497dcfff5ea3ec71291ee950f2f13bcd22b2be6faeaad972545b7fafabb07"
 
 # Locate the repo root (the folder that has both outputs/ and reproducibility/).
 here="$(cd "$(dirname "$0")/.." && pwd)"
