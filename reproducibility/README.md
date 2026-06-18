@@ -62,9 +62,10 @@ database (`degora_scores.db`), harmonized intermediate tables, provenance sideca
 Excel audit workbook. Recall of each topic's locked gold panel reproduces the corresponding
 row of Table 1 in the paper.
 
-> If `fetch_reproduction_data.sh` reports that the download URL is still a `PLACEHOLDER`,
-> the data archive has not been wired in yet. Download the bundle from the Zenodo record in
-> the paper's Data Availability statement and pass it directly:
+> The data archive is on Zenodo (DOI 10.5281/zenodo.20739978). If the automatic download
+> fails (for example, no network on the machine), download
+> `degora_reproduction_data_v1.zip` from <https://zenodo.org/records/20739978> and pass it
+> directly:
 > `DEGORA_REPRO_DATA_ZIP=/path/to/degora_reproduction_data_v1.zip bash reproducibility/fetch_reproduction_data.sh`
 
 ## What's in the data bundle

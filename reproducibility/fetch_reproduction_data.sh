@@ -14,8 +14,8 @@ set -euo pipefail
 
 VERSION="v1"
 BUNDLE="degora_reproduction_data_${VERSION}"
-# TODO: replace PLACEHOLDER with the Zenodo record id once the archive is published.
-DEFAULT_URL="https://zenodo.org/records/PLACEHOLDER/files/${BUNDLE}.zip"
+# Zenodo record for the v1 reproduction-data archive (DOI 10.5281/zenodo.20739978).
+DEFAULT_URL="https://zenodo.org/records/20739978/files/${BUNDLE}.zip"
 URL="${DEGORA_REPRO_DATA_URL:-$DEFAULT_URL}"
 EXPECTED_SHA256="8e757e96319e215d18f9071d0bd84ac21ff393fc3881562de8174af946d52b82"
 
