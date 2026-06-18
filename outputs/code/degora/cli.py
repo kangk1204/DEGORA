@@ -213,13 +213,22 @@ def _run_from_config(args: argparse.Namespace, *, serve_after: bool = False) -> 
     workbook_path = output_dir / DEFAULT_WORKBOOK_NAME
     workbook_summary: dict[str, Any] | None = None
     if not getattr(args, "no_excel", False):
-        workbook_summary = export_run_workbook(
-            output_dir,
-            workbook_path,
-            config_path=config,
-            db_path=db_path,
-            command=command,
-        )
+        try:
+            workbook_summary = export_run_workbook(
+                output_dir,
+                workbook_path,
+                config_path=config,
+                db_path=db_path,
+                command=command,
+            )
+        except Exception as exc:  # noqa: BLE001 - the audit workbook is a convenience, never a run blocker
+            workbook_summary = None
+            print(
+                f"WARNING: the Excel audit workbook export failed "
+                f"({type(exc).__name__}: {exc}). The run results are complete in the CSV and SQLite "
+                f"outputs; re-run with --no-excel to skip the workbook.",
+                file=sys.stderr,
+            )
 
     print("")
     print("DEGORA run complete")

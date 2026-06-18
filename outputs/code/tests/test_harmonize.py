@@ -190,6 +190,53 @@ def test_harmonize_collapses_duplicate_gene_symbols_before_ranking() -> None:
     assert out["n_genes_in_study"].unique().tolist() == [2]
 
 
+def test_harmonize_does_not_warn_on_gene_level_rnaseq_duplicate_collapse() -> None:
+    # Regression: a blank/NaN probe_collapse cell must be treated as "not declared" (never the
+    # string "nan"), and gene-level (RNA-seq) duplicate-symbol collapse must not emit a per-source
+    # warning, while the rule actually applied is still recorded in metadata for audit.
+    frame = pd.DataFrame(
+        {
+            "gene": ["GENEX", "GENEX", "RPL13A"],
+            "log2FoldChange": [2.5, -3.0, 0.1],
+            "pvalue": [1e-5, 1e-4, 0.9],
+            "padj": [0.001, 0.01, 0.9],
+        }
+    )
+    meta = {
+        "study_id": "RNASEQ_DUP",
+        "paper_id": "P1",
+        "pipeline": "DESeq2",
+        "assay_type": "RNA-seq",
+        "probe_collapse": float("nan"),
+    }
+    out = harmonize_frame(frame, TableMapping("gene", "log2FoldChange", "pvalue", "padj"), meta)
+    genex = out.loc[out["gene_symbol"].eq("GENEX")].iloc[0]
+    assert genex["gene_symbol_collapse_rule"] == "min_pvalue_max_abs_lfc"  # applied rule still recorded
+    assert genex["requested_probe_collapse"] == ""  # NaN normalized, never the literal string "nan"
+    assert genex["gene_symbol_collapse_warning"] == ""  # no RNA-seq probe-collapse noise
+
+
+def test_harmonize_still_warns_for_microarray_undeclared_probe_collapse() -> None:
+    frame = pd.DataFrame(
+        {
+            "gene": ["GENEX", "GENEX", "RPL13A"],
+            "logFC": [2.5, -3.0, 0.1],
+            "P.Value": [1e-5, 1e-4, 0.9],
+            "adj.P.Val": [0.001, 0.01, 0.9],
+        }
+    )
+    meta = {
+        "study_id": "MICRO_DUP",
+        "paper_id": "P1",
+        "pipeline": "limma_microarray",
+        "assay_type": "microarray",
+        "probe_collapse": float("nan"),
+    }
+    out = harmonize_frame(frame, TableMapping("gene", "logFC", "P.Value", "adj.P.Val"), meta)
+    genex = out.loc[out["gene_symbol"].eq("GENEX")].iloc[0]
+    assert "duplicate gene symbols were collapsed" in genex["gene_symbol_collapse_warning"]
+
+
 def test_harmonize_emits_explicit_source_unit_id_for_scoring() -> None:
     frame = pd.DataFrame(
         {

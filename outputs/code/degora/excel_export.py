@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,36 @@ from .provenance import write_source_sidecar
 EXCEL_MAX_ROWS = 1_048_576
 DEFAULT_WORKBOOK_NAME = "DEGORA_output.xlsx"
 COMMENT_AUTHOR = "DEGORA"
+
+# Large corpora (e.g. the cross-platform hypoxia benchmark) can produce hundreds of
+# thousands of per-source evidence rows. Writing them all into a single Excel sheet is slow
+# and can exhaust memory or fail in constrained environments, so the Gene_evidence sheet is
+# capped to the top-ranked genes' evidence; the complete evidence always remains in the SQLite
+# database and the gene-scores CSV. Override with DEGORA_EXCEL_EVIDENCE_ROW_CAP (0 disables it).
+EVIDENCE_SHEET_ROW_CAP = 100_000
+
+
+def _evidence_row_cap() -> int:
+    raw = os.environ.get("DEGORA_EXCEL_EVIDENCE_ROW_CAP", "")
+    if raw == "":
+        return EVIDENCE_SHEET_ROW_CAP
+    try:
+        return max(int(raw), 0)
+    except (TypeError, ValueError):
+        return EVIDENCE_SHEET_ROW_CAP
+
+
+def _cap_evidence_for_sheet(evidence: pd.DataFrame, genes: pd.DataFrame, cap: int) -> tuple[pd.DataFrame, bool]:
+    """Return (evidence_for_sheet, was_capped). The full evidence stays in the DB and CSV."""
+    if cap <= 0 or len(evidence) <= cap:
+        return evidence, False
+    ordered = evidence
+    rank_col = "quality_weighted_degora_rank"
+    if "gene_symbol" in evidence.columns and {"gene_symbol", rank_col} <= set(genes.columns):
+        ranks = genes.drop_duplicates("gene_symbol").set_index("gene_symbol")[rank_col]
+        ordered = evidence.assign(_gene_rank=evidence["gene_symbol"].map(ranks))
+        ordered = ordered.sort_values("_gene_rank", kind="mergesort", na_position="last").drop(columns=["_gene_rank"])
+    return ordered.head(cap), True
 
 
 SHEET_GUIDE: dict[str, dict[str, str]] = {
@@ -515,11 +546,33 @@ def export_run_workbook(
     gold = _read_gold_from_config(config_path)
     lookup = _curated_lookup(gold, genes)
     summary = _summary_rows(result_dir, genes, evidence, studies, gold, version_info)
+    evidence_sheet, evidence_capped = _cap_evidence_for_sheet(evidence, genes, _evidence_row_cap())
+    if evidence_capped:
+        summary = pd.concat(
+            [
+                summary,
+                pd.DataFrame(
+                    [
+                        {"field": "gene_evidence_rows_total", "value": int(len(evidence))},
+                        {"field": "gene_evidence_rows_in_workbook", "value": int(len(evidence_sheet))},
+                        {
+                            "field": "gene_evidence_note",
+                            "value": (
+                                f"Gene_evidence is limited to the top {int(len(evidence_sheet))} rows "
+                                "(by gene rank) for this large corpus; the complete evidence for all genes "
+                                "is in degora_scores.db (gene_evidence) and degora_gene_scores.csv."
+                            ),
+                        },
+                    ]
+                ),
+            ],
+            ignore_index=True,
+        )
     metadata_frame = _metadata_table(metadata)
     sheet_frames = {
         "Run_summary": summary,
         "Gene_scores": genes,
-        "Gene_evidence": evidence,
+        "Gene_evidence": evidence_sheet,
         "Source_units": studies,
         "Curated_lookup": lookup,
         "Source_quality": diagnostics,
@@ -557,7 +610,7 @@ def export_run_workbook(
             "Column_dictionary": "Definitions, scales, and missing-value notes for exported columns.",
             "Run_summary": "Run-level counts and top genes.",
             "Gene_scores": "Full DEGORA ranked gene table.",
-            "Gene_evidence": "Source-unit evidence rows from the SQLite database.",
+            "Gene_evidence": "Source-unit evidence rows from the SQLite database (capped to the top-ranked genes for very large corpora; see Run_summary; full evidence is in the SQLite database and CSV).",
             "Source_units": "Source/contrast metadata.",
             "Curated_lookup": "Optional GoldPanel markers with DEGORA ranks.",
             "Source_quality": "Source-quality diagnostics, when present.",

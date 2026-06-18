@@ -377,7 +377,18 @@ def _collapse_duplicate_gene_symbols(out: pd.DataFrame, study_meta: dict[str, An
     probes. Collapse to one row per gene before any within-study rank is made.
     """
 
-    requested_probe_collapse = str(study_meta.get("probe_collapse", "") or "").strip()
+    _probe_collapse_raw = study_meta.get("probe_collapse", "")
+    if isinstance(_probe_collapse_raw, str):
+        requested_probe_collapse = _probe_collapse_raw.strip()
+    elif _probe_collapse_raw is None or pd.isna(_probe_collapse_raw):
+        requested_probe_collapse = ""
+    else:
+        requested_probe_collapse = str(_probe_collapse_raw).strip()
+    # An empty/blank cell is read by pandas as NaN/None; normalize all of these (and the
+    # stringified "nan"/"none") to "" so an undeclared probe_collapse is never mistaken for a
+    # declared value that disagrees with the applied collapse rule.
+    if requested_probe_collapse.lower() in {"", "nan", "none"}:
+        requested_probe_collapse = ""
 
     if out.empty:
         out["n_source_rows_for_gene"] = pd.Series(dtype=int)
@@ -411,12 +422,20 @@ def _collapse_duplicate_gene_symbols(out: pd.DataFrame, study_meta: dict[str, An
     collapsed["requested_probe_collapse"] = requested_probe_collapse
 
     study_id = str(study_meta.get("study_id", ""))
+    study_assay = str(study_meta.get("assay_type", "") or "").strip().lower()
     requested_norm = _normalize_collapse_label(requested_probe_collapse)
     if requested_probe_collapse == "":
-        warning = (
-            f"{study_id}: duplicate gene symbols were collapsed by "
-            f"{GENE_SYMBOL_COLLAPSE_RULE}; set probe_collapse in the config if this is expected."
-        )
+        # probe_collapse genuinely matters for microarray sources, so nudge the user to declare
+        # it. For gene-level (RNA-seq) sources, duplicate gene symbols are an ordinary occurrence
+        # and the rule actually applied is recorded in gene_symbol_collapse_rule, so emitting a
+        # per-source warning for every such table is noise rather than an audit signal.
+        if "microarray" in study_assay:
+            warning = (
+                f"{study_id}: duplicate gene symbols were collapsed by "
+                f"{GENE_SYMBOL_COLLAPSE_RULE}; set probe_collapse in the config if this is expected."
+            )
+        else:
+            warning = ""
     elif requested_norm in BEST_PROBE_COLLAPSE_ALIASES:
         warning = ""
     else:
