@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import re
 import sys
 import threading
 import time
@@ -515,5 +516,90 @@ def test_strict_search_stub_without_progress_still_runs(tmp_path: Path, monkeypa
         _, payload = _request_json(f"{base}/api/discovery/jobs/{created['job_id']}")
         assert payload["job"]["status"] == "complete"
         assert payload["job"]["progress"] == 1.0
+    finally:
+        _stop_server(server, thread)
+
+
+def test_prepare_job_route_reports_progress_and_returns_the_bundle(tmp_path: Path, monkeypatch) -> None:
+    """Preparation used to be a blocking request with no way to show stages."""
+
+    calls: list[dict] = []
+    _install_federated_module(monkeypatch, calls=calls)
+    stages: list[tuple[float, str]] = []
+
+    prepare_module = types.ModuleType("degora.discovery_prepare")
+
+    def prepare_publication_records(records, species, *, query, materialize_dir, progress=None, **kwargs):
+        for fraction, message in ((0.2, "Downloading 1 of 3"), (0.8, "Downloading 3 of 3")):
+            if progress is not None:
+                progress(fraction, message)
+                stages.append((fraction, message))
+            time.sleep(0.05)
+        Path(materialize_dir).mkdir(parents=True, exist_ok=True)
+        return {"bundle_id": "abc", "studies": [{"accession": "GSE1"}], "excluded_studies": []}
+
+    prepare_module.prepare_publication_records = prepare_publication_records
+    monkeypatch.setitem(sys.modules, "degora.discovery_prepare", prepare_module)
+
+    server, thread, base = _start_server(tmp_path)
+    try:
+        created = _create_search(base, "human")
+        _, records_page = _request_json(f"{base}/api/discovery/searches/{created['search_id']}/records?page=1&page_size=20")
+        record_ids = [row["publication_id"] for row in records_page["records"][:2]]
+
+        status, started = _request_json(
+            f"{base}/api/discovery/prepare-jobs",
+            payload={
+                "species": "human",
+                "query": "hypoxia",
+                "search_id": created["search_id"],
+                "record_ids": record_ids,
+            },
+            action=True,
+        )
+        assert status == 202
+        assert started["job_id"]
+
+        observed: list[float] = []
+        deadline = time.time() + 15
+        while time.time() < deadline:
+            _, payload = _request_json(f"{base}/api/discovery/jobs/{started['job_id']}")
+            job = payload["job"]
+            if job["progress"] is not None:
+                observed.append(job["progress"])
+            if job["status"] == "complete":
+                assert job["result"], "the prepared bundle must reach the browser through the job"
+                # The server assigns the bundle id; the worker's value is replaced.
+                assert re.fullmatch(r"[a-f0-9]{16}", job["result"]["bundle_id"])
+                assert job["result"]["studies"] == [{"accession": "GSE1"}]
+                break
+            if job["status"] == "failed":
+                raise AssertionError(job["error"])
+            time.sleep(0.02)
+        else:  # pragma: no cover - only on a stalled job.
+            raise AssertionError("prepare job did not complete")
+
+        assert stages, "the progress callback was not forwarded to prepare_publication_records"
+        assert observed == sorted(observed), f"prepare progress must never decrease: {observed}"
+        assert observed[-1] == 1.0
+    finally:
+        _stop_server(server, thread)
+
+
+def test_job_result_is_withheld_until_the_job_completes(tmp_path: Path, monkeypatch) -> None:
+    calls: list[dict] = []
+    _install_federated_module(monkeypatch, calls=calls)
+    server, thread, base = _start_server(tmp_path)
+    try:
+        status, created = _request_json(
+            f"{base}/api/discovery/searches",
+            payload={"query": "hypoxia", "species": "human", "limit": 20},
+            action=True,
+        )
+        assert status == 202
+        _, payload = _request_json(f"{base}/api/discovery/jobs/{created['job_id']}")
+        job = payload["job"]
+        if job["status"] != "complete":
+            assert job["result"] is None
     finally:
         _stop_server(server, thread)

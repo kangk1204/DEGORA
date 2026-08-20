@@ -13,7 +13,7 @@ import urllib.parse
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 from .discovery import (
     DISCOVERY_BUNDLE_ARTIFACT_TYPE,
@@ -53,12 +53,24 @@ def prepare_publication_records(
     transport: Any | None = None,
     geo_client: Any | None = None,
     force: bool = False,
+    progress: Callable[[float, str], None] | None = None,
 ) -> dict[str, Any]:
     """Transactionally prepare publication records for ``run_discovery_analysis``.
 
     The returned bundle is review-only: author DEG tables and upstream matrices
     are inspected and materialized, but no contrast is activated automatically.
+
+    ``progress`` is an optional ``callback(fraction, message)`` over this
+    function's own work. Reporting is advisory and never interrupts a run.
     """
+
+    def report(fraction: float, message: str) -> None:
+        if progress is None:
+            return
+        try:
+            progress(min(1.0, max(0.0, float(fraction))), str(message))
+        except Exception:  # noqa: BLE001 - progress reporting must never break a prepare.
+            pass
 
     spec = normalize_species(species)
     if isinstance(max_records, bool) or not isinstance(max_records, int) or not 1 <= max_records <= 20:
@@ -88,12 +100,15 @@ def prepare_publication_records(
             transport=transport,
             geo_client=geo_client,
             excluded=excluded,
+            report=report,
         )
+        report(0.92, "Writing the prepared bundle")
         _retarget_paths(result, staging, target)
         result["materialize_dir"] = str(target)
         result["exports"] = export_discovery_bundle(result, staging, force=True)
         _write_marker(staging, spec.key)
         _publish_prepared_bundle(staging, target, force=force)
+        report(1.0, "Prepared bundle published")
         result["exports"] = _export_paths(target)
         return result
     finally:
@@ -112,12 +127,15 @@ def _prepare_into_staging(
     transport: Any | None,
     geo_client: Any | None,
     excluded: list[dict[str, Any]],
+    report: Callable[[float, str], None] = lambda _fraction, _message: None,
 ) -> dict[str, Any]:
     studies: list[dict[str, Any]] = []
     selected_accessions: list[str] = []
+    total_units = max(1, len(geo_records) + len(direct_records))
     if geo_records:
         accessions = _unique_gse_accessions(geo_records)
         selected_accessions = accessions
+        report(0.05, f"Downloading {len(accessions)} repository record(s)")
         geo_result = prepare_geo_studies(
             accessions,
             spec.key,
@@ -132,7 +150,13 @@ def _prepare_into_staging(
         record_by_accession = _record_by_geo_accession(geo_records)
         studies.extend(_augment_geo_studies(geo_result.get("studies", []), record_by_accession))
 
-    for record in direct_records:
+    geo_share = len(geo_records) / total_units
+    report(0.05 + 0.85 * geo_share, f"Inspecting {len(direct_records)} linked file source(s)")
+    for direct_index, record in enumerate(direct_records, start=1):
+        report(
+            0.05 + 0.85 * ((len(geo_records) + direct_index - 1) / total_units),
+            f"Downloading and inspecting {direct_index} of {len(direct_records)}",
+        )
         study = _prepare_direct_record(record, spec, staging, max_files_per_record, transport)
         if study is None:
             excluded.append(_excluded(record, "publication record has no public tabular or archive candidate"))
