@@ -417,3 +417,103 @@ def test_persistent_discovery_endpoints_require_token_and_action_header(tmp_path
         assert _request_bytes(export_url, token="secret-token")[0] == 200
     finally:
         _stop_server(server, thread)
+
+
+def _install_progress_reporting_module(monkeypatch, *, seen: list[tuple[float, str]]) -> None:
+    """A stub that accepts the optional progress callback, unlike the strict one."""
+
+    module = types.ModuleType("degora.discovery_federated")
+
+    def search_publications(*, query, species, limit, progress=None):
+        for fraction, message in ((0.25, "Querying stub (1 of 2 sources)"), (0.75, "Inspecting linked data 5 of 20")):
+            if progress is not None:
+                progress(fraction, message)
+                seen.append((fraction, message))
+            time.sleep(0.05)
+        return {
+            "query": query,
+            "species": {"key": species},
+            "limit": limit,
+            "records": [{"publication_id": "p1", "title": "paper", "year": 2020}],
+            "total": 1,
+        }
+
+    module.search_publications = search_publications
+    module.page_publication_snapshot = lambda snapshot, **kwargs: {
+        "records": list(snapshot["records"]),
+        "total": 1,
+        "page": 1,
+        "page_size": 20,
+        "total_pages": 1,
+        "sort_by": "data_readiness",
+        "sort_order": "desc",
+        "has_next": False,
+    }
+    module.resolve_publication_records = lambda records, species: list(records)
+    monkeypatch.setitem(sys.modules, "degora.discovery_federated", module)
+
+
+def test_discovery_job_exposes_progress_and_message(tmp_path: Path, monkeypatch) -> None:
+    """The browser draws a determinate bar from these two fields."""
+
+    reported: list[tuple[float, str]] = []
+    _install_progress_reporting_module(monkeypatch, seen=reported)
+    server, thread, base = _start_server(tmp_path)
+    try:
+        status, created = _request_json(
+            f"{base}/api/discovery/searches",
+            payload={"query": "hypoxia", "species": "human", "limit": 20},
+            action=True,
+        )
+        assert status == 202
+        observed: list[tuple[float, str]] = []
+        deadline = time.time() + 10
+        while time.time() < deadline:
+            _, payload = _request_json(f"{base}/api/discovery/jobs/{created['job_id']}")
+            job = payload["job"]
+            assert "progress" in job and "message" in job
+            if job["progress"] is not None:
+                observed.append((job["progress"], job["message"]))
+            if job["status"] == "complete":
+                break
+            time.sleep(0.02)
+        else:  # pragma: no cover - only on a stalled job.
+            raise AssertionError("search job did not complete")
+
+        assert reported, "the optional progress callback was not forwarded to search_publications"
+        assert observed, "no progress fractions reached the API"
+        fractions = [fraction for fraction, _ in observed]
+        assert fractions == sorted(fractions), f"job progress must never decrease: {fractions}"
+        assert observed[-1][0] == 1.0
+        assert observed[-1][1]
+    finally:
+        _stop_server(server, thread)
+
+
+def test_discovery_job_progress_is_clamped_and_message_is_bounded(tmp_path: Path, monkeypatch) -> None:
+    from degora.api import _api_job_progress, _clean_job_message
+
+    assert _api_job_progress(1.4) == 1.0
+    assert _api_job_progress(-2) == 0.0
+    assert _api_job_progress(None) is None
+    assert _api_job_progress("nope") is None
+    assert _api_job_progress(True) is None
+    assert _api_job_progress(float("nan")) is None
+    assert _clean_job_message("  many\n\nspaces  ") == "many spaces"
+    assert _clean_job_message(None) == ""
+    assert len(_clean_job_message("x" * 500)) == 160
+
+
+def test_strict_search_stub_without_progress_still_runs(tmp_path: Path, monkeypatch) -> None:
+    """The forwarding guard must not break callers that take no progress kwarg."""
+
+    calls: list[dict] = []
+    _install_federated_module(monkeypatch, calls=calls)
+    server, thread, base = _start_server(tmp_path)
+    try:
+        created = _create_search(base, "human")
+        _, payload = _request_json(f"{base}/api/discovery/jobs/{created['job_id']}")
+        assert payload["job"]["status"] == "complete"
+        assert payload["job"]["progress"] == 1.0
+    finally:
+        _stop_server(server, thread)

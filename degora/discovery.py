@@ -306,10 +306,15 @@ class NcbiGeoClient:
         self._global_search_build_lock = threading.Lock()
 
     def _pace(self) -> None:
+        # NCBI's rate policy bounds how often requests are *issued*, so anchor the
+        # interval to the moment this request starts. Stamping on completion (the
+        # previous behaviour) spent an extra round trip of latency per request:
+        # the effective gap became RTT + pace_seconds instead of pace_seconds.
         elapsed = self.monotonic() - self._last_request
         remaining = self.pace_seconds - elapsed
         if remaining > 0:
             self.sleep(remaining)
+        self._last_request = self.monotonic()
 
     def get_bytes(
         self,
@@ -333,7 +338,6 @@ class NcbiGeoClient:
                 self._pace()
                 try:
                     payload = self.transport(safe_url, request_headers, timeout, max_bytes)
-                    self._last_request = self.monotonic()
                     if self.cache_size and len(payload) <= MAX_CACHE_ENTRY_BYTES:
                         self._cache[key] = payload
                         self._cache.move_to_end(key)
@@ -341,12 +345,10 @@ class NcbiGeoClient:
                             self._cache.popitem(last=False)
                     return payload
                 except urllib.error.HTTPError as exc:
-                    self._last_request = self.monotonic()
                     last_error = f"HTTP {exc.code}"
                     if exc.code not in {429, 500, 502, 503, 504}:
                         break
                 except (urllib.error.URLError, TimeoutError, OSError, http.client.HTTPException) as exc:
-                    self._last_request = self.monotonic()
                     last_error = type(exc).__name__
                 if attempt < self.retries - 1:
                     self.sleep(min(2.0 * (attempt + 1), 6.0))

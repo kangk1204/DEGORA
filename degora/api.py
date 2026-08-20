@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import errno
+import inspect
 import ipaddress
 import io
 import json
@@ -20,7 +21,7 @@ from contextlib import closing
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import parse_qs, parse_qsl, quote, unquote, urlencode, urlparse, urlsplit, urlunsplit
 
 from . import format_version_info, runtime_version_info
@@ -212,6 +213,11 @@ INDEX_HTML = """<!doctype html>
       box-shadow: 0 16px 42px rgba(31, 41, 51, .09);
     }
     .discovery-search input { height: 46px; border: 0; font-size: 16px; padding: 0 14px; outline: none; }
+    .discovery-search input:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: -2px;
+      border-radius: 10px;
+    }
     .discovery-search button { height: 46px; border-radius: 11px; }
     .cross-species-action { display: flex; justify-content: center; margin-top: 9px; }
     .cross-species-action button { width: auto; height: 30px; padding: 0 10px; border-color: transparent; background: transparent; color: var(--muted); font-size: 11px; }
@@ -542,7 +548,13 @@ INDEX_HTML = """<!doctype html>
       cursor: pointer;
     }
     th.num .sort-head { justify-content: flex-end; text-align: right; }
-    .sort-head:hover, .sort-head:focus-visible { background: #eef7f5; outline: none; }
+    .sort-head:hover { background: #eef7f5; }
+    /* The hover tint alone made keyboard focus indistinguishable from hover. */
+    .sort-head:focus-visible {
+      background: #eef7f5;
+      outline: 2px solid var(--accent);
+      outline-offset: -2px;
+    }
     .sort-head:disabled {
       cursor: wait;
       color: #8a9b98;
@@ -598,6 +610,25 @@ INDEX_HTML = """<!doctype html>
       border-radius: inherit;
       background: var(--accent);
       animation: loading-slide 1s ease-in-out infinite;
+    }
+    /* Determinate variant: the span carries an inline width percentage. */
+    .loading-bar.is-determinate::before { content: none; }
+    .loading-bar.is-determinate > span {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+      background: var(--accent);
+      transition: width 320ms ease-out;
+    }
+    .search-progress {
+      width: min(420px, 100%);
+      margin: 0 auto;
+      text-align: left;
+    }
+    .search-progress .loading-note + .loading-note { margin-top: 4px; }
+    @media (prefers-reduced-motion: reduce) {
+      .loading-bar::before { animation: none; width: 100%; opacity: 0.55; }
+      .loading-bar.is-determinate > span { transition: none; }
     }
     .genes-panel.is-loading .gene-table-scroll table { opacity: 0.45; }
     .genes-panel.is-loading .gene-table-scroll { cursor: wait; }
@@ -765,8 +796,15 @@ INDEX_HTML = """<!doctype html>
       main { grid-template-columns: 1fr; align-content: start; padding: 12px; overflow: auto; min-height: 0; height: auto; }
       .splitter { display: none; }
       section { min-height: auto; height: auto; }
+      /* `.genes-panel, .evidence-panel { height: 100% }` out-specifies the
+         `section` rule above, and `section { overflow: hidden }` then clipped
+         the stacked evidence panel down to a ~28px sliver. Match the class
+         specificity so the panel grows with its content instead. */
+      .genes-panel, .evidence-panel { height: auto; overflow: visible; }
       .gene-table-shell { flex: none; height: 60vh; max-height: 60vh; }
-      .evidence-panel .detail-body { overflow: visible; }
+      /* `flex: 1 1 0` collapsed the stacked detail body to its minimum height
+         once the panel stopped filling the viewport. Size it to its content. */
+      .evidence-panel .detail-body { overflow: visible; flex: none; height: auto; }
       .controls { grid-template-columns: 1fr 1fr; }
       .kv { grid-template-columns: 1fr 1fr; }
       .discovery-view { grid-row: 2; padding: 14px 12px 30px; overflow: auto; }
@@ -946,8 +984,8 @@ INDEX_HTML = """<!doctype html>
         <div class="status" id="status" role="status" aria-live="polite"></div>
       </div>
       <div class="controls">
-        <input id="query" placeholder="Gene symbol" autocomplete="off" aria-label="Gene symbol search" data-tip="Type part of a gene symbol to filter the list; leave blank to show all genes.">
-        <input id="minUnits" type="number" min="1" value="1" aria-label="Min source units" data-tip="Show only genes supported by at least this many independent source units (one paper = one unit).">
+        <input id="query" placeholder="Gene symbol" autocomplete="off" maxlength="128" aria-label="Gene symbol search" data-tip="Type part of a gene symbol to filter the list; leave blank to show all genes.">
+        <input id="minUnits" type="number" min="1" max="10000" step="1" value="1" aria-label="Min source units" data-tip="Show only genes supported by at least this many independent source units (one paper = one unit).">
         <select id="direction" aria-label="Direction" data-tip="Filter by consensus regulation direction: up, down, flat, or all.">
           <option value="">All directions</option>
           <option value="up">Up</option>
@@ -1089,6 +1127,12 @@ INDEX_HTML = """<!doctype html>
       return href
         ? `<a${className ? ` class="${esc(className)}"` : ""} href="${esc(href)}" target="_blank" rel="noopener noreferrer">${esc(label)}</a>`
         : esc(label);
+    };
+    const formatElapsed = (seconds) => {
+      const total = Math.max(0, Math.round(seconds));
+      if (total < 60) return `${total}s`;
+      const minutes = Math.floor(total / 60);
+      return `${minutes}m ${String(total % 60).padStart(2, "0")}s`;
     };
     const csvCell = (value) => {
       if (value === null || value === undefined) return "";
@@ -1324,6 +1368,9 @@ INDEX_HTML = """<!doctype html>
       searchId: "",
       jobId: "",
       jobStatus: "",
+      jobProgress: null,
+      jobMessage: "",
+      jobStartedAt: 0,
       verified: false,
       selected: new Set(),
       sort: { key: "readiness", order: "desc" },
@@ -1473,7 +1520,9 @@ INDEX_HTML = """<!doctype html>
     }
 
     function renderDiscoveryNotice(state) {
-      const notice = state.notice || (state.error ? `Search failed: ${state.error}` : "");
+      // An error always wins: a stale success notice used to be shown in the
+      // alert region while the real failure was only visible in the subtitle.
+      const notice = state.error ? `Search failed: ${state.error}` : (state.notice || "");
       const box = $("discoveryNotice");
       const failed = Boolean(state.error) || /(?:failed|error|unavailable)/i.test(notice);
       box.textContent = notice;
@@ -1482,12 +1531,34 @@ INDEX_HTML = """<!doctype html>
       box.setAttribute("role", failed ? "alert" : "status");
     }
 
+    // A publication with no PMID/DOI/accession/title collapses to a shared
+    // fallback id, so one checkbox would tick every row that shares it and the
+    // server rejects the prepare as ambiguous. Mark those rows unselectable.
+    function pageSelectability(state) {
+      const counts = new Map();
+      state.studies.forEach((study) => {
+        const key = publicationKey(study);
+        counts.set(key, (counts.get(key) || 0) + 1);
+      });
+      return (key) => {
+        if (!key.trim()) return "no-id";
+        if ((counts.get(key) || 0) > 1) return "ambiguous-id";
+        return "";
+      };
+    }
+
+    function selectableKeys(state) {
+      const blocked = pageSelectability(state);
+      return state.studies.map(publicationKey).filter((key) => key && !blocked(key));
+    }
+
     function updatePageSelectionCheckbox(state) {
       const selectAll = $("selectPageStudies");
       if (!selectAll) return;
-      const pageAccessions = state.studies.map(publicationKey).filter(Boolean);
+      const pageAccessions = selectableKeys(state);
       selectAll.checked = pageAccessions.length > 0 && pageAccessions.every((value) => state.selected.has(value));
       selectAll.indeterminate = !selectAll.checked && pageAccessions.some((value) => state.selected.has(value));
+      selectAll.disabled = pageAccessions.length === 0;
     }
 
     function renderDiscoveryResults() {
@@ -1500,9 +1571,28 @@ INDEX_HTML = """<!doctype html>
         ? `${state.totalHits.toLocaleString()} studies`
         : "Study results";
       if (state.loading) {
-        const phase = state.jobStatus === "running" ? "running" : "queued";
-        $("resultsSubtitle").textContent = `Search job ${phase}; results will be paged from the persisted snapshot when complete.`;
-        $("discoveryResults").innerHTML = `<div class="discovery-loading"><strong>Building the ${esc(speciesLabel(activeSpecies))} publication snapshot...</strong><br>Human and Mouse searches run as independent jobs and are never pooled.</div>`;
+        const percent = typeof state.jobProgress === "number"
+          ? Math.max(0, Math.min(100, Math.round(state.jobProgress * 100)))
+          : null;
+        const stage = state.jobMessage
+          || (state.jobStatus === "running" ? "Search running" : "Search queued");
+        const elapsed = state.jobStartedAt
+          ? Math.max(0, Math.round((Date.now() - state.jobStartedAt) / 1000))
+          : 0;
+        const elapsedText = elapsed >= 1 ? ` · ${formatElapsed(elapsed)} elapsed` : "";
+        const percentText = percent === null ? "" : ` · ${percent}%`;
+        $("resultsSubtitle").textContent = `${stage}${percentText}${elapsedText}`;
+        const bar = percent === null
+          ? `<div class="loading-bar" aria-hidden="true"></div>`
+          : `<div class="loading-bar is-determinate" aria-hidden="true"><span style="width: ${percent}%"></span></div>`;
+        $("discoveryResults").innerHTML = `<div class="discovery-loading">`
+          + `<div class="loading-card search-progress" role="status" aria-live="polite" aria-atomic="true"`
+          + ` aria-busy="true"${percent === null ? "" : ` aria-valuenow="${percent}" aria-valuemin="0" aria-valuemax="100"`}>`
+          + `<strong class="loading-title">Building the ${esc(speciesLabel(activeSpecies))} publication snapshot</strong>`
+          + bar
+          + `<span class="loading-note">${esc(stage)}${esc(percentText)}${esc(elapsedText)}</span>`
+          + `<span class="loading-note">Human and Mouse searches run as independent jobs and are never pooled.</span>`
+          + `</div></div>`;
         $("discoveryActions").hidden = true;
         $("discoveryFooter").hidden = true;
         return;
@@ -1531,9 +1621,25 @@ INDEX_HTML = """<!doctype html>
       if (!state.studies.length) {
         $("discoveryResults").innerHTML = `<div class="discovery-empty">No ${esc(speciesLabel(activeSpecies))} publication records were returned on this page.</div>`;
       } else {
+        const blockedReason = pageSelectability(state);
+        const capReached = state.selected.size >= MAX_SELECTED_STUDIES;
         const rows = state.studies.map((study) => {
           const key = publicationKey(study);
-          const checked = state.selected.has(key) ? "checked" : "";
+          const isSelected = state.selected.has(key);
+          const checked = isSelected ? "checked" : "";
+          const blocked = blockedReason(key);
+          // Show unavailable rows as disabled instead of silently rejecting the
+          // click: at the cap, and for rows without a usable unique identifier.
+          const disabledReason = blocked === "no-id"
+            ? "This publication has no usable identifier, so it cannot be prepared."
+            : blocked === "ambiguous-id"
+            ? "Several results share this identifier, so a single one cannot be prepared."
+            : !isSelected && capReached
+            ? `Selection limit of ${MAX_SELECTED_STUDIES} reached. Clear a selection to choose another.`
+            : "";
+          const selectAttrs = disabledReason
+            ? ` disabled title="${esc(disabledReason)}"`
+            : "";
           const paperHref = study.pubmed_url || study.source_url || study.url || study.doi_url;
           const title = study.title || study.paper_title || study.dataset_title || key || "Untitled publication";
           const authors = asListText(study.authors_display || study.authors);
@@ -1541,7 +1647,7 @@ INDEX_HTML = """<!doctype html>
           const provenance = publicationProvenance(study);
           const publicationMeta = [authors, study.journal, study.year].filter(Boolean).map(esc).join(" · ");
           return `<tr>
-            <td><input class="study-select" type="checkbox" data-accession="${esc(key)}" aria-label="Select ${esc(key)}" ${checked}></td>
+            <td><input class="study-select" type="checkbox" data-accession="${esc(key)}" aria-label="Select ${esc(title)}" ${checked}${selectAttrs}></td>
             <td>${externalLink(paperHref, title, "study-title")}<span class="study-publication-meta">${publicationMeta || "Publication metadata unavailable"}</span><span class="dataset-title">${esc(provenance)}</span></td>
             <td>${esc(authors || "—")}</td>
             <td>${esc(study.journal || "—")}</td>
@@ -1580,9 +1686,21 @@ INDEX_HTML = """<!doctype html>
     }
 
     function updateSelectedStatus() {
-      const count = activeDiscoveryState().selected.size;
-      $("selectedStatus").textContent = `${count.toLocaleString()} / ${MAX_SELECTED_STUDIES} selected · ${speciesLabel(activeSpecies)}`;
       const state = activeDiscoveryState();
+      const count = state.selected.size;
+      // The cap counts across every page, and the page size equals the cap, so
+      // "20 / 20" used to read as "all 20 rows here" while the selection in fact
+      // lived on another page. Say where the selection actually is.
+      const onPage = state.studies.reduce(
+        (total, study) => total + (state.selected.has(publicationKey(study)) ? 1 : 0),
+        0,
+      );
+      const scope = count > 0 && state.studies.length ? ` · ${onPage} on this page` : "";
+      $("selectedStatus").textContent =
+        `${count.toLocaleString()} selected of max ${MAX_SELECTED_STUDIES}${scope} · ${speciesLabel(activeSpecies)}`;
+      $("selectedStatus").title = count > 0 && onPage < count
+        ? `${count - onPage} selected publication(s) are on other pages and will be included in Prepare selection.`
+        : "";
       $("prepareSelected").textContent = state.preparing ? "Downloading and inspecting..." : "Prepare selection";
       $("prepareSelected").disabled = count === 0 || state.preparing;
       $("clearSelected").disabled = count === 0 || state.preparing;
@@ -1619,6 +1737,12 @@ INDEX_HTML = """<!doctype html>
         if (requestId !== state.searchRequest) return;
         const job = payload.job || payload;
         state.jobStatus = job.status || "";
+        state.jobProgress = typeof job.progress === "number" ? job.progress : null;
+        state.jobMessage = typeof job.message === "string" ? job.message : "";
+        if (!state.jobStartedAt) {
+          const started = Date.parse(job.created_at || "");
+          state.jobStartedAt = Number.isFinite(started) ? started : Date.now();
+        }
         if (job.status === "complete") {
           await refreshSearchPage(species, requestId);
           return;
@@ -1664,6 +1788,10 @@ INDEX_HTML = """<!doctype html>
       state.error = "";
       state.notice = "";
       state.verified = false;
+      state.jobStatus = "queued";
+      state.jobProgress = null;
+      state.jobMessage = "";
+      state.jobStartedAt = Date.now();
       const requestId = ++state.searchRequest;
       const requestPage = state.page;
       if (activeSpecies === requestSpecies) renderDiscoveryResults();
@@ -2479,11 +2607,16 @@ INDEX_HTML = """<!doctype html>
 
     function currentQuery() {
       const params = new URLSearchParams();
-      const q = $("query").value.trim();
-      const minUnits = $("minUnits").value.trim();
+      const q = $("query").value.trim().slice(0, 128);
+      const rawMinUnits = $("minUnits").value.trim();
       const direction = $("direction").value;
       if (q) params.set("q", q);
-      if (minUnits) params.set("min_units", minUnits);
+      // The server accepts an integer in [1, 10000]; sending anything else
+      // returned a raw 400 that wiped the table. Clamp instead.
+      if (rawMinUnits) {
+        const parsed = Math.trunc(Number(rawMinUnits));
+        if (Number.isFinite(parsed)) params.set("min_units", String(Math.min(10000, Math.max(1, parsed))));
+      }
       if (direction) params.set("direction", direction);
       params.set("sort", sortState.sort);
       params.set("order", sortState.order);
@@ -2766,7 +2899,10 @@ INDEX_HTML = """<!doctype html>
       setSpecies(nextSpecies);
       $(`${nextSpecies}SpeciesTab`).focus();
     });
-    $("discoverySearch").addEventListener("click", () => searchStudies({ resetPage: true }));
+    $("discoverySearch").addEventListener("click", () => {
+      if (activeDiscoveryState().loading) return;
+      void searchStudies({ resetPage: true });
+    });
     $("discoverySearchBoth").addEventListener("click", searchBothSpecies);
     $("discoveryQuery").addEventListener("keydown", (event) => {
       if (event.key === "Enter") searchStudies({ resetPage: true });
@@ -2825,28 +2961,38 @@ INDEX_HTML = """<!doctype html>
       }
       if (event.target.id === "selectPageStudies") {
         let capped = false;
-        state.studies.forEach((study) => {
-          const key = publicationKey(study);
+        selectableKeys(state).forEach((key) => {
           if (!event.target.checked) state.selected.delete(key);
-          else if (key && state.selected.size < MAX_SELECTED_STUDIES) state.selected.add(key);
+          else if (state.selected.has(key)) return;
+          else if (state.selected.size < MAX_SELECTED_STUDIES) state.selected.add(key);
           else capped = true;
         });
-        state.notice = capped ? `At most ${MAX_SELECTED_STUDIES} studies can be selected across pages.` : "";
+        state.notice = capped
+          ? `Selection limit reached: at most ${MAX_SELECTED_STUDIES} publications across all pages. Clear some to choose others.`
+          : "";
         renderDiscoveryResults();
         return;
       }
       if (event.target.classList.contains("study-select")) {
-        const accession = event.target.dataset.accession;
+        const accession = String(event.target.dataset.accession || "");
+        if (!accession.trim()) {
+          // Guard the empty fallback id: it used to enter the set, inflate the
+          // counter, and make the whole prepare fail server-side.
+          event.target.checked = false;
+          state.notice = "This publication has no usable identifier, so it cannot be prepared.";
+          renderDiscoveryNotice(state);
+          return;
+        }
         if (!event.target.checked) state.selected.delete(accession);
         else if (state.selected.size < MAX_SELECTED_STUDIES) state.selected.add(accession);
         else {
           event.target.checked = false;
-          state.notice = `At most ${MAX_SELECTED_STUDIES} studies can be selected across pages.`;
+          state.notice = `Selection limit reached: at most ${MAX_SELECTED_STUDIES} publications across all pages. Clear some to choose others.`;
         }
         if (state.selected.size < MAX_SELECTED_STUDIES && !event.target.checked) state.notice = "";
-        renderDiscoveryNotice(state);
-        updatePageSelectionCheckbox(state);
-        updateSelectedStatus();
+        // Re-render so newly capped rows become visibly disabled instead of
+        // silently rejecting the next click.
+        renderDiscoveryResults();
       }
     });
     $("clearSelected").addEventListener("click", () => {
@@ -3264,10 +3410,35 @@ def _call_page_publication_snapshot(
     raise ValueError("page_publication_snapshot must return a dictionary")
 
 
-def _call_search_publications(query: str, species: str, *, limit: int) -> dict[str, Any]:
+def _accepts_progress_callback(func: Any) -> bool:
+    """Report whether ``func`` takes a ``progress`` keyword.
+
+    Test doubles replace ``search_publications`` with strict keyword-only stubs,
+    so an unconditional ``progress=`` would raise ``TypeError`` against them.
+    """
+
+    try:
+        parameters = inspect.signature(func).parameters
+    except (TypeError, ValueError):  # pragma: no cover - builtins and C callables.
+        return False
+    if "progress" in parameters:
+        return True
+    return any(parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in parameters.values())
+
+
+def _call_search_publications(
+    query: str,
+    species: str,
+    *,
+    limit: int,
+    progress: Callable[[float, str], None] | None = None,
+) -> dict[str, Any]:
     from .discovery_federated import search_publications
 
-    result = search_publications(query=query, species=species, limit=limit)
+    call_kwargs: dict[str, Any] = {"query": query, "species": species, "limit": limit}
+    if progress is not None and _accepts_progress_callback(search_publications):
+        call_kwargs["progress"] = progress
+    result = search_publications(**call_kwargs)
     if isinstance(result, dict):
         snapshot = dict(result)
     elif isinstance(result, list):
@@ -3570,6 +3741,29 @@ def _load_discovery_store_classes() -> tuple[type[Any], type[Any]]:
 
 def _api_job_status(status: str) -> str:
     return "complete" if status == "completed" else status
+
+
+def _api_job_progress(value: Any) -> float | None:
+    """Clamp a stored job progress fraction to [0, 1] for the browser."""
+
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        fraction = float(value)
+    except (TypeError, ValueError):
+        return None
+    if fraction != fraction or fraction in {float("inf"), float("-inf")}:
+        return None
+    return round(min(1.0, max(0.0, fraction)), 4)
+
+
+def _clean_job_message(value: Any) -> str:
+    """Collapse a stored job message to a single short display line."""
+
+    if not isinstance(value, str):
+        return ""
+    collapsed = " ".join(value.split())
+    return collapsed[:160]
 
 
 class DegoraRequestHandler(BaseHTTPRequestHandler):
@@ -3947,9 +4141,20 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
         store.save_search(search_id, search_payload)
 
         def worker(_job_id: str, payload: dict[str, Any], progress: Any) -> dict[str, Any]:
-            progress(0.2, "Searching publications and linked datasets.")
+            progress(0.02, "Starting publication search.")
+
+            def stage(fraction: float, message: str) -> None:
+                # search_publications reports 0..1 over its own work; map that into
+                # the 0.03..0.95 band so the job's own bookends stay monotonic.
+                progress(0.03 + 0.92 * min(1.0, max(0.0, float(fraction))), message)
+
             try:
-                snapshot = _call_search_publications(payload["query"], payload["species"], limit=int(payload["limit"]))
+                snapshot = _call_search_publications(
+                    payload["query"],
+                    payload["species"],
+                    limit=int(payload["limit"]),
+                    progress=stage,
+                )
             except Exception as exc:  # noqa: BLE001 - persist search failure before the manager records job failure.
                 failed = dict(search_payload)
                 failed.update({"status": "failed", "error": str(exc), "updated_at": time.time()})
@@ -3965,6 +4170,7 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
                     "updated_at": time.time(),
                 }
             )
+            progress(0.97, "Saving the publication snapshot.")
             store.save_search(search_id, complete)
             progress(1.0, "Publication snapshot persisted.")
             return {"search_id": search_id}
@@ -3988,6 +4194,11 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
             "search_id": job.get("search_id") or job.get("payload", {}).get("search_id"),
             "status": _api_job_status(str(job["status"])),
             "error": raw_error,
+            # progress/message are already persisted by the job manager on every
+            # update; surfacing them lets the browser show real stage feedback
+            # instead of a constant "search running" placeholder.
+            "progress": _api_job_progress(job.get("progress")),
+            "message": _clean_job_message(job.get("message")),
             "created_at": job.get("created_at"),
             "updated_at": job.get("updated_at"),
         }
