@@ -1371,6 +1371,7 @@ INDEX_HTML = """<!doctype html>
       jobProgress: null,
       jobMessage: "",
       jobStartedAt: 0,
+      noticeLevel: "info",
       verified: false,
       selected: new Set(),
       sort: { key: "readiness", order: "desc" },
@@ -1520,9 +1521,13 @@ INDEX_HTML = """<!doctype html>
     }
 
     function renderDiscoveryNotice(state) {
-      // An error always wins: a stale success notice used to be shown in the
-      // alert region while the real failure was only visible in the subtitle.
-      const notice = state.error ? `Search failed: ${state.error}` : (state.notice || "");
+      // A real failure outranks a stale success notice, but a *newer* failure
+      // (a rejected prepare) must not be masked by an older search error.
+      const notice = state.noticeLevel === "error" && state.notice
+        ? state.notice
+        : state.error
+        ? `Search failed: ${state.error}`
+        : (state.notice || "");
       const box = $("discoveryNotice");
       const failed = Boolean(state.error) || /(?:failed|error|unavailable)/i.test(notice);
       box.textContent = notice;
@@ -1552,13 +1557,36 @@ INDEX_HTML = """<!doctype html>
       return state.studies.map(publicationKey).filter((key) => key && !blocked(key));
     }
 
+    // renderDiscoveryResults() replaces the whole table, which moves focus to
+    // <body> and leaves a keyboard user unable to tick a second row.
+    function renderDiscoveryResultsKeepingFocus() {
+      const active = document.activeElement;
+      const accession = active && active.classList && active.classList.contains("study-select")
+        ? String(active.dataset.accession || "")
+        : "";
+      const wasSelectAll = Boolean(active) && active.id === "selectPageStudies";
+      renderDiscoveryResults();
+      const restored = wasSelectAll
+        ? $("selectPageStudies")
+        : accession
+        ? document.querySelector(`.study-select[data-accession="${CSS.escape(accession)}"]`)
+        : null;
+      if (restored && !restored.disabled) restored.focus();
+    }
+
     function updatePageSelectionCheckbox(state) {
       const selectAll = $("selectPageStudies");
       if (!selectAll) return;
       const pageAccessions = selectableKeys(state);
       selectAll.checked = pageAccessions.length > 0 && pageAccessions.every((value) => state.selected.has(value));
       selectAll.indeterminate = !selectAll.checked && pageAccessions.some((value) => state.selected.has(value));
-      selectAll.disabled = pageAccessions.length === 0;
+      const capBlocksEveryRow = !selectAll.checked
+        && state.selected.size >= MAX_SELECTED_STUDIES
+        && pageAccessions.every((value) => !state.selected.has(value));
+      selectAll.disabled = pageAccessions.length === 0 || capBlocksEveryRow;
+      selectAll.title = capBlocksEveryRow
+        ? `Selection limit of ${MAX_SELECTED_STUDIES} reached. Clear a selection to choose another.`
+        : "";
     }
 
     function renderDiscoveryResults() {
@@ -1581,13 +1609,15 @@ INDEX_HTML = """<!doctype html>
           : 0;
         const elapsedText = elapsed >= 1 ? ` · ${formatElapsed(elapsed)} elapsed` : "";
         const percentText = percent === null ? "" : ` · ${percent}%`;
-        $("resultsSubtitle").textContent = `${stage}${percentText}${elapsedText}`;
+        // Only the stage and percentage go to the live region: the elapsed
+        // second-counter would otherwise be announced once per second.
+        $("resultsSubtitle").textContent = `${stage}${percentText}`;
         const bar = percent === null
           ? `<div class="loading-bar" aria-hidden="true"></div>`
           : `<div class="loading-bar is-determinate" aria-hidden="true"><span style="width: ${percent}%"></span></div>`;
         $("discoveryResults").innerHTML = `<div class="discovery-loading">`
-          + `<div class="loading-card search-progress" role="status" aria-live="polite" aria-atomic="true"`
-          + ` aria-busy="true"${percent === null ? "" : ` aria-valuenow="${percent}" aria-valuemin="0" aria-valuemax="100"`}>`
+          + `<div class="loading-card search-progress" aria-busy="true"`
+          + `${percent === null ? "" : ` role="progressbar" aria-valuenow="${percent}" aria-valuemin="0" aria-valuemax="100"`}>`
           + `<strong class="loading-title">Building the ${esc(speciesLabel(activeSpecies))} publication snapshot</strong>`
           + bar
           + `<span class="loading-note">${esc(stage)}${esc(percentText)}${esc(elapsedText)}</span>`
@@ -1787,6 +1817,7 @@ INDEX_HTML = """<!doctype html>
       state.loading = true;
       state.error = "";
       state.notice = "";
+      state.noticeLevel = "info";
       state.verified = false;
       state.jobStatus = "queued";
       state.jobProgress = null;
@@ -1805,6 +1836,10 @@ INDEX_HTML = """<!doctype html>
             limit: DISCOVERY_GLOBAL_RANK_LIMIT
           });
           if (requestId !== state.searchRequest) return;
+          // A new snapshot re-mints record ids, so a selection carried over from
+          // the previous one points at rows that exist on no page and fails the
+          // prepare server-side while still consuming cap slots.
+          state.selected.clear();
           state.searchId = data.search_id;
           state.jobId = data.job_id;
           state.jobStatus = data.status || "queued";
@@ -1838,6 +1873,12 @@ INDEX_HTML = """<!doctype html>
       }
       state.loading = true;
       state.error = "";
+      // Without this the panel replayed the previous job's "Job completed. 100%"
+      // caption, with an elapsed counter that grew for the tab's lifetime.
+      state.jobStatus = "";
+      state.jobProgress = null;
+      state.jobMessage = "";
+      state.jobStartedAt = Date.now();
       const requestId = ++state.searchRequest;
       renderDiscoveryResults();
       try {
@@ -2087,7 +2128,12 @@ INDEX_HTML = """<!doctype html>
         }).join("");
         return `<div class="candidate-study"><h4>${esc(study.accession)} · ${esc(study.paper_title || study.title || "Untitled study")}</h4><p>${esc(study.preparation_status || "review required")}</p>${rows || `<div class="candidate-note">No usable DEG or upstream matrix was resolved within the safety limits.</div>`}</div>`;
       }).join("");
-      const excluded = (state.prepared.excluded_studies || []).map((item) => `<div class="candidate-study"><h4>${esc(item.accession)}</h4><p>${esc(item.reason)}</p></div>`).join("");
+      const excluded = (state.prepared.excluded_studies || []).map((item) => {
+        // The server sends canonical_id/paper_title/source_unit_id, never `accession`,
+        // so every excluded card used to render an empty heading.
+        const label = item.paper_title || item.canonical_id || item.source_unit_id || item.accession || "Unidentified publication";
+        return `<div class="candidate-study"><h4>${esc(label)}</h4><p>${esc(item.reason)}</p></div>`;
+      }).join("");
       $("preparedCandidates").innerHTML = html + excluded || `<div class="discovery-empty">No candidates were prepared.</div>`;
       $("preparedStatus").textContent = `${studies.length} studies prepared`;
       $("analysisCompleteCard").hidden = !state.run;
@@ -2113,6 +2159,7 @@ INDEX_HTML = """<!doctype html>
       state.cloneCounter = 0;
       state.analysisError = "";
       state.notice = "";
+      state.noticeLevel = "info";
       let preparationFailed = false;
       if (activeSpecies === requestSpecies) {
         activeRunId = "";
@@ -2140,6 +2187,7 @@ INDEX_HTML = """<!doctype html>
       } catch (error) {
         if (requestId !== state.prepareRequest) return;
         state.notice = `Preparation failed: ${error.message}`;
+        state.noticeLevel = "error";
         preparationFailed = true;
       } finally {
         if (requestId !== state.prepareRequest) return;
@@ -2615,7 +2663,14 @@ INDEX_HTML = """<!doctype html>
       // returned a raw 400 that wiped the table. Clamp instead.
       if (rawMinUnits) {
         const parsed = Math.trunc(Number(rawMinUnits));
-        if (Number.isFinite(parsed)) params.set("min_units", String(Math.min(10000, Math.max(1, parsed))));
+        if (Number.isFinite(parsed)) {
+          const clamped = String(Math.min(10000, Math.max(1, parsed)));
+          params.set("min_units", clamped);
+          // Reflect the clamp so the field agrees with the results on screen.
+          if (clamped !== rawMinUnits) $("minUnits").value = clamped;
+        } else {
+          $("minUnits").value = "1";
+        }
       }
       if (direction) params.set("direction", direction);
       params.set("sort", sortState.sort);
@@ -2905,7 +2960,9 @@ INDEX_HTML = """<!doctype html>
     });
     $("discoverySearchBoth").addEventListener("click", searchBothSpecies);
     $("discoveryQuery").addEventListener("keydown", (event) => {
-      if (event.key === "Enter") searchStudies({ resetPage: true });
+      // Same guard as the button: Enter used to start a second server-side job.
+      if (event.key !== "Enter" || activeDiscoveryState().loading) return;
+      void searchStudies({ resetPage: true });
     });
     $("discoveryQuery").addEventListener("input", (event) => event.target.setCustomValidity(""));
     $("discoveryPrev").addEventListener("click", () => {
@@ -2925,9 +2982,19 @@ INDEX_HTML = """<!doctype html>
       const inspect = event.target.closest("[data-study-inspect]");
       if (inspect) {
         const state = activeDiscoveryState();
-        const key = inspect.dataset.studyInspect;
+        const key = String(inspect.dataset.studyInspect || "");
+        const blocked = pageSelectability(state)(key);
+        if (blocked) {
+          // Inspect used to bypass the selection rules, clearing an existing
+          // selection and then failing server-side on the ambiguous identifier.
+          state.notice = blocked === "no-id"
+            ? "This publication has no usable identifier, so it cannot be prepared."
+            : "Several results share this identifier, so a single one cannot be prepared.";
+          renderDiscoveryNotice(state);
+          return;
+        }
         state.selected.clear();
-        if (key) state.selected.add(key);
+        state.selected.add(key);
         renderDiscoveryResults();
         void prepareSelectedStudies();
         return;
@@ -2967,10 +3034,12 @@ INDEX_HTML = """<!doctype html>
           else if (state.selected.size < MAX_SELECTED_STUDIES) state.selected.add(key);
           else capped = true;
         });
-        state.notice = capped
-          ? `Selection limit reached: at most ${MAX_SELECTED_STUDIES} publications across all pages. Clear some to choose others.`
-          : "";
-        renderDiscoveryResults();
+        if (capped) {
+          state.notice = `Selection limit reached: at most ${MAX_SELECTED_STUDIES} publications across all pages. Clear some to choose others.`;
+        } else if (state.noticeLevel !== "error") {
+          state.notice = "";
+        }
+        renderDiscoveryResultsKeepingFocus();
         return;
       }
       if (event.target.classList.contains("study-select")) {
@@ -2989,16 +3058,19 @@ INDEX_HTML = """<!doctype html>
           event.target.checked = false;
           state.notice = `Selection limit reached: at most ${MAX_SELECTED_STUDIES} publications across all pages. Clear some to choose others.`;
         }
-        if (state.selected.size < MAX_SELECTED_STUDIES && !event.target.checked) state.notice = "";
+        if (state.selected.size < MAX_SELECTED_STUDIES && !event.target.checked && state.noticeLevel !== "error") {
+          state.notice = "";
+        }
         // Re-render so newly capped rows become visibly disabled instead of
-        // silently rejecting the next click.
-        renderDiscoveryResults();
+        // silently rejecting the next click, without losing keyboard focus.
+        renderDiscoveryResultsKeepingFocus();
       }
     });
     $("clearSelected").addEventListener("click", () => {
       const state = activeDiscoveryState();
       state.selected.clear();
       state.notice = "";
+      state.noticeLevel = "info";
       renderDiscoveryResults();
     });
     $("resetStudySort").addEventListener("click", () => {
@@ -3042,8 +3114,11 @@ INDEX_HTML = """<!doctype html>
     document.querySelectorAll("[data-sort]").forEach((button) => {
       button.addEventListener("click", () => setSort(button.dataset.sort));
     });
-    $("query").addEventListener("keydown", (event) => {
-      if (event.key === "Enter") loadGenes();
+    // Enter worked in the gene box but not in the source-unit box next to it.
+    ["query", "minUnits"].forEach((id) => {
+      $(id).addEventListener("keydown", (event) => {
+        if (event.key === "Enter") loadGenes();
+      });
     });
     $("genes").addEventListener("click", (event) => {
       const row = event.target.closest("tr");

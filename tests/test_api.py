@@ -823,11 +823,18 @@ def test_dashboard_guards_against_double_submitting_a_search() -> None:
     assert "if (activeDiscoveryState().loading) return;" in INDEX_HTML
 
 
-def test_dashboard_prefers_the_real_error_over_a_stale_notice() -> None:
+def test_dashboard_ranks_notices_by_severity_and_recency() -> None:
     from degora.api import INDEX_HTML
 
     html = INDEX_HTML
-    assert "const notice = state.error ? `Search failed: ${state.error}` : (state.notice || \"\");" in html
+    # A stale success notice must not occupy the alert region while a real
+    # failure is hidden, and a newer prepare failure must not be masked by an
+    # older search error.
+    assert 'state.noticeLevel === "error" && state.notice' in html
+    assert 'noticeLevel: "info"' in html
+    assert 'state.noticeLevel = "error";' in html
+    # Clearing a notice must not silently discard an error-level one.
+    assert 'state.noticeLevel !== "error"' in html
 
 
 def test_dashboard_clamps_atlas_filters_before_calling_the_api() -> None:
@@ -855,3 +862,81 @@ def test_keyboard_focus_is_visible_on_sort_headers_and_the_search_input() -> Non
     assert ".discovery-search input:focus-visible {" in html
     # The hover tint alone must no longer stand in for a focus ring.
     assert ".sort-head:hover, .sort-head:focus-visible { background: #eef7f5; outline: none; }" not in html
+
+
+def test_dashboard_guards_enter_as_well_as_the_search_button() -> None:
+    from degora.api import INDEX_HTML
+
+    # Enter used to bypass the double-submit guard and start extra server jobs.
+    assert 'if (event.key !== "Enter" || activeDiscoveryState().loading) return;' in INDEX_HTML
+
+
+def test_dashboard_keeps_keyboard_focus_when_toggling_a_selection() -> None:
+    from degora.api import INDEX_HTML
+
+    html = INDEX_HTML
+    assert "renderDiscoveryResultsKeepingFocus" in html
+    assert "CSS.escape(accession)" in html
+
+
+def test_inspect_respects_the_unselectable_rules() -> None:
+    from degora.api import INDEX_HTML
+
+    html = INDEX_HTML
+    # Inspect used to clear the selection and then fail server-side on a
+    # publication whose identifier is shared by several rows.
+    assert "const blocked = pageSelectability(state)(key);" in html
+
+
+def test_repaging_resets_the_previous_jobs_progress() -> None:
+    from degora.api import INDEX_HTML
+
+    html = INDEX_HTML
+    assert html.count('state.jobStartedAt = Date.now();') >= 2
+    assert 'state.jobMessage = "";' in html
+
+
+def test_select_all_is_disabled_once_the_cap_blocks_every_row() -> None:
+    from degora.api import INDEX_HTML
+
+    html = INDEX_HTML
+    assert "capBlocksEveryRow" in html
+    assert "selectAll.disabled = pageAccessions.length === 0 || capBlocksEveryRow;" in html
+
+
+def test_a_new_snapshot_drops_identifiers_from_the_previous_one() -> None:
+    from degora.api import INDEX_HTML
+
+    html = INDEX_HTML
+    assert "// A new snapshot re-mints record ids" in html
+
+
+def test_excluded_study_cards_are_labelled() -> None:
+    from degora.api import INDEX_HTML
+
+    html = INDEX_HTML
+    assert "item.paper_title || item.canonical_id || item.source_unit_id" in html
+    assert "<h4>${esc(item.accession)}</h4>" not in html
+
+
+def test_progress_uses_one_live_region_and_does_not_announce_each_second() -> None:
+    from degora.api import INDEX_HTML
+
+    html = INDEX_HTML
+    # The card is a progressbar, not a second polite live region duplicating
+    # the subtitle once per poll.
+    assert 'class="loading-card search-progress" aria-busy="true"' in html
+    assert 'role="progressbar"' in html
+    assert '$("resultsSubtitle").textContent = `${stage}${percentText}`;' in html
+
+
+def test_atlas_filter_clamp_is_reflected_in_the_field() -> None:
+    from degora.api import INDEX_HTML
+
+    assert '$("minUnits").value = clamped;' in INDEX_HTML
+
+
+def test_enter_applies_atlas_filters_from_either_input() -> None:
+    from degora.api import INDEX_HTML
+
+    assert '["query", "minUnits"].forEach((id) => {' in INDEX_HTML
