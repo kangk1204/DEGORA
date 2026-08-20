@@ -254,7 +254,7 @@ def _guide_rows() -> pd.DataFrame:
                 "column": "gene_column",
                 "required": "yes",
                 "checked_where": "Contrasts sheet and source DEG table",
-                "meaning": "Exact source-table column containing gene symbols or IDs.",
+                "meaning": "Exact source-table column containing gene symbols or IDs. If the table was written by R's write.csv and its gene identifiers have no header, use row_name.",
             },
             {
                 "column": "lfc_column",
@@ -344,7 +344,7 @@ def _guide_rows() -> pd.DataFrame:
                 "column": "sep",
                 "required": "no",
                 "checked_where": "source reader if filled",
-                "meaning": "Delimiter override for text tables, such as \\t for TSV when auto-detection fails.",
+                "meaning": "Delimiter override for text tables. Leave blank to auto-detect; accepted words are tab, comma, semicolon, pipe, space, whitespace.",
             },
             {
                 "column": "sheet_name",

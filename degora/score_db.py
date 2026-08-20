@@ -9,7 +9,7 @@ import sqlite3
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 import numpy as np
 import pandas as pd
@@ -181,8 +181,9 @@ def _portable_source_path_columns(
     out = frame.copy()
     for column in ("source_path", "contributing_source_paths"):
         if column in out.columns:
-            out[column] = out[column].map(
-                lambda value: _portable_source_path_value(value, source_base, output_base)
+            out[column] = _map_unique(
+                out[column],
+                lambda value: _portable_source_path_value(value, source_base, output_base),
             )
     return out
 
@@ -508,6 +509,24 @@ def _join_unique(values: pd.Series) -> str:
     return ";".join(sorted(dict.fromkeys(labels)))
 
 
+def _map_unique(values: pd.Series, func: Callable[[Any], Any]) -> pd.Series:
+    """Apply ``func`` once per distinct value rather than once per row.
+
+    These frames repeat a handful of labels - source paths, pipeline names -
+    across tens of thousands of rows, and pandas' arrow-backed string columns
+    make per-element access expensive. Mapping the distinct values collapsed
+    hundreds of thousands of calls into a few dozen.
+    """
+
+    if values.empty:
+        return values
+    codes, uniques = pd.factorize(values, use_na_sentinel=False)
+    mapped = np.empty(len(uniques), dtype=object)
+    for index, unique_value in enumerate(uniques):
+        mapped[index] = func(unique_value)
+    return pd.Series(mapped[codes], index=values.index)
+
+
 def _min_numeric(values: pd.Series) -> float:
     numeric = pd.to_numeric(values, errors="coerce").dropna()
     return float(numeric.min()) if not numeric.empty else np.nan
@@ -686,9 +705,13 @@ def _metadata_for_study_gene_units(frame: pd.DataFrame) -> pd.DataFrame:
         "min_source_padj",
     ]
     sorted_frame = frame.sort_values([*group_cols, "study_id"])
+    # Coerce once instead of running a Python-level to_numeric per group.
+    for count_column in ("n_ctrl", "n_treat"):
+        if count_column in sorted_frame.columns:
+            sorted_frame[count_column] = pd.to_numeric(sorted_frame[count_column], errors="coerce")
     base = sorted_frame.groupby(group_cols, as_index=False, sort=False).agg(
-        n_ctrl=("n_ctrl", _min_numeric),
-        n_treat=("n_treat", _min_numeric),
+        n_ctrl=("n_ctrl", "min"),
+        n_treat=("n_treat", "min"),
         n_genes_in_study=("n_genes_in_study", "max"),
         min_source_pvalue=("pvalue", "min"),
         min_source_padj=("padj", "min"),
@@ -697,7 +720,7 @@ def _metadata_for_study_gene_units(frame: pd.DataFrame) -> pd.DataFrame:
     source_unit_meta = sorted_frame[["source_unit_id"]].drop_duplicates().copy()
     for target, source in source_unit_string_specs:
         values = sorted_frame[["source_unit_id", source]].copy()
-        values[source] = values[source].map(_clean_join_label)
+        values[source] = _map_unique(values[source], _clean_join_label)
         values = values.loc[values[source].ne("")].drop_duplicates().sort_values(["source_unit_id", source])
         joined = values.groupby("source_unit_id", sort=False)[source].agg(";".join).rename(target).reset_index()
         source_unit_meta = source_unit_meta.merge(joined, on="source_unit_id", how="left")
@@ -705,7 +728,7 @@ def _metadata_for_study_gene_units(frame: pd.DataFrame) -> pd.DataFrame:
     out = base.merge(source_unit_meta, on="source_unit_id", how="left")
     for target, source in gene_source_string_specs:
         values = sorted_frame[[*group_cols, source]].copy()
-        values[source] = values[source].map(_clean_join_label)
+        values[source] = _map_unique(values[source], _clean_join_label)
         values = values.loc[values[source].ne("")].drop_duplicates().sort_values([*group_cols, source])
         joined = values.groupby(group_cols, sort=False)[source].agg(";".join).rename(target).reset_index()
         out = out.merge(joined, on=group_cols, how="left")

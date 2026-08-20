@@ -211,31 +211,116 @@ def read_deg_table(path: str | Path, mapping: TableMapping) -> pd.DataFrame:
         sheet_name: str | int | None = 0 if mapping.sheet_name in (None, "") else mapping.sheet_name
         return pd.read_excel(path, sheet_name=sheet_name)
 
-    sep = mapping.sep
-    auto_sep = sep in (None, "")
+    raw_sep = mapping.sep
+    auto_sep = raw_sep in (None, "")
     if auto_sep:
         sep = "\t" if suffixes.endswith((".tsv", ".txt", ".tsv.gz", ".txt.gz")) else ","
-    frame = pd.read_csv(path, sep=sep)
-    if auto_sep and frame.shape[1] == 1:
+    else:
+        sep = _normalize_separator(raw_sep)
+    # A multi-character separator is a regex to pandas, and the C parser cannot take
+    # one. Choosing the engine here keeps a plain ParserWarning off the user's screen.
+    engine = "python" if len(sep) > 1 else None
+    frame = pd.read_csv(path, sep=sep, engine=engine)
+    frame = _restore_unnamed_row_labels(frame)
+    if frame.shape[1] == 1:
         header = str(frame.columns[0])
-        other = "," if sep == "\t" else "\t"
-        # Require >=3 fields when splitting on the other delimiter: a real DEG table has at
-        # least gene/lfc/p columns, so a single column that splits into >=3 is the wrong
-        # delimiter -- not a legitimate one-column file whose header merely contains a comma.
-        if other in header and len([field for field in header.split(other) if field.strip()]) >= 3:
-            used = "tab" if sep == "\t" else "comma"
-            looks = "comma" if other == "," else "tab"
+        # The recovery hint used to run only when the delimiter was auto-detected,
+        # which is the case least likely to be wrong. A filled-in 'sep' that does not
+        # match the file produced the same single mangled column with no explanation.
+        for candidate, label in ((",", "comma"), ("\t", "tab"), (";", "semicolon"), ("|", "pipe")):
+            if candidate == sep or candidate not in header:
+                continue
+            # A real DEG table has at least gene/lfc/p columns, so a header that splits
+            # into >=3 fields on another delimiter is the wrong delimiter, not a
+            # one-column file whose single header merely contains a comma.
+            if len([field for field in header.split(candidate) if field.strip()]) < 3:
+                continue
+            used = _SEPARATOR_LABELS.get(sep, repr(sep))
             raise ValueError(
                 f"{path.name} parsed into a single column with the {used} delimiter, but the header "
-                f"looks {looks}-delimited ({header!r}). Set 'sep' in the catalog to the correct "
-                "delimiter (use \\t for a tab-separated file)."
+                f"looks {label}-delimited ({header[:120]!r}). Set 'sep' in the catalog to the correct "
+                f"delimiter, or leave it blank to auto-detect. Accepted values include "
+                f"{', '.join(sorted(_SEPARATOR_ALIASES))}."
             )
     return frame
 
 
+ROW_LABEL_COLUMN = "row_name"
+
+
+def _restore_unnamed_row_labels(frame: pd.DataFrame) -> pd.DataFrame:
+    """Expose R ``write.csv`` row labels as a named column.
+
+    ``write.csv(results, file)`` writes a header with one fewer field than the
+    data rows. pandas resolves that by consuming the first column as an unnamed
+    index, which put the gene identifiers somewhere no catalog mapping could
+    reference. Move them back into a column instead.
+    """
+
+    if isinstance(frame.index, pd.RangeIndex) or frame.index.name is not None:
+        return frame
+    if isinstance(frame.index, pd.MultiIndex):
+        return frame
+    name = ROW_LABEL_COLUMN
+    suffix = 2
+    while name in frame.columns:
+        name = f"{ROW_LABEL_COLUMN}_{suffix}"
+        suffix += 1
+    restored = frame.reset_index()
+    restored = restored.rename(columns={restored.columns[0]: name})
+    return restored
+
+
+# Catalog authors reach for the word before the escape, so accept both. Without
+# this, sep="tab" reached pandas as a three-character regex and collapsed every
+# row into one column named "ORF\tGENENAME\t...".
+_SEPARATOR_ALIASES = {
+    "tab": "\t",
+    "tabs": "\t",
+    "\\t": "\t",
+    "t": "\t",
+    "tsv": "\t",
+    "comma": ",",
+    "csv": ",",
+    "semicolon": ";",
+    "semi": ";",
+    "pipe": "|",
+    "bar": "|",
+    "space": " ",
+    "whitespace": r"\s+",
+    "ws": r"\s+",
+}
+_SEPARATOR_LABELS = {"\t": "tab", ",": "comma", ";": "semicolon", "|": "pipe", " ": "space", r"\s+": "whitespace"}
+
+
+def _normalize_separator(value: str) -> str:
+    """Map a catalog 'sep' entry onto the delimiter pandas should use."""
+
+    text = str(value)
+    stripped = text.strip()
+    alias = _SEPARATOR_ALIASES.get(stripped.lower())
+    if alias is not None:
+        return alias
+    if stripped == "" and text != "":
+        return text  # a deliberate literal space
+    return stripped or text
+
+
+def _row_label_hint(frame: pd.DataFrame) -> str:
+    if not any(str(name).startswith(ROW_LABEL_COLUMN) for name in frame.columns):
+        return ""
+    return (
+        f" This file has unnamed row labels (R's write.csv default); they are available"
+        f" as {ROW_LABEL_COLUMN!r}."
+    )
+
+
 def _series_as_numeric(frame: pd.DataFrame, column: str) -> pd.Series:
     if column not in frame.columns:
-        raise KeyError(f"Required column {column!r} not found. Available columns: {list(frame.columns)!r}")
+        raise KeyError(
+            f"Required column {column!r} not found. Available columns: {list(frame.columns)!r}."
+            + _row_label_hint(frame)
+        )
     return pd.to_numeric(frame[column], errors="coerce")
 
 
