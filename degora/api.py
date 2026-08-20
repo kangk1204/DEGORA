@@ -620,6 +620,34 @@ INDEX_HTML = """<!doctype html>
       background: var(--accent);
       transition: width 320ms ease-out;
     }
+    /* While a search, prepare or analysis is running, every control that would
+       start competing work is dimmed and locked. The progress panel itself is
+       deliberately excluded so it stays legible. */
+    .discovery-view.is-busy .discovery-search,
+    .discovery-view.is-busy .cross-species-action,
+    .discovery-view.is-busy .study-action-bar,
+    .discovery-view.is-busy .table-footer,
+    .discovery-view.is-busy .study-table {
+      opacity: 0.45;
+      filter: saturate(0.65);
+      pointer-events: none;
+      transition: opacity 180ms ease-out, filter 180ms ease-out;
+    }
+    .discovery-view.is-busy .discovery-search { cursor: progress; }
+    .discovery-view .discovery-search,
+    .discovery-view .cross-species-action,
+    .discovery-view .study-action-bar,
+    .discovery-view .table-footer,
+    .discovery-view .study-table {
+      transition: opacity 180ms ease-out, filter 180ms ease-out;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .discovery-view .discovery-search,
+      .discovery-view .cross-species-action,
+      .discovery-view .study-action-bar,
+      .discovery-view .table-footer,
+      .discovery-view .study-table { transition: none; }
+    }
     .search-progress {
       width: min(420px, 100%);
       margin: 0 auto;
@@ -1421,6 +1449,10 @@ INDEX_HTML = """<!doctype html>
       ].map((text) => `<span>${esc(text)}</span>`).join("");
     }
 
+    function isDiscoveryView() {
+      return !$("discoveryView").hidden;
+    }
+
     function showView(name) {
       const discovery = name === "discover";
       $("discoveryView").hidden = !discovery;
@@ -1434,6 +1466,10 @@ INDEX_HTML = """<!doctype html>
         renderDiscoveryHeaderMeta();
       } else {
         setPanelSplit(storedSplitPercent(), false);
+        // The header kept a Discover statistic ("48 assessed studies") while the
+        // atlas was showing a different corpus. ensureAtlasContext() short-circuits
+        // when the context is unchanged, so refresh the header unconditionally.
+        void loadMeta(currentAtlasContext(), atlasContextGeneration);
         void ensureAtlasContext();
       }
     }
@@ -1589,7 +1625,46 @@ INDEX_HTML = """<!doctype html>
         : "";
     }
 
+    // Every control that could start competing work is locked while a search,
+    // prepare or analysis is in flight. Disabling matters as much as the dimming:
+    // pointer-events alone still leaves the controls reachable by keyboard.
+    // Controls whose enabled state nothing else computes: they must be switched
+    // back on when the work finishes, or the search box would stay dead forever.
+    const BUSY_OWNED_CONTROLS = [
+      "discoverySearch", "discoveryQuery", "discoverySearchBoth",
+      "humanSpeciesTab", "mouseSpeciesTab", "mobileStudySort", "mobileStudyOrder",
+    ];
+    // Controls the render pass already computes: only ever force these off.
+    const BUSY_FORCED_CONTROLS = [
+      "discoveryPrev", "discoveryNext", "downloadSearchExcel",
+      "clearSelected", "prepareSelected", "selectPageStudies", "resetStudySort",
+    ];
+
+    function applyDiscoveryBusyState(state) {
+      const busy = Boolean(state.loading || state.preparing || state.analyzing);
+      const view = $("discoveryView");
+      view.classList.toggle("is-busy", busy);
+      view.setAttribute("aria-busy", busy ? "true" : "false");
+      BUSY_OWNED_CONTROLS.forEach((id) => {
+        const element = document.getElementById(id);
+        if (element) element.disabled = busy;
+      });
+      if (!busy) return;
+      BUSY_FORCED_CONTROLS.forEach((id) => {
+        const element = document.getElementById(id);
+        if (element) element.disabled = true;
+      });
+      document
+        .querySelectorAll("#discoveryResults .study-select, #discoveryResults .study-inspect, #discoveryResults .sort-head")
+        .forEach((element) => { element.disabled = true; });
+    }
+
     function renderDiscoveryResults() {
+      renderDiscoveryResultsView();
+      applyDiscoveryBusyState(activeDiscoveryState());
+    }
+
+    function renderDiscoveryResultsView() {
       const state = activeDiscoveryState();
       $("discoveryView").classList.toggle("has-results", Boolean(state.query));
       renderDiscoveryHeaderMeta(state);
@@ -1625,6 +1700,7 @@ INDEX_HTML = """<!doctype html>
           + `</div></div>`;
         $("discoveryActions").hidden = true;
         $("discoveryFooter").hidden = true;
+        updateSelectedStatus();
         return;
       }
       if (!state.query) {
@@ -1632,6 +1708,7 @@ INDEX_HTML = """<!doctype html>
         $("discoveryResults").innerHTML = `<div class="discovery-empty">Search papers and linked data to see provisional publication matches.</div>`;
         $("discoveryActions").hidden = true;
         $("discoveryFooter").hidden = true;
+        updateSelectedStatus();
         return;
       }
       if (state.error) {
@@ -1731,9 +1808,10 @@ INDEX_HTML = """<!doctype html>
       $("selectedStatus").title = count > 0 && onPage < count
         ? `${count - onPage} selected publication(s) are on other pages and will be included in Prepare selection.`
         : "";
+      const busy = Boolean(state.loading || state.preparing || state.analyzing);
       $("prepareSelected").textContent = state.preparing ? "Downloading and inspecting..." : "Prepare selection";
-      $("prepareSelected").disabled = count === 0 || state.preparing;
-      $("clearSelected").disabled = count === 0 || state.preparing;
+      $("prepareSelected").disabled = count === 0 || busy;
+      $("clearSelected").disabled = count === 0 || busy;
     }
 
     async function refreshSearchPage(species, requestId) {
@@ -1799,19 +1877,29 @@ INDEX_HTML = """<!doctype html>
       input.setCustomValidity("");
       const queryChanged = query !== state.query;
       if (resetPage || queryChanged) state.page = 1;
+      // Any new search re-mints the snapshot the bundle was built from, so the
+      // bundle, its review draft and its run stop applying - not only when the
+      // query text changed. Bumping the request ids retires work that is still
+      // in flight; without it a late response reinstated a bundle built from
+      // the previous snapshot, and Run then launched against a stale selection.
+      state.prepareRequest += 1;
+      state.analysisRequest += 1;
+      state.preparing = false;
+      state.analyzing = false;
+      state.selected.clear();
+      state.prepared = null;
+      state.bundleId = "";
+      state.run = null;
+      state.draft = {};
+      state.cloneCounter = 0;
+      state.analysisError = "";
       if (queryChanged) {
-        state.selected.clear();
         state.sort = { key: "readiness", order: "desc" };
-        state.prepared = null;
-        state.bundleId = "";
-        state.run = null;
-        state.draft = {};
-        state.analysisError = "";
-        if (activeSpecies === requestSpecies) {
-          activeRunId = "";
-          invalidateAtlasContext();
-          renderPreparedState();
-        }
+      }
+      if (activeSpecies === requestSpecies) {
+        activeRunId = "";
+        invalidateAtlasContext();
+        renderPreparedState();
       }
       state.query = query;
       state.loading = true;
@@ -2126,7 +2214,7 @@ INDEX_HTML = """<!doctype html>
           const clones = keys.filter((key) => key !== candidate.candidate_id).map((key) => authorCandidateHtml(study, candidate, false, key, true)).join("");
           return base + clones;
         }).join("");
-        return `<div class="candidate-study"><h4>${esc(study.accession)} · ${esc(study.paper_title || study.title || "Untitled study")}</h4><p>${esc(study.preparation_status || "review required")}</p>${rows || `<div class="candidate-note">No usable DEG or upstream matrix was resolved within the safety limits.</div>`}</div>`;
+        return `<div class="candidate-study"><h4>${esc([study.accession, study.paper_title || study.title || "Untitled study"].filter(Boolean).join(" · "))}</h4><p>${esc(study.preparation_status || "review required")}</p>${rows || `<div class="candidate-note">No usable DEG or upstream matrix was resolved within the safety limits.</div>`}</div>`;
       }).join("");
       const excluded = (state.prepared.excluded_studies || []).map((item) => {
         // The server sends canonical_id/paper_title/source_unit_id, never `accession`,
@@ -2142,14 +2230,18 @@ INDEX_HTML = """<!doctype html>
         $("analysisCompleteText").textContent = `${state.run.n_source_units || state.run.source_units?.length || 0} independent source units were analyzed separately from the other species. Top genes: ${(state.run.top_genes || []).slice(0, 8).join(", ")}.`;
       }
       updateAnalysisEligibility();
+      renderDiscoveryHeaderMeta();
     }
 
-    async function prepareSelectedStudies() {
+    async function prepareSelectedStudies({ recordIds: explicitIds = null } = {}) {
       const requestSpecies = activeSpecies;
       const state = discoveryStates[requestSpecies];
-      if (!state.selected.size) return;
+      // Inspect prepares a single publication without touching the selection:
+      // it used to overwrite it, silently discarding a full 20-item selection
+      // along with any bundle and review work already done.
+      const recordIds = explicitIds ? [...explicitIds] : [...state.selected];
+      if (!recordIds.length) return;
       const requestId = ++state.prepareRequest;
-      const recordIds = [...state.selected];
       const query = state.query;
       state.preparing = true;
       state.prepared = null;
@@ -2430,6 +2522,11 @@ INDEX_HTML = """<!doctype html>
         if (activeSpecies === requestSpecies) {
           activeRunId = result.run_id;
           invalidateAtlasContext();
+          // invalidateAtlasContext() empties the atlas and waits for the next
+          // visit to reload it. If the atlas is the visible view, nothing else
+          // triggers that reload and it stays blank until the user bounces tabs.
+          if (!isDiscoveryView()) void ensureAtlasContext();
+          renderDiscoveryHeaderMeta();
           renderPreparedState();
           $("analysisCompleteCard").scrollIntoView({ behavior: "smooth", block: "start" });
         }
@@ -2993,10 +3090,7 @@ INDEX_HTML = """<!doctype html>
           renderDiscoveryNotice(state);
           return;
         }
-        state.selected.clear();
-        state.selected.add(key);
-        renderDiscoveryResults();
-        void prepareSelectedStudies();
+        void prepareSelectedStudies({ recordIds: [key] });
         return;
       }
       const mobileOrder = event.target.closest("#mobileStudyOrder");

@@ -940,3 +940,77 @@ def test_enter_applies_atlas_filters_from_either_input() -> None:
     from degora.api import INDEX_HTML
 
     assert '["query", "minUnits"].forEach((id) => {' in INDEX_HTML
+
+
+def test_dashboard_locks_and_fades_controls_while_work_is_in_flight() -> None:
+    from degora.api import INDEX_HTML
+
+    html = INDEX_HTML
+    assert "function applyDiscoveryBusyState(state)" in html
+    assert 'view.classList.toggle("is-busy", busy);' in html
+    assert 'view.setAttribute("aria-busy", busy ? "true" : "false");' in html
+    # Dimming alone would still leave the controls reachable by keyboard.
+    assert "BUSY_OWNED_CONTROLS" in html and "BUSY_FORCED_CONTROLS" in html
+    assert "if (element) element.disabled = busy;" in html
+    assert ".discovery-view.is-busy .discovery-search" in html
+    assert "pointer-events: none;" in html
+    # The progress panel must not be dimmed with everything else.
+    assert ".discovery-view.is-busy .search-progress" not in html
+
+
+def test_a_new_search_retires_in_flight_prepare_and_analysis_work() -> None:
+    from degora.api import INDEX_HTML
+
+    html = INDEX_HTML
+    # A late prepare/analysis response used to reinstate a bundle built from the
+    # snapshot the new search had just replaced.
+    assert "state.prepareRequest += 1;" in html
+    assert "state.analysisRequest += 1;" in html
+
+
+def test_finishing_an_analysis_reloads_a_visible_atlas() -> None:
+    from degora.api import INDEX_HTML
+
+    html = INDEX_HTML
+    assert "function isDiscoveryView()" in html
+    assert "if (!isDiscoveryView()) void ensureAtlasContext();" in html
+
+
+def test_inspect_does_not_overwrite_the_selection() -> None:
+    from degora.api import INDEX_HTML
+
+    html = INDEX_HTML
+    assert "async function prepareSelectedStudies({ recordIds: explicitIds = null } = {})" in html
+    assert "void prepareSelectedStudies({ recordIds: [key] });" in html
+    # The old body cleared the whole selection to prepare one publication.
+    assert "state.selected.clear();\n        state.selected.add(key);" not in html
+
+
+def test_atlas_view_refreshes_the_header_metadata() -> None:
+    from degora.api import INDEX_HTML
+
+    assert "void loadMeta(currentAtlasContext(), atlasContextGeneration);" in INDEX_HTML
+
+
+def test_header_activity_follows_the_prepare_and_analysis_pipeline() -> None:
+    from degora.api import INDEX_HTML
+
+    html = INDEX_HTML
+    assert html.count("renderDiscoveryHeaderMeta();") >= 3
+
+
+def test_prepared_study_heading_has_no_leading_separator() -> None:
+    from degora.api import INDEX_HTML
+
+    html = INDEX_HTML
+    assert '${esc(study.accession)} · ${esc(study.paper_title' not in html
+    assert 'filter(Boolean).join(" · ")' in html
+
+
+def test_hidden_action_bar_never_keeps_the_other_workspaces_numbers() -> None:
+    from degora.api import INDEX_HTML
+
+    html = INDEX_HTML
+    # Both early-return branches must refresh the selection status so the bar
+    # cannot be revealed later carrying the previous species' counts.
+    assert html.count('$("discoveryFooter").hidden = true;\n        updateSelectedStatus();') >= 2
