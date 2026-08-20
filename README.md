@@ -121,6 +121,42 @@ python -m pip install -e .
 After `degora --version` and the demo below both work, the renamed failed
 environment can be deleted.
 
+## One-command quickstart
+
+`scripts/degora_quickstart.sh` performs the whole first run on Ubuntu, macOS
+(Intel and Apple silicon), and Windows 11 via WSL2 Ubuntu: it picks a supported
+interpreter, creates the virtual environment, installs the package, builds the
+demo, chooses a free port, and opens the dashboard.
+
+From a checkout:
+
+```bash
+bash scripts/degora_quickstart.sh
+```
+
+Without a checkout, download just that one file and run it; it clones the
+repository into `./DEGORA` first:
+
+```bash
+bash degora_quickstart.sh
+```
+
+Useful options:
+
+```text
+--port N        Preferred port (default 8765; the next free port is used when taken)
+--dir PATH      Where to place or find the checkout when run standalone
+--config PATH   Serve your own DEGORA config instead of the bundled demo
+--update        git pull an existing checkout before installing
+--no-browser    Do not try to open a browser (headless or remote shells)
+--no-demo       Skip demo creation and serve an existing database
+```
+
+The script is safe to re-run and stops with an actionable message when the
+platform is missing Python 3.10+, `git`, or the Debian/Ubuntu `python3-venv`
+package. Press `Ctrl+C` to stop the server. The manual steps below do the same
+work one command at a time.
+
 ## Run the included demo
 
 ```bash
