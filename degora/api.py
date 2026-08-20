@@ -1283,14 +1283,47 @@ INDEX_HTML = """<!doctype html>
       let activePointerId = null;
       let activeMouse = false;
 
-      const applyClientX = (clientX) => {
+      // The grid track percentage is of main's CONTENT box, but the split used to
+      // be computed from its border box, so the handle landed padding-width away
+      // from the cursor.
+      const contentGeometry = () => {
         const rect = main.getBoundingClientRect();
-        if (!rect.width) return;
-        setPanelSplit(((clientX - rect.left) / rect.width) * 100);
+        const styles = window.getComputedStyle(main);
+        const left = rect.left
+          + (parseFloat(styles.paddingLeft) || 0)
+          + (parseFloat(styles.borderLeftWidth) || 0);
+        const right = rect.right
+          - (parseFloat(styles.paddingRight) || 0)
+          - (parseFloat(styles.borderRightWidth) || 0);
+        return { left, width: right - left };
+      };
+      const applyClientX = (clientX) => {
+        const geometry = contentGeometry();
+        if (geometry.width <= 0) return;
+        setPanelSplit(((clientX - geometry.left) / geometry.width) * 100);
+      };
+      // Pressing the handle used to snap the split to the cursor immediately, so
+      // the first click of a double-click moved the handle out from under the
+      // second one and "double-click to reset" could never fire.
+      const DRAG_THRESHOLD_PX = 3;
+      let pressClientX = null;
+      let dragging = false;
+      const beginPress = (clientX) => {
+        pressClientX = clientX;
+        dragging = false;
+      };
+      const trackClientX = (clientX) => {
+        if (!dragging) {
+          if (pressClientX === null || Math.abs(clientX - pressClientX) < DRAG_THRESHOLD_PX) return;
+          dragging = true;
+        }
+        applyClientX(clientX);
       };
       const stopResize = () => {
         activePointerId = null;
         activeMouse = false;
+        pressClientX = null;
+        dragging = false;
         document.body.classList.remove("is-resizing");
       };
 
@@ -1302,11 +1335,11 @@ INDEX_HTML = """<!doctype html>
         activePointerId = event.pointerId;
         try { splitter.setPointerCapture(event.pointerId); } catch (_) {}
         document.body.classList.add("is-resizing");
-        applyClientX(event.clientX);
+        beginPress(event.clientX);
       });
       const trackPointer = (event) => {
         if (event.pointerId !== activePointerId) return;
-        applyClientX(event.clientX);
+        trackClientX(event.clientX);
       };
       const stopPointer = (event) => {
         if (event.pointerId === activePointerId) stopResize();
@@ -1322,11 +1355,11 @@ INDEX_HTML = """<!doctype html>
         event.preventDefault();
         activeMouse = true;
         document.body.classList.add("is-resizing");
-        applyClientX(event.clientX);
+        beginPress(event.clientX);
       });
       document.addEventListener("mousemove", (event) => {
         if (!activeMouse) return;
-        applyClientX(event.clientX);
+        trackClientX(event.clientX);
       });
       document.addEventListener("mouseup", () => {
         if (activeMouse) stopResize();
@@ -1399,6 +1432,11 @@ INDEX_HTML = """<!doctype html>
       jobProgress: null,
       jobMessage: "",
       jobStartedAt: 0,
+      prepareProgress: null,
+      prepareMessage: "",
+      prepareJobStartedAt: 0,
+      providerStatus: "",
+      providerErrors: [],
       noticeLevel: "info",
       verified: false,
       selected: new Set(),
@@ -1719,14 +1757,24 @@ INDEX_HTML = """<!doctype html>
         $("discoveryFooter").hidden = true;
         return;
       }
-      const verification = state.verified ? "complete snapshot" : "search in progress";
+      const verification = state.providerStatus === "partial"
+        ? "partial snapshot · some sources unavailable"
+        : state.verified
+        ? "complete snapshot"
+        : "search in progress";
       $("resultsSubtitle").textContent = `${speciesLabel(activeSpecies)} only · author DEG tables preferred · ≥2 source units · ${verification}`;
       $("discoveryActions").hidden = false;
       $("studyOrderStatus").textContent = studyOrderLabel(state);
       $("resetStudySort").hidden = state.sort.key === "readiness";
       $("downloadSearchExcel").disabled = !state.searchId || !state.verified;
       if (!state.studies.length) {
-        $("discoveryResults").innerHTML = `<div class="discovery-empty">No ${esc(speciesLabel(activeSpecies))} publication records were returned on this page.</div>`;
+        const degraded = state.providerStatus === "partial" && state.providerErrors.length;
+        $("discoveryResults").innerHTML = degraded
+          ? `<div class="discovery-empty"><strong>Some data sources did not answer, so this result set is incomplete.</strong><br>`
+            + `Unavailable: ${esc(state.providerErrors.join(", "))}.<br>`
+            + `Retry when those services are reachable before concluding that the query has no matches.<br>`
+            + `<button class="action-secondary study-inspect" type="button" data-retry-search>Retry search</button></div>`
+          : `<div class="discovery-empty">No ${esc(speciesLabel(activeSpecies))} publication records were returned on this page.</div>`;
       } else {
         const blockedReason = pageSelectability(state);
         const capReached = state.selected.size >= MAX_SELECTED_STUDIES;
@@ -1835,6 +1883,13 @@ INDEX_HTML = """<!doctype html>
       state.hasNext = Boolean(data.has_next);
       state.page = Number(data.page || state.page);
       state.verified = data.search?.status === "complete";
+      // The server already reports a degraded provider set, but nothing read it,
+      // so an outage was indistinguishable from "this query has no results".
+      const snapshot = data.search?.snapshot || data;
+      state.providerStatus = String(snapshot.provider_status || "");
+      const providerErrors = ((snapshot.diagnostics || {}).errors || [])
+        .map((entry) => `${entry.provider || "a source"} (${entry.stage || "search"})`);
+      state.providerErrors = [...new Set(providerErrors)];
       state.error = "";
     }
 
@@ -2197,8 +2252,40 @@ INDEX_HTML = """<!doctype html>
       $("discoveryError").textContent = state.analysisError || "";
       $("discoveryError").hidden = !state.analysisError;
       if (!state.prepared) {
+        if (state.preparing) {
+          // Preparation issues dozens of paced network round trips. Show the same
+          // determinate progress the search does instead of a dead button label.
+          const percent = typeof state.prepareProgress === "number"
+            ? Math.max(0, Math.min(100, Math.round(state.prepareProgress * 100)))
+            : null;
+          const stage = state.prepareMessage || "Preparation queued";
+          const elapsed = state.prepareJobStartedAt
+            ? Math.max(0, Math.round((Date.now() - state.prepareJobStartedAt) / 1000))
+            : 0;
+          const elapsedText = elapsed >= 1 ? ` · ${formatElapsed(elapsed)} elapsed` : "";
+          const percentText = percent === null ? "" : ` · ${percent}%`;
+          const bar = percent === null
+            ? `<div class="loading-bar" aria-hidden="true"></div>`
+            : `<div class="loading-bar is-determinate" aria-hidden="true"><span style="width: ${percent}%"></span></div>`;
+          $("preparedCard").hidden = false;
+          $("preparedStatus").textContent = "Preparing";
+          $("preparedCandidates").innerHTML = `<div class="discovery-loading">`
+            + `<div class="loading-card search-progress" aria-busy="true"`
+            + `${percent === null ? "" : ` role="progressbar" aria-valuenow="${percent}" aria-valuemin="0" aria-valuemax="100"`}>`
+            + `<strong class="loading-title">Downloading and inspecting the selected publications</strong>`
+            + bar
+            + `<span class="loading-note">${esc(stage)}${esc(percentText)}${esc(elapsedText)}</span>`
+            + `<span class="loading-note">Public repositories are queried at a paced rate, so this takes longer for larger selections.</span>`
+            + `</div></div>`;
+          $("analysisEligibility").textContent = "Preparation in progress.";
+          $("runDiscoveryAnalysis").disabled = true;
+          $("analysisCompleteCard").hidden = !state.run;
+          renderDiscoveryHeaderMeta();
+          return;
+        }
         $("preparedCard").hidden = true;
         $("analysisCompleteCard").hidden = !state.run;
+        renderDiscoveryHeaderMeta();
         return;
       }
       $("preparedCard").hidden = false;
@@ -2233,6 +2320,25 @@ INDEX_HTML = """<!doctype html>
       renderDiscoveryHeaderMeta();
     }
 
+    async function pollPrepareJob(species, requestId, jobId) {
+      const state = discoveryStates[species];
+      state.prepareJobStartedAt = Date.now();
+      while (requestId === state.prepareRequest) {
+        const payload = await getJson(`/api/discovery/jobs/${jobId}`);
+        if (requestId !== state.prepareRequest) return null;
+        const job = payload.job || payload;
+        state.prepareProgress = typeof job.progress === "number" ? job.progress : null;
+        state.prepareMessage = typeof job.message === "string" ? job.message : "";
+        if (job.status === "complete") return job.result || {};
+        if (job.status === "failed" || job.status === "interrupted") {
+          throw new Error(job.error || "preparation failed");
+        }
+        if (activeSpecies === species) renderPreparedState();
+        await new Promise((resolve) => setTimeout(resolve, 650));
+      }
+      return null;
+    }
+
     async function prepareSelectedStudies({ recordIds: explicitIds = null } = {}) {
       const requestSpecies = activeSpecies;
       const state = discoveryStates[requestSpecies];
@@ -2244,6 +2350,9 @@ INDEX_HTML = """<!doctype html>
       const requestId = ++state.prepareRequest;
       const query = state.query;
       state.preparing = true;
+      state.prepareProgress = null;
+      state.prepareMessage = "";
+      state.prepareJobStartedAt = Date.now();
       state.prepared = null;
       state.bundleId = "";
       state.run = null;
@@ -2260,13 +2369,15 @@ INDEX_HTML = """<!doctype html>
         updateSelectedStatus();
       }
       try {
-        const data = await postJson("/api/discovery/prepare", {
+        const started = await postJson("/api/discovery/prepare-jobs", {
           species: requestSpecies,
           query,
           search_id: state.searchId,
           record_ids: recordIds
         });
         if (requestId !== state.prepareRequest) return;
+        const data = await pollPrepareJob(requestSpecies, requestId, started.job_id);
+        if (requestId !== state.prepareRequest || data === null) return;
         state.prepared = data;
         state.bundleId = data.bundle_id;
         state.run = null;
@@ -3595,6 +3706,18 @@ def _accepts_progress_callback(func: Any) -> bool:
     return any(parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in parameters.values())
 
 
+def _call_with_optional_progress(func: Any, *args: Any, progress: Any = None, **kwargs: Any) -> Any:
+    """Call ``func`` forwarding ``progress`` only when it accepts the keyword.
+
+    Test doubles replace these functions with strict signatures, so an
+    unconditional ``progress=`` would raise ``TypeError`` against them.
+    """
+
+    if progress is not None and _accepts_progress_callback(func):
+        kwargs["progress"] = progress
+    return func(*args, **kwargs)
+
+
 def _call_search_publications(
     query: str,
     species: str,
@@ -4091,6 +4214,10 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
                 self._send_json(self._discovery_create_publication_search(payload), status=HTTPStatus.ACCEPTED)
             elif parsed.path == "/api/discovery/prepare":
                 self._send_json(self._discovery_prepare(payload), status=HTTPStatus.CREATED)
+            elif parsed.path == "/api/discovery/prepare-jobs":
+                # Same work as /api/discovery/prepare, run as a job so the browser
+                # can show real stage progress instead of a blocking request.
+                self._send_json(self._discovery_prepare_job(payload), status=HTTPStatus.ACCEPTED)
             elif parsed.path == "/api/discovery/analyze":
                 self._send_json(self._discovery_analyze(payload), status=HTTPStatus.CREATED)
             else:
@@ -4370,6 +4497,10 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
             "message": _clean_job_message(job.get("message")),
             "created_at": job.get("created_at"),
             "updated_at": job.get("updated_at"),
+            # Search jobs persist their payload separately and only return an id
+            # here; prepare jobs return the whole bundle, which the browser
+            # collects from this field when the job completes.
+            "result": job.get("result") if str(job.get("status")) == "completed" else None,
         }
 
     def _discovery_publication_search(self, search_id: str) -> dict[str, Any]:
@@ -4442,7 +4573,32 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
         enriched.setdefault("limit", search.get("limit", 1000))
         return build_publication_search_workbook(enriched)
 
-    def _discovery_prepare(self, payload: dict[str, Any]) -> dict[str, Any]:
+    def _discovery_prepare_job(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Run a preparation as a job so its stages can be polled.
+
+        Preparation issues dozens of paced network round trips; as a blocking
+        request it held a connection open for tens of seconds with no output.
+        """
+
+        manager = self.server.discovery_job_manager
+        request = dict(payload)
+
+        def worker(_job_id: str, _payload: dict[str, Any], progress: Any) -> dict[str, Any]:
+            progress(0.02, "Starting preparation.")
+
+            def stage(fraction: float, message: str) -> None:
+                progress(0.05 + 0.90 * min(1.0, max(0.0, float(fraction))), message)
+
+            return self._discovery_prepare(request, progress=stage)
+
+        job = manager.submit("publication_prepare", {"species": request.get("species")}, worker)
+        return {"job_id": job["job_id"], "status": "queued"}
+
+    def _discovery_prepare(
+        self,
+        payload: dict[str, Any],
+        progress: Callable[[float, str], None] | None = None,
+    ) -> dict[str, Any]:
         from .discovery import normalize_species, prepare_geo_studies
 
         species = str(payload.get("species") or "")
@@ -4470,12 +4626,20 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
 
             snapshot = search.get("snapshot") if isinstance(search.get("snapshot"), dict) else {}
             records = _select_publication_snapshot_records(snapshot, record_ids)
-            records = resolve_publication_records(records, spec)
-            result = prepare_publication_records(
+            # Resolution is roughly the first third of the work, preparation the rest.
+            records = _call_with_optional_progress(
+                resolve_publication_records,
+                records,
+                spec,
+                progress=(lambda fraction, message: progress(0.30 * fraction, message)) if progress else None,
+            )
+            result = _call_with_optional_progress(
+                prepare_publication_records,
                 records,
                 spec.key,
                 query=persisted_query,
                 materialize_dir=target,
+                progress=(lambda fraction, message: progress(0.30 + 0.70 * fraction, message)) if progress else None,
             )
             result["search_id"] = search_id
         else:

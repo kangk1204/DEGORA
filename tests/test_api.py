@@ -1014,3 +1014,40 @@ def test_hidden_action_bar_never_keeps_the_other_workspaces_numbers() -> None:
     # Both early-return branches must refresh the selection status so the bar
     # cannot be revealed later carrying the previous species' counts.
     assert html.count('$("discoveryFooter").hidden = true;\n        updateSelectedStatus();') >= 2
+
+
+def test_prepare_shows_the_same_determinate_progress_as_search() -> None:
+    from degora.api import INDEX_HTML
+
+    html = INDEX_HTML
+    assert "async function pollPrepareJob(species, requestId, jobId)" in html
+    assert '"/api/discovery/prepare-jobs"' in html
+    assert "state.prepareProgress" in html and "state.prepareMessage" in html
+    assert "Downloading and inspecting the selected publications" in html
+    # The bundle now arrives through the job record rather than the POST response.
+    assert "job.result" in html
+
+
+def test_a_degraded_provider_set_is_reported_rather_than_shown_as_no_results() -> None:
+    from degora.api import INDEX_HTML
+
+    html = INDEX_HTML
+    assert "state.providerStatus" in html and "state.providerErrors" in html
+    assert "partial snapshot · some sources unavailable" in html
+    assert "Some data sources did not answer" in html
+    assert "before concluding that the query has no matches" in html
+
+
+def test_splitter_does_not_snap_on_press_and_uses_the_content_box() -> None:
+    from degora.api import INDEX_HTML
+
+    html = INDEX_HTML
+    # A press used to jump the handle to the cursor, so the first click of a
+    # double-click moved it out from under the second.
+    assert "const DRAG_THRESHOLD_PX = 3;" in html
+    assert "const beginPress = (clientX) => {" in html
+    assert "const trackClientX = (clientX) => {" in html
+    # The grid track percentage is of the content box, not the border box.
+    assert "const contentGeometry = () => {" in html
+    assert "parseFloat(styles.paddingLeft)" in html
+    assert "setPanelSplit(((clientX - rect.left) / rect.width) * 100);" not in html

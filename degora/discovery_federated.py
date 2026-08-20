@@ -362,6 +362,7 @@ def resolve_publication_records(
     species: str | SpeciesSpec,
     providers: Iterable[Any] | None = None,
     reuse_settled: bool = True,
+    progress: Callable[[float, str], None] | None = None,
 ) -> list[dict[str, Any]]:
     """Resolve missing direct-file routes for at most 20 user-selected papers.
 
@@ -381,7 +382,20 @@ def resolve_publication_records(
     active_providers = list(providers) if providers is not None else _default_providers()
     resolvers = [provider for provider in active_providers if hasattr(provider, "resolve")]
     resolved: list[dict[str, Any]] = []
-    for publication in selected:
+
+    def report(fraction: float, message: str) -> None:
+        if progress is None:
+            return
+        try:
+            progress(min(1.0, max(0.0, float(fraction))), str(message))
+        except Exception:  # noqa: BLE001 - progress reporting must never break resolution.
+            pass
+
+    for publication_index, publication in enumerate(selected, start=1):
+        report(
+            (publication_index - 1) / max(1, len(selected)),
+            f"Resolving publication {publication_index} of {len(selected)}",
+        )
         if reuse_settled and str(publication.get("resolution_state") or "") in SETTLED_RESOLUTION_STATES:
             resolved.append(dict(publication))
             continue
