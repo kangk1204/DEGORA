@@ -426,3 +426,144 @@ def test_provider_mixed_taxa_dictionary_is_quarantined_after_cross_source_merge(
 
     assert records[0]["species_decision"] == "mixed_quarantined"
     assert records[0]["data_readiness"]["verification_state"] == "mixed_quarantined"
+
+
+def test_search_publications_reports_monotonic_progress_stages() -> None:
+    """The browser draws a determinate bar from these fractions."""
+
+    class _Provider:
+        name = "stub"
+
+        def search(self, query, species, limit):
+            return [
+                {"canonical_id": f"PMID:{index}", "pmid": str(index), "title": f"paper {index}"}
+                for index in range(1, 4)
+            ]
+
+        def resolve(self, record, species):
+            return []
+
+    seen: list[tuple[float, str]] = []
+    snapshot = search_publications(
+        query="hypoxia",
+        species="human",
+        limit=10,
+        providers=[_Provider()],
+        progress=lambda fraction, message: seen.append((fraction, message)),
+    )
+
+    assert snapshot["total"] >= 1
+    assert seen, "no progress was reported"
+    fractions = [fraction for fraction, _ in seen]
+    assert fractions == sorted(fractions), f"progress must never decrease: {fractions}"
+    assert all(0.0 <= fraction <= 1.0 for fraction in fractions)
+    messages = " | ".join(message for _, message in seen)
+    assert "Querying stub" in messages
+    assert "Inspecting linked data" in messages
+
+
+def test_search_publications_without_progress_callback_is_unchanged() -> None:
+    class _Provider:
+        name = "stub"
+
+        def search(self, query, species, limit):
+            return [{"canonical_id": "PMID:1", "pmid": "1", "title": "paper"}]
+
+        def resolve(self, record, species):
+            return []
+
+    with_callback = search_publications(
+        query="hypoxia", species="human", limit=5, providers=[_Provider()], progress=lambda *_: None
+    )
+    without_callback = search_publications(query="hypoxia", species="human", limit=5, providers=[_Provider()])
+    assert [row["canonical_id"] for row in with_callback["records"]] == [
+        row["canonical_id"] for row in without_callback["records"]
+    ]
+
+
+def test_search_publications_survives_a_failing_progress_callback() -> None:
+    class _Provider:
+        name = "stub"
+
+        def search(self, query, species, limit):
+            return [{"canonical_id": "PMID:1", "pmid": "1", "title": "paper"}]
+
+        def resolve(self, record, species):
+            return []
+
+    def boom(_fraction, _message):
+        raise RuntimeError("progress sink exploded")
+
+    snapshot = search_publications(
+        query="hypoxia", species="human", limit=5, providers=[_Provider()], progress=boom
+    )
+    assert snapshot["total"] == 1
+
+
+def test_search_marks_resolution_state_so_prepare_can_reuse_it() -> None:
+    class _Provider:
+        name = "stub"
+
+        def search(self, query, species, limit):
+            return [{"canonical_id": "PMID:7", "pmid": "7", "title": "paper"}]
+
+        def resolve(self, record, species):
+            return []
+
+    snapshot = search_publications(query="hypoxia", species="human", limit=5, providers=[_Provider()])
+    states = {row.get("resolution_state") for row in snapshot["records"]}
+    assert "resolved_no_candidate" in states
+
+
+def test_resolve_publication_records_skips_publications_search_already_settled() -> None:
+    """Preparing a page-one selection used to repeat every provider call."""
+
+    calls: list[str] = []
+
+    class _Provider:
+        name = "stub"
+
+        def resolve(self, record, species):
+            calls.append(str(record.get("canonical_id")))
+            return []
+
+    settled = {"canonical_id": "PMID:1", "pmid": "1", "title": "one", "resolution_state": "resolved_candidates"}
+    fresh = {"canonical_id": "PMID:2", "pmid": "2", "title": "two"}
+
+    resolved = resolve_publication_records([settled, fresh], "human", providers=[_Provider()])
+
+    assert [call.lower() for call in calls] == ["pmid:2"], (
+        f"only the unresolved publication should be re-resolved, got {calls}"
+    )
+    ids = {str(row["canonical_id"]).lower() for row in resolved if row.get("canonical_id")}
+    assert {"pmid:1", "pmid:2"} <= ids, "reusing a settled record must not drop it"
+
+
+def test_resolve_publication_records_can_force_a_fresh_resolution() -> None:
+    calls: list[str] = []
+
+    class _Provider:
+        name = "stub"
+
+        def resolve(self, record, species):
+            calls.append(str(record.get("canonical_id")))
+            return []
+
+    settled = {"canonical_id": "PMID:1", "pmid": "1", "title": "one", "resolution_state": "resolved_candidates"}
+    resolve_publication_records([settled], "human", providers=[_Provider()], reuse_settled=False)
+    assert [call.lower() for call in calls] == ["pmid:1"]
+
+
+def test_unavailable_resolution_is_retried_rather_than_reused() -> None:
+    calls: list[str] = []
+
+    class _Provider:
+        name = "stub"
+
+        def resolve(self, record, species):
+            calls.append(str(record.get("canonical_id")))
+            return []
+
+    flaky = {"canonical_id": "PMID:9", "pmid": "9", "title": "nine", "resolution_state": "unavailable"}
+    resolve_publication_records([flaky], "human", providers=[_Provider()])
+    assert [call.lower() for call in calls] == ["pmid:9"]

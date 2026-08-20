@@ -773,3 +773,85 @@ def test_create_server_rejects_duplicate_discovery_workspace(tmp_path) -> None:
             create_server(db, port=0, quiet=True, discovery_root=discovery_root)
     finally:
         first.server_close()
+
+
+def test_dashboard_shows_real_search_progress_instead_of_a_static_panel() -> None:
+    from degora.api import INDEX_HTML
+
+    html = INDEX_HTML
+    # Determinate bar driven by the job's progress fraction.
+    assert ".loading-bar.is-determinate" in html
+    assert 'class="loading-bar is-determinate"' in html
+    assert "state.jobProgress" in html
+    assert "state.jobMessage" in html
+    # Elapsed time gives movement even while a stage is long.
+    assert "formatElapsed" in html
+    assert "state.jobStartedAt" in html
+    # The poller must read the new fields off the job payload.
+    assert "typeof job.progress" in html
+    assert "typeof job.message" in html
+    # Animation is suppressed for users who ask for reduced motion.
+    assert "prefers-reduced-motion" in html
+
+
+def test_dashboard_reports_where_the_selection_actually_is() -> None:
+    from degora.api import INDEX_HTML
+
+    html = INDEX_HTML
+    # "20 / 20" used to read as "all 20 rows on this page" while the selection
+    # lived on another page and the cap was global.
+    assert "selected of max" in html
+    assert "on this page" in html
+    assert "20 / ${MAX_SELECTED_STUDIES} selected" not in html
+
+
+def test_dashboard_disables_unselectable_publications_instead_of_ignoring_clicks() -> None:
+    from degora.api import INDEX_HTML
+
+    html = INDEX_HTML
+    assert "pageSelectability" in html
+    assert "selectableKeys" in html
+    assert "ambiguous-id" in html and "no-id" in html
+    assert "Several results share this identifier" in html
+    assert "has no usable identifier" in html
+    assert "Selection limit of ${MAX_SELECTED_STUDIES} reached" in html
+
+
+def test_dashboard_guards_against_double_submitting_a_search() -> None:
+    from degora.api import INDEX_HTML
+
+    assert "if (activeDiscoveryState().loading) return;" in INDEX_HTML
+
+
+def test_dashboard_prefers_the_real_error_over_a_stale_notice() -> None:
+    from degora.api import INDEX_HTML
+
+    html = INDEX_HTML
+    assert "const notice = state.error ? `Search failed: ${state.error}` : (state.notice || \"\");" in html
+
+
+def test_dashboard_clamps_atlas_filters_before_calling_the_api() -> None:
+    from degora.api import INDEX_HTML
+
+    html = INDEX_HTML
+    assert 'maxlength="128"' in html
+    assert 'max="10000"' in html
+    assert "Math.min(10000, Math.max(1, parsed))" in html
+
+
+def test_stacked_evidence_panel_is_not_clipped_on_narrow_viewports() -> None:
+    from degora.api import INDEX_HTML
+
+    html = INDEX_HTML
+    assert ".genes-panel, .evidence-panel { height: auto; overflow: visible; }" in html
+    assert ".evidence-panel .detail-body { overflow: visible; flex: none; height: auto; }" in html
+
+
+def test_keyboard_focus_is_visible_on_sort_headers_and_the_search_input() -> None:
+    from degora.api import INDEX_HTML
+
+    html = INDEX_HTML
+    assert ".sort-head:focus-visible {" in html
+    assert ".discovery-search input:focus-visible {" in html
+    # The hover tint alone must no longer stand in for a focus ring.
+    assert ".sort-head:hover, .sort-head:focus-visible { background: #eef7f5; outline: none; }" not in html

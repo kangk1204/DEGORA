@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import hashlib
 import re
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 from .discovery import (
     DiscoveryError,
@@ -163,8 +163,22 @@ def search_publications(
     species: str | SpeciesSpec,
     limit: int = 1000,
     providers: Iterable[Any] | None = None,
+    progress: Callable[[float, str], None] | None = None,
 ) -> dict[str, Any]:
-    """Search providers, resolve candidates, merge paper records, and return a full snapshot."""
+    """Search providers, resolve candidates, merge paper records, and return a full snapshot.
+
+    ``progress`` is an optional ``callback(fraction, message)`` where ``fraction``
+    runs from 0.0 to 1.0 across this function's own work. Reporting is advisory:
+    a failing callback never interrupts a search.
+    """
+
+    def report(fraction: float, message: str) -> None:
+        if progress is None:
+            return
+        try:
+            progress(min(1.0, max(0.0, float(fraction))), str(message))
+        except Exception:  # noqa: BLE001 - progress reporting must never break a search.
+            pass
 
     target = normalize_species(species)
     if isinstance(limit, bool):
@@ -192,8 +206,13 @@ def search_publications(
     searchable_providers = 0
     successful_searches = 0
 
-    for provider in active_providers:
+    provider_total = max(1, len(active_providers))
+    for provider_index, provider in enumerate(active_providers, start=1):
         provider_name = _provider_name(provider)
+        report(
+            0.02 + 0.43 * ((provider_index - 1) / provider_total),
+            f"Querying {provider_name} ({provider_index} of {provider_total} sources)",
+        )
         if not hasattr(provider, "search"):
             diagnostics["searched"].append({"provider": provider_name, "status": "skipped", "reason": "missing_search"})
             continue
@@ -238,17 +257,24 @@ def search_publications(
     # Build one source-neutral publication universe before applying the global
     # cap.  This avoids a full PubMed page starving GEO records from the same
     # query while retaining deterministic provider-relevance ordering.
+    report(0.46, f"Merging {len(raw_records)} provider records")
     merged_search_records = merge_publication_records(raw_records, target)
     preliminary = rank_publication_records(
         merged_search_records,
         sort_by="relevance",
         sort_order="desc",
     )[:evaluated_limit]
+    report(0.50, f"Ranking {len(preliminary)} unique publications")
 
     resolved_records: list[dict[str, Any]] = list(preliminary)
     resolution_limit = min(len(preliminary), MAX_DETAILED_RESOLUTION_RECORDS)
     resolvers = [provider for provider in active_providers if hasattr(provider, "resolve")]
-    for record in preliminary[:resolution_limit]:
+    for resolved_index, record in enumerate(preliminary[:resolution_limit], start=1):
+        report(
+            0.52 + 0.42 * ((resolved_index - 1) / max(1, resolution_limit)),
+            f"Inspecting linked data {resolved_index} of {resolution_limit}",
+        )
+        record_events: list[dict[str, Any]] = []
         for provider in resolvers:
             provider_name = _provider_name(provider)
             try:
@@ -256,11 +282,14 @@ def search_publications(
             except Exception as exc:  # pragma: no cover - defensive provider isolation
                 message = _safe_provider_error(exc)
                 diagnostics["errors"].append({"provider": provider_name, "stage": "resolve", "error": message})
-                provider_events.append({"provider": provider_name, "event": "resolve", "status": "error", "message": message})
+                event = {"provider": provider_name, "event": "resolve", "status": "error", "message": message}
+                provider_events.append(event)
+                record_events.append(event)
                 continue
             bound_records, events = _bind_resolved_records(record, _provider_records(resolved), provider_name)
             resolved_records.extend(bound_records)
             provider_events.extend(events)
+            record_events.extend(events)
             for event in events:
                 if str(event.get("status") or "").lower() in {"error", "candidate_error", "unavailable"}:
                     diagnostics["errors"].append(
@@ -273,10 +302,15 @@ def search_publications(
             diagnostics["resolved"].append(
                 {"provider": provider_name, "publication": record.get("canonical_id"), "records": len(bound_records)}
             )
+        # Record the outcome so a later prepare can tell that this publication was
+        # already resolved during search and skip repeating the provider calls.
+        record["resolution_events"] = record_events
+        record["resolution_state"] = _resolution_state(record_events, bool(resolvers))
 
     diagnostics["evaluated_records"] = len(preliminary)
     diagnostics["detailed_resolution_limit"] = resolution_limit
     diagnostics["detailed_resolution_truncated"] = len(preliminary) > resolution_limit
+    report(0.95, "Scoring DEG-input readiness")
     merged = merge_publication_records(resolved_records, target)
     ranked = rank_publication_records(merged)
     readiness_counts: dict[str, int] = {}
@@ -302,16 +336,42 @@ def search_publications(
     }
 
 
+# A publication whose resolution already produced a definite outcome does not
+# need the provider calls repeated. "partial" and "unavailable" are retried
+# because they indicate a provider that failed or answered incompletely.
+SETTLED_RESOLUTION_STATES = frozenset({"resolved_candidates", "resolved_no_candidate"})
+
+
+def _resolution_state(events: Iterable[dict[str, Any]], has_resolvers: bool) -> str:
+    """Classify one publication's resolution outcome from its provider events."""
+
+    collected = list(events)
+    found = any(event.get("status") == "found" for event in collected)
+    failed = any(event.get("status") in {"error", "candidate_error", "unavailable"} for event in collected)
+    if found and not failed:
+        return "resolved_candidates"
+    if found:
+        return "partial"
+    if failed:
+        return "unavailable"
+    return "resolved_no_candidate" if has_resolvers else "no_resolver"
+
+
 def resolve_publication_records(
     records: Iterable[dict[str, Any]],
     species: str | SpeciesSpec,
     providers: Iterable[Any] | None = None,
+    reuse_settled: bool = True,
 ) -> list[dict[str, Any]]:
     """Resolve missing direct-file routes for at most 20 user-selected papers.
 
     Search performs detailed public-repository resolution for the first visible
     page.  This bounded on-demand path gives later-page selections the same
     treatment without issuing thousands of provider calls during initial search.
+
+    When ``reuse_settled`` is true, publications that search already resolved to a
+    definite outcome are passed through untouched. Selecting the first page and
+    preparing it used to repeat every provider call made during search.
     """
 
     target = normalize_species(species)
@@ -322,6 +382,9 @@ def resolve_publication_records(
     resolvers = [provider for provider in active_providers if hasattr(provider, "resolve")]
     resolved: list[dict[str, Any]] = []
     for publication in selected:
+        if reuse_settled and str(publication.get("resolution_state") or "") in SETTLED_RESOLUTION_STATES:
+            resolved.append(dict(publication))
+            continue
         publication_events: list[dict[str, Any]] = []
         bound_records: list[dict[str, Any]] = []
         for provider in resolvers:
@@ -342,21 +405,9 @@ def resolve_publication_records(
             bound, events = _bind_resolved_records(publication, _provider_records(response), provider_name)
             bound_records.extend(bound)
             publication_events.extend(events)
-        found = any(event.get("status") == "found" for event in publication_events)
-        failed = any(event.get("status") in {"error", "candidate_error", "unavailable"} for event in publication_events)
         base = dict(publication)
         base["resolution_events"] = publication_events
-        base["resolution_state"] = (
-            "resolved_candidates"
-            if found and not failed
-            else "partial"
-            if found
-            else "unavailable"
-            if failed
-            else "resolved_no_candidate"
-            if resolvers
-            else "no_resolver"
-        )
+        base["resolution_state"] = _resolution_state(publication_events, bool(resolvers))
         resolved.append(base)
         resolved.extend(bound_records)
     return rank_publication_records(merge_publication_records(resolved, target))
