@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -282,6 +283,100 @@ def _print_validation_summary(validation: dict[str, Any], *, include_excluded: b
     )
 
 
+class _RunProgress:
+    """Emit one timestamped line per phase of a run.
+
+    A five-source human corpus takes minutes, and the command printed nothing at
+    all until it finished. Lines are flushed so they survive redirection into a
+    log, and carry elapsed seconds so a slow phase is identifiable.
+    """
+
+    def __init__(self, enabled: bool = True) -> None:
+        self.enabled = enabled
+        self._started = time.monotonic()
+        self._phase_started = self._started
+        self._phase = ""
+
+    def start(self, phase: str) -> None:
+        if not self.enabled:
+            return
+        self._phase = phase
+        self._phase_started = time.monotonic()
+        print(f"[{self._elapsed():>6.1f}s] {phase}...", flush=True)
+
+    def done(self, detail: str = "") -> None:
+        if not self.enabled or not self._phase:
+            return
+        took = time.monotonic() - self._phase_started
+        suffix = f" - {detail}" if detail else ""
+        print(f"[{self._elapsed():>6.1f}s] {self._phase} done in {took:.1f}s{suffix}", flush=True)
+        self._phase = ""
+
+    def _elapsed(self) -> float:
+        return time.monotonic() - self._started
+
+
+def _zero_gene_diagnostic(harmonized_path: Path, min_studies: int) -> str:
+    """Explain why nothing scored, using the harmonized table that was written.
+
+    The generic advice listed four possible causes. The commonest one by far -
+    two sources that share no gene identifiers because they use different
+    identifier spaces - can be stated as a fact instead of a guess.
+    """
+
+    try:
+        import pandas as pd
+
+        frame = pd.read_csv(harmonized_path, usecols=["gene_symbol", "source_unit_id"])
+    except Exception:  # noqa: BLE001 - a diagnostic must never mask the real error.
+        return ""
+    if frame.empty:
+        return " The harmonized table is empty, so no source contributed any usable row."
+
+    by_unit = {
+        str(unit): set(group["gene_symbol"].dropna().astype(str))
+        for unit, group in frame.groupby("source_unit_id", sort=True)
+    }
+    if len(by_unit) < min_studies:
+        return (
+            f" Only {len(by_unit)} source unit(s) produced usable rows, but min_studies is"
+            f" {min_studies}. Give each independent study its own source_unit_id, or lower"
+            " Project.min_studies."
+        )
+
+    counts = ", ".join(f"{unit} ({len(genes):,})" for unit, genes in list(by_unit.items())[:6])
+    shared = set.intersection(*by_unit.values()) if by_unit else set()
+    if shared:
+        return (
+            f" {len(shared):,} identifier(s) are shared by all {len(by_unit)} source units, so the"
+            " overlap is not the problem; check contrast direction and p-value columns."
+            f" Identifiers per source unit: {counts}."
+        )
+
+    best_pair = ""
+    units = list(by_unit.items())
+    for index, (left_name, left) in enumerate(units):
+        for right_name, right in units[index + 1 :]:
+            if left & right:
+                best_pair = (
+                    f" The largest overlap between any two units is {len(left & right):,}"
+                    f" ({left_name} vs {right_name})."
+                )
+                break
+        if best_pair:
+            break
+    samples = []
+    for unit, genes in list(by_unit.items())[:3]:
+        example = sorted(genes)[0] if genes else ""
+        samples.append(f"{unit}: {example!r}")
+    return (
+        f" No identifier is shared by all {len(by_unit)} source units.{best_pair}"
+        f" Identifiers per source unit: {counts}. First identifier in each: {'; '.join(samples)}."
+        " Sources must use the same identifier space - map symbols, Ensembl IDs and probe IDs"
+        " onto one convention before running."
+    )
+
+
 def _run_from_config(args: argparse.Namespace, *, serve_after: bool = False) -> int:
     from .api import serve as serve_db
     from .excel_export import DEFAULT_WORKBOOK_NAME, export_run_workbook
@@ -310,11 +405,16 @@ def _run_from_config(args: argparse.Namespace, *, serve_after: bool = False) -> 
     )
     db_path = Path(args.db) if args.db else _path_setting(settings.get("score_db"), output_dir / "degora_scores.db", base=config_base)
 
+    progress = _RunProgress(enabled=not getattr(args, "quiet", False))
+    progress.start("Validating the catalog and source tables")
     validation = validate_catalog_inputs(config)
+    progress.done(f"{validation.get('active_contrasts', '?')} contrast(s)")
     print("DEGORA config OK")
     _print_validation_summary(validation)
 
+    progress.start("Harmonizing source tables")
     metrics = run_slice(config, output_dir, harmonized_dir, min_studies=min_studies)
+    progress.done(f"{int(metrics.get('n_harmonized_rows', 0) or 0):,} harmonized rows")
     _print_run_warnings(metrics, metrics_path=output_dir / "slice_metrics.json")
     harmonized_path = output_dir / "slice_harmonized.csv"
     command = shell_command(
@@ -332,6 +432,7 @@ def _run_from_config(args: argparse.Namespace, *, serve_after: bool = False) -> 
             min_studies,
         ]
     )
+    progress.start("Scoring genes and building the database")
     summary = write_score_database(
         harmonized_path,
         output_dir,
@@ -345,15 +446,20 @@ def _run_from_config(args: argparse.Namespace, *, serve_after: bool = False) -> 
             if settings.get(key)
         },
     )
+    progress.done(f"{int(summary.get('n_gene_scores', 0) or 0):,} genes scored")
     if int(summary.get("n_gene_scores", 0) or 0) == 0:
         raise CliUsageError(
             f"DEGORA scored zero genes at min_studies={min_studies}. No gene had usable, "
-            "directional evidence from enough independent source units. Check source_unit_id, "
-            "contrast direction, p-values, and the Project.min_studies setting."
+            "directional evidence from enough independent source units."
+            + _zero_gene_diagnostic(harmonized_path, min_studies)
         )
     workbook_path = output_dir / DEFAULT_WORKBOOK_NAME
     workbook_summary: dict[str, Any] | None = None
     if not getattr(args, "no_excel", False):
+        progress.start(
+            f"Writing the audit workbook for {int(summary.get('n_gene_scores', 0) or 0):,} genes"
+            " (use --no-excel to skip)"
+        )
         try:
             workbook_summary = export_run_workbook(
                 output_dir,
@@ -368,6 +474,8 @@ def _run_from_config(args: argparse.Namespace, *, serve_after: bool = False) -> 
                 "artifacts were written, but the default run contract is incomplete. Fix the "
                 "export error and rerun, or explicitly use --no-excel if a workbook is not needed."
             ) from exc
+        workbook_size = workbook_path.stat().st_size if workbook_path.exists() else 0
+        progress.done(f"{workbook_size / (1024 * 1024):.1f} MB" if workbook_size else "")
 
     print("")
     print("DEGORA run complete")

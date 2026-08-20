@@ -448,3 +448,83 @@ def test_run_warnings_are_printed_to_stderr(tmp_path, capsys) -> None:
     assert "DEG-only table without rank_universe_size" in captured.err
     assert "2 row(s) reported pvalue < 1e-300" in captured.err
     assert str(metrics_path) in captured.err
+
+
+def test_run_reports_each_phase_with_elapsed_time(tmp_path, capsys, monkeypatch) -> None:
+    """A five-source corpus takes minutes; the command used to print nothing."""
+
+    from degora.cli import _RunProgress
+
+    progress = _RunProgress()
+    progress.start("Harmonizing source tables")
+    progress.done("16,852 harmonized rows")
+    out = capsys.readouterr().out
+    assert "Harmonizing source tables..." in out
+    assert "done in" in out
+    assert "16,852 harmonized rows" in out
+    # Every line carries the elapsed time so a slow phase is identifiable.
+    assert all(line.startswith("[") for line in out.splitlines() if line.strip())
+
+
+def test_run_progress_can_be_silenced() -> None:
+    from degora.cli import _RunProgress
+
+    progress = _RunProgress(enabled=False)
+    progress.start("phase")
+    progress.done("detail")  # must not raise
+
+
+def test_zero_gene_error_names_the_identifier_mismatch(tmp_path) -> None:
+    """Two sources that share no identifiers is the commonest cause by far."""
+
+    import pandas as pd
+
+    from degora.cli import _zero_gene_diagnostic
+
+    harmonized = tmp_path / "slice_harmonized.csv"
+    pd.DataFrame(
+        {
+            "gene_symbol": ["YAL001C", "YAL002W", "GENE-A1CF|A1CF", "GENE-A2M|A2M"],
+            "source_unit_id": ["U_YEAST", "U_YEAST", "U_COD", "U_COD"],
+        }
+    ).to_csv(harmonized, index=False)
+
+    message = _zero_gene_diagnostic(harmonized, min_studies=2)
+
+    assert "No identifier is shared by all 2 source units" in message
+    assert "U_YEAST (2)" in message and "U_COD (2)" in message
+    assert "same identifier space" in message
+
+
+def test_zero_gene_error_reports_too_few_contributing_units(tmp_path) -> None:
+    import pandas as pd
+
+    from degora.cli import _zero_gene_diagnostic
+
+    harmonized = tmp_path / "slice_harmonized.csv"
+    pd.DataFrame({"gene_symbol": ["TP53"], "source_unit_id": ["ONLY"]}).to_csv(harmonized, index=False)
+
+    message = _zero_gene_diagnostic(harmonized, min_studies=2)
+    assert "Only 1 source unit(s)" in message
+    assert "min_studies" in message
+
+
+def test_zero_gene_error_says_when_overlap_is_not_the_problem(tmp_path) -> None:
+    import pandas as pd
+
+    from degora.cli import _zero_gene_diagnostic
+
+    harmonized = tmp_path / "slice_harmonized.csv"
+    pd.DataFrame(
+        {"gene_symbol": ["TP53", "TP53", "MYC", "MYC"], "source_unit_id": ["A", "B", "A", "B"]}
+    ).to_csv(harmonized, index=False)
+
+    message = _zero_gene_diagnostic(harmonized, min_studies=2)
+    assert "overlap is not the problem" in message
+    assert "contrast direction" in message
+
+
+def test_zero_gene_diagnostic_never_masks_the_real_error(tmp_path) -> None:
+    from degora.cli import _zero_gene_diagnostic
+
+    assert _zero_gene_diagnostic(tmp_path / "does-not-exist.csv", min_studies=2) == ""

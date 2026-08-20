@@ -550,11 +550,18 @@ def _annotate_headers(writer: pd.ExcelWriter) -> None:
 
 
 def _force_formula_like_text(writer: pd.ExcelWriter) -> None:
-    """Store formula-like strings as literal XLSX text without changing their value."""
+    """Store formula-like strings as literal XLSX text without changing their value.
+
+    Only text cells can be mistaken for a formula, so the numeric grid - which is
+    the overwhelming majority of a DEGORA workbook - is skipped without touching
+    the individual cells.
+    """
 
     for worksheet in writer.book.worksheets:
         for row in worksheet.iter_rows():
             for cell in row:
+                if cell.data_type not in {"s", "f", "str"}:
+                    continue
                 value = cell.value
                 if isinstance(value, str) and value.startswith(("=", "+", "-", "@")):
                     cell.data_type = "s"
@@ -564,9 +571,11 @@ def _autosize(writer: pd.ExcelWriter) -> None:
     for worksheet in writer.book.worksheets:
         worksheet.freeze_panes = "A2"
         worksheet.auto_filter.ref = worksheet.dimensions
-        for cells in worksheet.columns:
-            header = str(cells[0].value or "")
-            worksheet.column_dimensions[cells[0].column_letter].width = min(max(len(header) + 2, 12), 48)
+        # Only the header cell is read, but `worksheet.columns` materialises every
+        # cell of every column to get it - a second full pass over the workbook.
+        for cell in worksheet[1]:
+            header = str(cell.value or "")
+            worksheet.column_dimensions[cell.column_letter].width = min(max(len(header) + 2, 12), 48)
 
 
 def export_run_workbook(
