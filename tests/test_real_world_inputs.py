@@ -284,3 +284,49 @@ def test_identifier_space_warning_flags_a_nearly_disjoint_unit() -> None:
     )
     warnings = _identifier_space_warnings(harmonized)
     assert any("shares only" in text for text in warnings), warnings
+
+
+def test_a_corpus_with_no_significant_gene_says_so() -> None:
+    """Three real AD blood cohorts rank cleanly with a best adjusted p of 0.26.
+
+    DEGORA tiers are relative by design, so the strongest genes still land in
+    tier A. Without a note, that reads as a finding.
+    """
+
+    from degora.score_db import _corpus_significance_warnings
+
+    scores = pd.DataFrame(
+        {
+            "gene_symbol": ["DDR2", "KIR2DL4", "ATP1B2"],
+            "stouffer_padj": [0.261, 0.35, 0.61],
+            "evidence_tier": ["A", "B", "D"],
+        }
+    )
+    warnings = _corpus_significance_warnings(scores)
+    assert len(warnings) == 1
+    assert "0.261" in warnings[0]
+    assert "tier A" in warnings[0]
+    assert "not as a set of findings" in warnings[0]
+
+
+def test_a_corpus_with_signal_stays_quiet() -> None:
+    from degora.score_db import _corpus_significance_warnings
+
+    scores = pd.DataFrame(
+        {
+            "gene_symbol": ["S100A8", "CXCL8"],
+            "stouffer_padj": [3.9e-14, 1e-9],
+            "evidence_tier": ["A", "A"],
+        }
+    )
+    assert _corpus_significance_warnings(scores) == []
+
+
+def test_significance_warning_handles_missing_and_empty_input() -> None:
+    from degora.score_db import _corpus_significance_warnings
+
+    assert _corpus_significance_warnings(pd.DataFrame()) == []
+    assert _corpus_significance_warnings(pd.DataFrame({"gene_symbol": ["A"]})) == []
+    assert _corpus_significance_warnings(
+        pd.DataFrame({"gene_symbol": ["A"], "stouffer_padj": [float("nan")]})
+    ) == []
