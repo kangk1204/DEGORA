@@ -1079,3 +1079,35 @@ def test_dashboard_orders_the_first_page_by_deg_readiness() -> None:
 
     assert 'sort: { key: "readiness", order: "desc" }' in INDEX_HTML
     assert "Sort: DEG readiness" in INDEX_HTML
+
+
+def test_dashboard_names_the_files_a_study_could_not_use() -> None:
+    """"No usable table within the safety limits" names no file and no limit.
+
+    A study that published only browser tracks and one whose table was a
+    megabyte over the cap produced the same sentence, so a reader could not
+    tell which of the two they were looking at.
+    """
+
+    from degora.api import INDEX_HTML
+
+    html = INDEX_HTML
+    assert "unusableStudyHtml" in html
+    assert "candidateRejection" in html
+    assert "were found and none could be used" in html
+    assert "The repository listed no supplementary file for this study." in html
+    # A rejected file was never inspected, so its inspection note is useless here.
+    assert 'candidate.tier === "reject" || candidate.role === "unsupported"' in html
+
+
+def test_dashboard_labels_matrix_columns_from_the_candidate_first() -> None:
+    """Author matrices are headed by submitter names, resolved during preparation."""
+
+    from degora.api import INDEX_HTML
+
+    html = INDEX_HTML
+    assert "inspection.sample_labels" in html
+    assert "GEO returned no matching sample labels for these columns" in html
+    # Printing the submitter title when it merely repeats the column wastes the
+    # line that should carry the characteristics.
+    assert "echoesColumn" in html

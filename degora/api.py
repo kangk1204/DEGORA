@@ -377,6 +377,11 @@ INDEX_HTML = """<!doctype html>
     .sample-id { grid-area: id; font-variant-numeric: tabular-nums; color: var(--muted); font-size: 10px; }
     .sample-label { grid-area: label; color: var(--ink); font-weight: 620; }
     .sample-traits { grid-area: traits; color: var(--muted); font-size: 10px; }
+    .sample-label-missing { color: var(--muted); font-weight: 500; font-style: italic; }
+    .unusable-files ul { margin: 5px 0 6px; padding-left: 18px; }
+    .unusable-files li { margin: 2px 0; }
+    .unusable-files code { font-size: 11px; overflow-wrap: anywhere; }
+    .sample-labels-missing { grid-column: 1 / -1; color: #7a5a12; }
     .sample-item select { grid-area: select; }
     .sample-item select { height: 28px; padding: 0 5px; font-size: 11px; }
     .status-pill { display: inline-flex; padding: 4px 8px; border-radius: 999px; background: #e7f5f2; color: #0f5d56; font-size: 11px; font-weight: 720; }
@@ -2185,6 +2190,46 @@ INDEX_HTML = """<!doctype html>
       return AUTHOR_REVIEWABLE_STATUSES.has(status);
     }
 
+    // "No usable table was resolved within the safety limits" names no file and
+    // no limit, so a reader cannot tell a study that published only browser
+    // tracks from one whose table was a megabyte over the cap. List what was
+    // actually there.
+    function candidateRejection(candidate) {
+      const inspection = candidate.inspection || {};
+      const status = inspection.status || "";
+      // A rejected file was never inspected, so its inspection note only says
+      // it was skipped. What the reader needs is why it was never a candidate.
+      if (candidate.tier === "reject" || candidate.role === "unsupported") {
+        return candidate.reason || "not a DEG table or expression matrix";
+      }
+      if (status && status !== "not_inspected") return inspection.reason || status;
+      return inspection.reason || candidate.reason || "not inspected within the safety limits";
+    }
+
+    function candidateLabel(candidate) {
+      if (candidate.name) return candidate.name;
+      if (candidate.member_name) return candidate.member_name;
+      const url = String(candidate.source_url || "");
+      const tail = url.split("?")[0].split("/").filter(Boolean).pop();
+      return tail || "unnamed file";
+    }
+
+    function unusableStudyHtml(study) {
+      const files = study.files || [];
+      if (!files.length) {
+        return `<div class="candidate-note">The repository listed no supplementary file for this study.</div>`;
+      }
+      const shown = files.slice(0, 8);
+      const rest = files.length - shown.length;
+      const items = shown
+        .map((candidate) => `<li><code>${esc(candidateLabel(candidate))}</code> — ${esc(candidateRejection(candidate))}</li>`)
+        .join("");
+      return `<div class="candidate-note unusable-files">`
+        + `<strong>${files.length} file${files.length === 1 ? "" : "s"} were found and none could be used:</strong>`
+        + `<ul>${items}${rest > 0 ? `<li>and ${rest} more</li>` : ""}</ul>`
+        + `Pick another study, or open the repository page to check whether a DEG table exists elsewhere.</div>`;
+    }
+
     function eligibleCandidate(candidate) {
       const status = candidate.inspection?.status || "";
       return isAuthorReviewable(candidate) || status === "upstream_matrix_ready_for_contrast";
@@ -2274,14 +2319,32 @@ INDEX_HTML = """<!doctype html>
       const normalizedScaleControl = role === "count_matrix" ? "" : `<label>Normalized value scale<select class="normalized-scale"><option value="" ${normalizedScale === "" ? "selected" : ""}>Choose confirmed scale</option><option value="log2" ${normalizedScale === "log2" ? "selected" : ""}>Already log2 scale</option><option value="linear" ${normalizedScale === "linear" ? "selected" : ""}>Linear, apply log2(x + 1)</option></select></label>`;
       // A GSM accession on its own tells a reader nothing about which arm it
       // belongs to, and this is the one control they must not get wrong.
-      const sampleLabels = study.sample_labels || {};
-      const samples = (inspection.sample_columns || []).map((sample) => {
+      // Author matrices use the submitter's own column names, so preparation
+      // resolves those to samples and stores the result on the candidate.
+      const columnLabels = inspection.sample_labels || {};
+      const studyLabels = study.sample_labels || {};
+      const columns = inspection.sample_columns || [];
+      const labelledCount = columns.filter(
+        (name) => columnLabels[name] || studyLabels[String(name).toUpperCase()],
+      ).length;
+      const samples = columns.map((sample) => {
         const group = draft.samples?.[sample] || "";
-        const meta = sampleLabels[String(sample).toUpperCase()] || {};
+        const meta = columnLabels[sample] || studyLabels[String(sample).toUpperCase()] || {};
         const descriptor = meta.title || meta.source || "";
         const traits = (meta.characteristics || []).join(" · ");
         const tip = [sample, descriptor, traits].filter(Boolean).join(" — ");
-        return `<label class="sample-item" title="${esc(tip)}"><span class="sample-id">${esc(sample)}</span><span class="sample-label">${esc(descriptor || "no submitter label")}</span>${traits ? `<span class="sample-traits">${esc(traits)}</span>` : ""}<select data-sample="${esc(sample)}"><option value="" ${group === "" ? "selected" : ""}>Ignore</option><option value="control" ${group === "control" ? "selected" : ""}>Control</option><option value="treatment" ${group === "treatment" ? "selected" : ""}>Treatment</option></select></label>`;
+        // When the submitter's title is just the column name again, printing
+        // both wastes the line that should carry the characteristics.
+        const flat = (value) => String(value).toLowerCase().replace(/[^a-z0-9]+/g, "");
+        const echoesColumn = descriptor
+          && (flat(sample).startsWith(flat(descriptor)) || flat(descriptor).startsWith(flat(sample)));
+        const matched = Boolean(meta.accession || descriptor || traits);
+        const labelLine = descriptor && !echoesColumn
+          ? `<span class="sample-label">${esc(descriptor)}</span>`
+          : !matched && labelledCount
+          ? `<span class="sample-label sample-label-missing">not matched to a GEO sample</span>`
+          : "";
+        return `<label class="sample-item" title="${esc(tip)}"><span class="sample-id">${esc(sample)}</span>${labelLine}${traits ? `<span class="sample-traits">${esc(traits)}</span>` : ""}<select data-sample="${esc(sample)}"><option value="" ${group === "" ? "selected" : ""}>Ignore</option><option value="control" ${group === "control" ? "selected" : ""}>Control</option><option value="treatment" ${group === "treatment" ? "selected" : ""}>Treatment</option></select></label>`;
       }).join("");
       return `<div class="candidate-row" data-candidate-id="${esc(candidate.candidate_id)}" data-accession="${esc(study.accession)}" data-source-unit="${esc(study.source_unit_id || study.accession)}" data-mode="fallback" data-role="${esc(role)}">
         <input class="candidate-enable" type="checkbox" aria-label="Use ${esc(candidate.name)}" ${draft.enabled ? "checked" : ""}>
@@ -2294,7 +2357,7 @@ INDEX_HTML = """<!doctype html>
           <label class="confirm-line"><input class="direction-confirmed" type="checkbox" ${draft.direction ? "checked" : ""}> Groups and treatment-minus-control direction verified</label>
           <label class="confirm-line"><input class="biological-replicates-confirmed" type="checkbox" ${draft.biologicalReplicates ? "checked" : ""}> Selected columns are independent biological replicates, not lanes, technical repeats, paired/repeated samples, or cells</label>
         </div>
-        <div class="sample-groups" role="group" aria-label="Assign independent biological control and treatment samples"><div class="sample-counts" aria-live="polite"><span>Control <strong data-control-count>0</strong></span><span>Treatment <strong data-treatment-count>0</strong></span><span>Required: 2 + 2</span></div>${samples || `<span class="candidate-note">No numeric sample columns detected.</span>`}</div>
+        <div class="sample-groups" role="group" aria-label="Assign independent biological control and treatment samples"><div class="sample-counts" aria-live="polite"><span>Control <strong data-control-count>0</strong></span><span>Treatment <strong data-treatment-count>0</strong></span><span>Required: 2 + 2</span>${columns.length && !labelledCount ? `<span class="sample-labels-missing">GEO returned no matching sample labels for these columns — check the series page before assigning.</span>` : ""}</div>${samples || `<span class="candidate-note">No numeric sample columns detected.</span>`}</div>
       </div>`;
     }
 
@@ -2353,7 +2416,7 @@ INDEX_HTML = """<!doctype html>
           const clones = keys.filter((key) => key !== candidate.candidate_id).map((key) => authorCandidateHtml(study, candidate, false, key, true)).join("");
           return base + clones;
         }).join("");
-        return `<div class="candidate-study"><h4>${esc([study.accession, study.paper_title || study.title || "Untitled study"].filter(Boolean).join(" · "))}</h4><p>${esc(study.preparation_status || "review required")}</p>${rows || `<div class="candidate-note">No usable DEG or upstream matrix was resolved within the safety limits.</div>`}</div>`;
+        return `<div class="candidate-study"><h4>${esc([study.accession, study.paper_title || study.title || "Untitled study"].filter(Boolean).join(" · "))}</h4><p>${esc(study.preparation_status || "review required")}</p>${rows || unusableStudyHtml(study)}</div>`;
       }).join("");
       const excluded = (state.prepared.excluded_studies || []).map((item) => {
         // The server sends canonical_id/paper_title/source_unit_id, never `accession`,
