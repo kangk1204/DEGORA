@@ -645,6 +645,17 @@ class NcbiGeoClient:
             raise DiscoveryUnavailableError(f"GEO returned no Series SOFT record for {accession}")
         return text
 
+    def fetch_geo_sample_soft(self, accession: str) -> str:
+        """Fetch the per-sample SOFT block so GSM ids can be shown with their labels."""
+
+        if not re.fullmatch(r"GSE\d+", str(accession).upper()):
+            raise DiscoveryError(f"invalid GEO Series accession: {accession}")
+        url = GEO_ACCESSION_URL + "?" + urllib.parse.urlencode(
+            {"acc": str(accession).upper(), "targ": "gsm", "form": "text", "view": "brief"}
+        )
+        payload = self.get_bytes(url, max_bytes=MAX_SOFT_BYTES)
+        return payload.decode("utf-8", "replace")
+
     def fetch_candidate(self, url: str, *, full: bool) -> tuple[bytes, str]:
         lower = urllib.parse.urlsplit(url).path.lower()
         if full or lower.endswith(".xlsx"):
@@ -1149,6 +1160,47 @@ def parse_geo_soft(text: str) -> dict[str, Any]:
     metadata["pubmed_ids"] = list(dict.fromkeys(metadata["pubmed_ids"]))
     metadata["taxa"] = sorted(taxa)
     return metadata
+
+
+def _sample_labels_for(client: Any, accession: str) -> dict[str, Any]:
+    """Best-effort sample labels. Never let a label lookup fail a preparation."""
+
+    fetch = getattr(client, "fetch_geo_sample_soft", None)
+    if not callable(fetch):
+        return {}
+    try:
+        return parse_geo_samples(fetch(accession))
+    except (DiscoveryError, DiscoveryUnavailableError, OSError):
+        return {}
+
+
+def parse_geo_samples(text: str) -> dict[str, dict[str, Any]]:
+    """Map each GSM in a Series sample SOFT record to its title and characteristics.
+
+    Assigning control and treatment from bare GSM accessions means leaving the
+    tool to look every one of them up in GEO, which is exactly where a group
+    gets mis-assigned. The labels the submitter wrote are what make the choice
+    checkable.
+    """
+
+    samples: dict[str, dict[str, Any]] = {}
+    current = ""
+    for line in str(text).splitlines():
+        if "=" not in line:
+            continue
+        key, value = (part.strip() for part in line.split("=", 1))
+        if key == "^SAMPLE":
+            current = value.upper()
+            samples.setdefault(current, {"title": "", "characteristics": [], "source": ""})
+        elif not current:
+            continue
+        elif key == "!Sample_title":
+            samples[current]["title"] = value
+        elif key == "!Sample_source_name_ch1":
+            samples[current]["source"] = value
+        elif key.startswith("!Sample_characteristics_ch") and value:
+            samples[current]["characteristics"].append(value)
+    return samples
 
 
 def _safe_int(value: Any, default: int = 0) -> int:
@@ -1843,11 +1895,17 @@ def _prepare_geo_studies_in_place(
             preparation_status = "no_usable_table_resolved"
 
         search_record = _study_search_record(enriched_record, spec, publications) or {}
+        # Only the labeled fallback asks a reader to assign groups, so the extra
+        # per-sample request is made only when one is actually on the table.
+        sample_labels: dict[str, Any] = {}
+        if any(item.get("inspection", {}).get("sample_columns") for item in files):
+            sample_labels = _sample_labels_for(geo_client, accession)
         studies.append(
             {
                 **search_record,
                 "title": str(record.get("title") or soft.get("title") or ""),
                 "design": str(soft.get("design") or ""),
+                "sample_labels": sample_labels,
                 "files": files,
                 "candidate_file_count": sum(item.get("tier") in {"strong", "weak", "upstream"} for item in files),
                 "ready_for_review_count": len(ready_author),

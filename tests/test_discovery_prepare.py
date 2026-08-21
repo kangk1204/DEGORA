@@ -553,3 +553,183 @@ def test_a_rejected_candidate_leaves_no_downloaded_file_behind(tmp_path: Path) -
 
     assert result["returned_studies"] == 1
     assert not list(prepared.rglob("*broken.zip")), "the unusable download was shipped in the bundle"
+
+
+# --- the reader has to be able to tell the arms apart -----------------------
+
+
+class LabelledGeoClient:
+    """A GEO series whose matrix columns are bare GSM accessions."""
+
+    SAMPLE_SOFT = "\n".join(
+        [
+            "^SAMPLE = GSM320836",
+            "!Sample_title = Normoxia replicate 1",
+            "!Sample_source_name_ch1 = renal proximal tubule epithelial cells",
+            "!Sample_characteristics_ch1 = treatment: normoxia",
+            "!Sample_characteristics_ch1 = time: 24 h",
+            "^SAMPLE = GSM320853",
+            "!Sample_title = Hypoxia 1% O2 replicate 1",
+            "!Sample_characteristics_ch1 = treatment: 1 percent oxygen",
+            "^SAMPLE = GSM320854",
+            "!Sample_title = Normoxia replicate 2",
+            "^SAMPLE = GSM320855",
+            "!Sample_title = Hypoxia 1% O2 replicate 2",
+        ]
+    )
+
+    def __init__(self, *, with_labels: bool = True) -> None:
+        self.with_labels = with_labels
+        self.sample_calls: list[str] = []
+
+    def accession_summaries(self, accessions, species):
+        return [
+            {
+                "accession": accession,
+                "taxon": "Homo sapiens",
+                "title": "Renal epithelial hypoxia series",
+                "gdstype": "Expression profiling by high throughput sequencing",
+                "pubmedids": [],
+                "pdat": "2015/01/01",
+            }
+            for accession in accessions
+        ]
+
+    def publication_summaries(self, pmids):
+        return {}
+
+    def fetch_geo_soft(self, accession):
+        return "\n".join(
+            [
+                f"^SERIES = {accession}",
+                "!Series_title = Renal epithelial hypoxia series",
+                "!Series_overall_design = hypoxia versus normoxia",
+                "!Series_sample_organism_ch1 = Homo sapiens",
+                f"!Series_supplementary_file = https://ftp.ncbi.nlm.nih.gov/geo/series/GSE100nnn/{accession}/suppl/{accession}_series_matrix.txt.gz",
+            ]
+        )
+
+    def fetch_geo_sample_soft(self, accession):
+        self.sample_calls.append(accession)
+        if not self.with_labels:
+            raise DiscoveryUnavailableError("GEO did not answer the sample request")
+        return self.SAMPLE_SOFT
+
+    def fetch_candidate(self, url, *, full):
+        import gzip
+
+        payload = gzip.compress(
+            b"ID_REF\tGSM320836\tGSM320853\tGSM320854\tGSM320855\n"
+            b"TP53\t10\t40\t11\t44\nCDKN1A\t4\t30\t5\t28\n"
+        )
+        return payload, "full" if full else "header_prefix"
+
+
+def _geo_record() -> dict:
+    return _record(
+        canonical_id="pmid:geo",
+        source_unit_id="PMID:geo",
+        pmid="geo",
+        title="Renal epithelial hypoxia",
+        geo_accessions=["GSE100001"],
+    )
+
+
+def test_group_assignment_shows_the_submitter_labels_not_only_accessions(tmp_path: Path) -> None:
+    """Choosing control and treatment from bare GSM ids means guessing."""
+
+    client = LabelledGeoClient()
+    result = prepare_publication_records(
+        [_geo_record()],
+        "human",
+        materialize_dir=tmp_path / "prepared",
+        transport=FakeTransport({}),
+        geo_client=client,
+    )
+
+    study = result["studies"][0]
+    labels = study["sample_labels"]
+    assert labels["GSM320836"]["title"] == "Normoxia replicate 1"
+    assert labels["GSM320853"]["title"] == "Hypoxia 1% O2 replicate 1"
+    assert "treatment: normoxia" in labels["GSM320836"]["characteristics"]
+    # Every column the reader is asked to assign has something to read.
+    matrix = next(item for item in study["files"] if item.get("inspection", {}).get("sample_columns"))
+    for column in matrix["inspection"]["sample_columns"]:
+        assert labels.get(column.upper(), {}).get("title"), column
+
+
+def test_a_label_lookup_failure_never_fails_the_preparation(tmp_path: Path) -> None:
+    result = prepare_publication_records(
+        [_geo_record()],
+        "human",
+        materialize_dir=tmp_path / "prepared",
+        transport=FakeTransport({}),
+        geo_client=LabelledGeoClient(with_labels=False),
+    )
+
+    assert result["returned_studies"] == 1
+    assert result["studies"][0]["sample_labels"] == {}
+
+
+def test_labels_are_not_fetched_when_nobody_will_assign_groups(tmp_path: Path) -> None:
+    """The author-DEG path needs no group assignment, so it pays no extra request."""
+
+    client = LabelledGeoClient()
+    prepare_publication_records(
+        [_record()],
+        "human",
+        materialize_dir=tmp_path / "prepared",
+        transport=FakeTransport({"https://zenodo.org/files/deg.csv": _deg_table()}),
+        geo_client=client,
+    )
+
+    assert client.sample_calls == []
+
+
+def test_publications_sharing_a_series_are_explained_not_dropped(tmp_path: Path) -> None:
+    """A selection of N must reconcile to prepared + excluded, with nothing missing.
+
+    Two publications reporting one GEO series are one dataset, so they stay one
+    study - but the absorbed publication used to appear in neither list, which
+    is how a selection of 20 quietly became 11 with no account of the rest.
+    """
+
+    first = _geo_record()
+    second = _record(
+        canonical_id="pmid:geo-2",
+        source_unit_id="PMID:geo-2",
+        pmid="geo-2",
+        title="A second paper on the same series",
+        geo_accessions=["GSE100001"],
+    )
+    result = prepare_publication_records(
+        [first, second, _healthy_record()],
+        "human",
+        materialize_dir=tmp_path / "prepared",
+        transport=FakeTransport({"https://zenodo.org/files/deg.csv": _deg_table()}),
+        geo_client=LabelledGeoClient(),
+    )
+
+    prepared = {study.get("canonical_id") for study in result["studies"]}
+    excluded = {item.get("canonical_id"): item for item in result["excluded_studies"]}
+    assert {"pmid:geo", "pmid:geo-2", "pmid:2"} <= prepared | set(excluded)
+    assert "pmid:geo-2" in excluded
+    assert "GSE100001" in excluded["pmid:geo-2"]["reason"]
+    assert "already prepared" in excluded["pmid:geo-2"]["reason"]
+
+
+def test_the_repository_phase_says_how_many_selections_it_covers(tmp_path: Path) -> None:
+    """"12 repository record(s)" against a selection of 20 reads like a miscount."""
+
+    messages: list[str] = []
+    prepare_publication_records(
+        [_geo_record(), _healthy_record()],
+        "human",
+        materialize_dir=tmp_path / "prepared",
+        transport=FakeTransport({"https://zenodo.org/files/deg.csv": _deg_table()}),
+        geo_client=LabelledGeoClient(),
+        progress=lambda fraction, message: messages.append(message),
+    )
+
+    repository = next(text for text in messages if "repository series" in text)
+    assert "1 of 2 selected publications" in repository, repository
