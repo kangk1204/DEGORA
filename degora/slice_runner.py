@@ -13,7 +13,7 @@ import pandas as pd
 
 from .aggregate import _source_unit_series, slice_consensus, validate_min_studies
 from .excel_io import read_config_sheet
-from .harmonize import TableMapping, harmonize_frame, normalize_table_scope, read_deg_table
+from .harmonize import TableMapping, resolve_column_name, harmonize_frame, normalize_table_scope, read_deg_table
 from .metrics import recall_at_k
 from .provenance import portable_path, shell_command, write_source_sidecar
 
@@ -234,6 +234,52 @@ def _normalize_time_course_setting(value: Any) -> str | None:
     text = _nonempty(value)
     label = "" if text is None else text.strip().lower().replace("-", "_").replace(" ", "_")
     return TIME_COURSE_MODE_ALIASES.get(label)
+
+
+def _identifier_space_warnings(harmonized: pd.DataFrame) -> list[str]:
+    """Flag source units whose identifiers do not meet the rest of the corpus.
+
+    Mixing Ensembl IDs with gene symbols produces a run that succeeds and reports
+    every source unit as independent, while the mismatched unit supports no gene
+    at all. Nothing else in the pipeline notices, because a unit that never joins
+    simply never appears in a consensus row.
+    """
+
+    if harmonized.empty or "source_unit_id" not in harmonized.columns:
+        return []
+    by_unit = {
+        str(unit): set(group["gene_symbol"].dropna().astype(str))
+        for unit, group in harmonized.groupby("source_unit_id", sort=True)
+    }
+    if len(by_unit) < 2:
+        return []
+
+    warnings: list[str] = []
+    for unit, identifiers in by_unit.items():
+        if not identifiers:
+            continue
+        best_unit, best_overlap = "", 0
+        for other_unit, other in by_unit.items():
+            if other_unit == unit:
+                continue
+            overlap = len(identifiers & other)
+            if overlap > best_overlap:
+                best_unit, best_overlap = other_unit, overlap
+        share = best_overlap / len(identifiers)
+        if best_overlap == 0:
+            example = sorted(identifiers)[0]
+            warnings.append(
+                f"source_unit_id={unit!r} shares no gene identifier with any other source unit "
+                f"({len(identifiers):,} identifiers, e.g. {example!r}); it cannot contribute to any "
+                "score. Map every source onto one identifier space (all symbols, or all Ensembl IDs)."
+            )
+        elif share < 0.01:
+            warnings.append(
+                f"source_unit_id={unit!r} shares only {best_overlap:,} of its {len(identifiers):,} "
+                f"gene identifiers with any other source unit (best match {best_unit!r}); check that "
+                "every source uses the same identifier space."
+            )
+    return warnings
 
 
 def _count_labels(series: pd.Series, *, unknown_label: str = "unknown") -> dict[str, int]:
@@ -712,7 +758,9 @@ def _validate_source_columns(frame: pd.DataFrame, mapping: TableMapping, row: di
     problems: list[str] = []
     fixes: list[str] = []
     for requirement, catalog_column, source_column, meaning in requested:
-        if source_column in frame.columns:
+        # Match harmonize_frame: a catalog written before restored row labels got
+        # one name may still spell that column the way pandas did.
+        if resolve_column_name(frame, source_column) in frame.columns:
             continue
         suggestion = difflib.get_close_matches(str(source_column), available, n=1)
         if requirement == "required":
@@ -1146,6 +1194,7 @@ def run_slice(catalog_path: Path, output_dir: Path, harmonized_dir: Path, min_st
         .to_dict()
         if "table_scope" in all_harmonized.columns
         else {},
+        "identifier_space_warnings": _identifier_space_warnings(all_harmonized),
         "rank_universe_warnings": rank_universe_warnings,
         "gene_symbol_collapse_warnings": gene_symbol_collapse_warnings,
         "pipeline_counts": _count_labels(catalog["pipeline"]),

@@ -218,7 +218,7 @@ def _run_warning_messages(metrics: dict[str, Any]) -> list[str]:
     seen: set[str] = set()
 
     warning_values: list[Any] = []
-    for key in ("warnings", "rank_universe_warnings"):
+    for key in ("warnings", "identifier_space_warnings", "rank_universe_warnings"):
         warning_values.extend(metrics.get(key, []) or [])
 
     try:
