@@ -1051,3 +1051,31 @@ def test_splitter_does_not_snap_on_press_and_uses_the_content_box() -> None:
     assert "const contentGeometry = () => {" in html
     assert "parseFloat(styles.paddingLeft)" in html
     assert "setPanelSplit(((clientX - rect.left) / rect.width) * 100);" not in html
+
+
+def test_dashboard_explains_the_selection_cap_before_a_click_that_cannot_work() -> None:
+    """A disabled checkbox fires no event, so the click handler's notice is unreachable.
+
+    Filling page 1 uses the whole cross-page budget, and the reader's next move
+    is to press "select all" on page 2 and get silence. The page has to say why
+    before anything is pressed.
+    """
+
+    from degora.api import INDEX_HTML
+
+    html = INDEX_HTML
+    assert "selection-limit" in html
+    assert "Selection limit reached: ${MAX_SELECTED_STUDIES} publications across all pages" in html
+    assert "Untick a row or press Clear to choose different ones here." in html
+    # And a locked row has to look locked; browsers barely grey a 17px checkbox.
+    assert '.study-table input[type="checkbox"]:disabled' in html
+    assert "cursor: not-allowed" in html
+
+
+def test_dashboard_orders_the_first_page_by_deg_readiness() -> None:
+    """Readiness first, provider relevance only as a tie-break."""
+
+    from degora.api import INDEX_HTML
+
+    assert 'sort: { key: "readiness", order: "desc" }' in INDEX_HTML
+    assert "Sort: DEG readiness" in INDEX_HTML
