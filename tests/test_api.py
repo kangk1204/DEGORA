@@ -1111,3 +1111,49 @@ def test_dashboard_labels_matrix_columns_from_the_candidate_first() -> None:
     # Printing the submitter title when it merely repeats the column wastes the
     # line that should carry the characteristics.
     assert "echoesColumn" in html
+
+
+def test_dashboard_replaces_the_search_estimate_with_the_prepared_outcome() -> None:
+    """A row that promised likely_ready and delivered nothing must stop promising it.
+
+    The search badge is scored from metadata. Once preparation has opened the
+    files, the row should report what was found, or the same study gets picked
+    again next week.
+    """
+
+    from degora.api import INDEX_HTML
+
+    html = INDEX_HTML
+    assert "preparedOutcomes" in html
+    assert "prepared · ${outcome.label}" in html
+    for label in ("author DEG ready", "needs group assignment", "no usable table", "excluded"):
+        assert label in html
+
+
+def test_dashboard_says_how_much_usable_evidence_a_preparation_produced() -> None:
+    from degora.api import INDEX_HTML
+
+    html = INDEX_HTML
+    assert "prepared stud${total === 1 ? \"y\" : \"ies\"} produced a usable candidate" in html
+    assert "One independent ${speciesLabel(activeSpecies)} study is selected; DEGORA needs two." in html
+
+
+def test_dashboard_offers_filtered_bulk_sample_assignment_that_clears_attestations() -> None:
+    """Twenty dropdowns one at a time is where attention runs out.
+
+    Bulk assignment is only safe if it stays explicit: the reader sees the rows
+    it will touch and the count on the button, and the direction attestations -
+    made about the previous assignment - are cleared by the move.
+    """
+
+    from degora.api import INDEX_HTML
+
+    html = INDEX_HTML
+    assert "sampleBulkHtml" in html and "applySampleBulk" in html
+    assert "matchingSampleItems" in html and "refreshSampleFilter" in html
+    assert "Filter by label" in html
+    assert '["direction-confirmed", "biological-replicates-confirmed"].forEach' in html
+    # The button states its target count, so pressing is a decision about a number.
+    assert "`Set ${names[button.dataset.group] || \"Ignore\"} (${matched})`" in html
+    # Only offered where it earns its space.
+    assert "columns.length > 4 ? sampleBulkHtml() : \"\"" in html
