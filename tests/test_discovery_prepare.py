@@ -733,3 +733,72 @@ def test_the_repository_phase_says_how_many_selections_it_covers(tmp_path: Path)
 
     repository = next(text for text in messages if "repository series" in text)
     assert "1 of 2 selected publications" in repository, repository
+
+
+class AuthorMatrixGeoClient(LabelledGeoClient):
+    """A series whose matrix is headed by the submitter's own column names."""
+
+    SAMPLE_SOFT = "\n".join(
+        [
+            "^SAMPLE = GSM6072341",
+            "!Sample_title = 4641CERM6M24M",
+            "!Sample_characteristics_ch1 = transgene: induced",
+            "^SAMPLE = GSM6072342",
+            "!Sample_title = 4709CERM6m24M",
+            "!Sample_characteristics_ch1 = transgene: induced",
+            "^SAMPLE = GSM6072343",
+            "!Sample_title = 4728CERM12M24M",
+            "!Sample_characteristics_ch1 = transgene: uninduced",
+            "^SAMPLE = GSM6072344",
+            "!Sample_title = 4754CERM12M24M",
+            "!Sample_characteristics_ch1 = transgene: uninduced",
+        ]
+    )
+
+    def fetch_geo_soft(self, accession):
+        return "\n".join(
+            [
+                f"^SERIES = {accession}",
+                "!Series_title = Mouse mammary gland series",
+                "!Series_overall_design = induced versus uninduced",
+                "!Series_sample_organism_ch1 = Homo sapiens",
+                f"!Series_supplementary_file = https://ftp.ncbi.nlm.nih.gov/geo/series/GSE100nnn/{accession}/suppl/{accession}_TPM_matrix.txt.gz",
+            ]
+        )
+
+    def fetch_candidate(self, url, *, full):
+        import gzip
+
+        payload = gzip.compress(
+            b"Gene\t4641CERM6M24M_S2\t4709CERM6m24M_S2\t4728CERM12M24M_S3\t4754CERM12M24M_S3\n"
+            b"Stat5a\t4\t5\t6\t7\nEsr1\t9\t8\t7\t6\n"
+        )
+        return payload, "full" if full else "header_prefix"
+
+
+def test_an_author_matrix_carries_a_label_for_every_column(tmp_path: Path) -> None:
+    result = prepare_publication_records(
+        [_geo_record()],
+        "human",
+        materialize_dir=tmp_path / "prepared",
+        transport=FakeTransport({}),
+        geo_client=AuthorMatrixGeoClient(),
+    )
+
+    matrix = next(
+        item
+        for item in result["studies"][0]["files"]
+        if item.get("inspection", {}).get("sample_columns")
+    )
+    resolved = matrix["inspection"]["sample_labels"]
+    columns = matrix["inspection"]["sample_columns"]
+    assert set(resolved) == set(columns), (sorted(resolved), sorted(columns))
+    assert resolved["4728CERM12M24M_S3"]["characteristics"] == ["transgene: uninduced"]
+    # The mapping is recorded in the bundle, not only drawn on screen.
+    audit = json.loads(Path(result["exports"]["audit_json"]).read_text(encoding="utf-8"))
+    audit_matrix = next(
+        item
+        for item in audit["studies"][0]["files"]
+        if item.get("inspection", {}).get("sample_labels")
+    )
+    assert audit_matrix["inspection"]["sample_labels"]["4641CERM6M24M_S2"]["accession"] == "GSM6072341"

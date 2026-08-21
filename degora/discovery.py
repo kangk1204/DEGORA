@@ -1162,6 +1162,55 @@ def parse_geo_soft(text: str) -> dict[str, Any]:
     return metadata
 
 
+def _normalized_label_key(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", str(value).lower())
+
+
+def match_sample_labels(columns: Iterable[str], labels: dict[str, Any]) -> dict[str, Any]:
+    """Attach each matrix column to the GEO sample it came from.
+
+    A series matrix is keyed by GSM, but an author-supplied matrix uses the
+    submitter's own column names - `4641CERM6M24M_S2` and the like - so keying
+    on the accession alone leaves every column unlabelled, which is where this
+    started. Titles and source names are matched too, and anything ambiguous is
+    left unmatched rather than guessed: a wrong label here flips a contrast.
+    """
+
+    index: dict[str, list[str]] = {}
+    for accession, entry in labels.items():
+        for value in (accession, entry.get("title", ""), entry.get("source", "")):
+            key = _normalized_label_key(value)
+            if len(key) < 3:
+                continue
+            index.setdefault(key, [])
+            if accession not in index[key]:
+                index[key].append(accession)
+
+    unique = {key: found[0] for key, found in index.items() if len(found) == 1}
+    resolved: dict[str, Any] = {}
+    for column in columns:
+        text = str(column)
+        accession = ""
+        if text.upper() in labels:
+            accession = text.upper()
+        else:
+            key = _normalized_label_key(text)
+            if not key:
+                continue
+            accession = unique.get(key, "")
+            if not accession and len(key) >= 4:
+                prefixes = [
+                    value
+                    for candidate, value in unique.items()
+                    if len(candidate) >= 4 and (key.startswith(candidate) or candidate.startswith(key))
+                ]
+                if len(set(prefixes)) == 1:
+                    accession = prefixes[0]
+        if accession:
+            resolved[text] = {"accession": accession, **labels[accession]}
+    return resolved
+
+
 def _sample_labels_for(client: Any, accession: str) -> dict[str, Any]:
     """Best-effort sample labels. Never let a label lookup fail a preparation."""
 
@@ -1900,6 +1949,10 @@ def _prepare_geo_studies_in_place(
         sample_labels: dict[str, Any] = {}
         if any(item.get("inspection", {}).get("sample_columns") for item in files):
             sample_labels = _sample_labels_for(geo_client, accession)
+            for item in files:
+                columns = item.get("inspection", {}).get("sample_columns") or []
+                if columns and sample_labels:
+                    item["inspection"]["sample_labels"] = match_sample_labels(columns, sample_labels)
         studies.append(
             {
                 **search_record,

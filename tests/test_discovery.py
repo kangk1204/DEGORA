@@ -954,3 +954,57 @@ def test_parse_geo_soft_deduplicates_exact_repeated_metadata() -> None:
     parsed = parse_geo_soft(text)
     assert parsed["pubmed_ids"] == ["123"]
     assert parsed["supplementary_files"] == ["https://ftp.ncbi.nlm.nih.gov/a.tsv.gz"]
+
+
+# --- matrix columns are not always GSM accessions --------------------------
+
+
+def _labels() -> dict[str, dict]:
+    return {
+        "GSM6072341": {"title": "4641CERM6M24M", "source": "mammary gland", "characteristics": ["transgene: induced"]},
+        "GSM6072342": {"title": "4709CERM6m24M", "source": "mammary gland", "characteristics": ["transgene: induced"]},
+        "GSM6072343": {"title": "control 12M", "source": "", "characteristics": ["transgene: uninduced"]},
+    }
+
+
+def test_submitter_column_names_are_matched_to_their_geo_sample() -> None:
+    """An author matrix is headed by the submitter's own names, not accessions.
+
+    Keying only on GSM left every column of such a matrix unlabelled, which is
+    the state a reader was asked to assign control and treatment from.
+    """
+
+    from degora.discovery import match_sample_labels
+
+    resolved = match_sample_labels(
+        ["4641CERM6M24M_S2", "4709CERM6m24M_S2", "GSM6072343", "Gene"],
+        _labels(),
+    )
+
+    assert resolved["4641CERM6M24M_S2"]["accession"] == "GSM6072341"
+    # Case and a trailing lane suffix must not defeat the match.
+    assert resolved["4709CERM6m24M_S2"]["accession"] == "GSM6072342"
+    assert resolved["GSM6072343"]["accession"] == "GSM6072343"
+    assert "Gene" not in resolved
+    assert resolved["4641CERM6M24M_S2"]["characteristics"] == ["transgene: induced"]
+
+
+def test_an_ambiguous_column_is_left_unmatched_rather_than_guessed() -> None:
+    """A wrong sample label flips a contrast, so silence beats a guess."""
+
+    from degora.discovery import match_sample_labels
+
+    labels = {
+        "GSM1": {"title": "wild type", "source": "liver", "characteristics": []},
+        "GSM2": {"title": "wild type", "source": "liver", "characteristics": []},
+    }
+
+    assert match_sample_labels(["wild type", "liver"], labels) == {}
+
+
+def test_short_or_empty_column_names_never_match() -> None:
+    from degora.discovery import match_sample_labels
+
+    labels = {"GSM1": {"title": "A1", "source": "", "characteristics": []}}
+
+    assert match_sample_labels(["A1", "", "  "], labels) == {}
