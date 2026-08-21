@@ -393,6 +393,24 @@ INDEX_HTML = """<!doctype html>
       line-height: 1.55;
     }
     .prepared-blocked strong { color: #6f2626; }
+    .shared-submission {
+      display: block;
+      margin-top: 3px;
+      color: #8a6206;
+      font-size: 10.5px;
+      line-height: 1.4;
+    }
+    .independence-warning {
+      grid-column: 1 / -1;
+      margin: 0 0 10px;
+      padding: 9px 11px;
+      border: 1px solid #f5d68a;
+      border-radius: 8px;
+      background: #fdf6e3;
+      color: #7a5a12;
+      font-size: 12px;
+      line-height: 1.5;
+    }
     .prepared-blocked button { width: auto; min-width: 0; height: 28px; padding: 0 10px; border-radius: 7px; font-size: 11px; }
     /* Everything stays readable and selectable; only the controls go inert. */
     .is-unanalyzable .candidate-row { background: #f7f8f8; }
@@ -1661,6 +1679,19 @@ INDEX_HTML = """<!doctype html>
       return `<span class="deg-input ${verified ? "author_deg_likely" : "matrix_fallback"}">${esc(label)}</span>`;
     }
 
+    // Source units collapse on a shared PubMed ID, so an unpublished submission
+    // deposited as several series counts as several independent studies. That
+    // count is what the replication claim rests on, so say it on the row.
+    function sharedSubmissionNote(study) {
+      const peers = Array.isArray(study.shared_submission_units) ? study.shared_submission_units : [];
+      if (!peers.length) return "";
+      const warning = study.shared_submission_warning
+        || "shares its title with other repository records that are not linked to a publication";
+      return `<span class="shared-submission" title="${esc(warning)}">`
+        + `May be one submission with ${esc(peers.slice(0, 3).join(", "))}`
+        + `${peers.length > 3 ? ` and ${peers.length - 3} more` : ""}</span>`;
+    }
+
     function publicationProvenance(study) {
       const identifiers = [];
       const pmids = Array.isArray(study.pubmed_ids) ? study.pubmed_ids : (study.pmid ? [study.pmid] : []);
@@ -1921,7 +1952,7 @@ INDEX_HTML = """<!doctype html>
           const publicationMeta = [authors, study.journal, study.year].filter(Boolean).map(esc).join(" · ");
           return `<tr>
             <td><input class="study-select" type="checkbox" data-accession="${esc(key)}" aria-label="Select ${esc(title)}" ${checked}${selectAttrs}></td>
-            <td>${externalLink(paperHref, title, "study-title")}<span class="study-publication-meta">${publicationMeta || "Publication metadata unavailable"}</span><span class="dataset-title">${esc(provenance)}</span></td>
+            <td>${externalLink(paperHref, title, "study-title")}<span class="study-publication-meta">${publicationMeta || "Publication metadata unavailable"}</span><span class="dataset-title">${esc(provenance)}</span>${sharedSubmissionNote(study)}</td>
             <td>${esc(authors || "—")}</td>
             <td>${esc(study.journal || "—")}</td>
             <td>${esc(study.year || "—")}</td>
@@ -2718,6 +2749,43 @@ INDEX_HTML = """<!doctype html>
       if (treatmentNode) treatmentNode.textContent = String(treatment);
     }
 
+    // Two ticked units that belong to one submission are not two studies. The
+    // gate counts units, so without this the reader clears the ">= 2 independent
+    // source units" bar with correlated arms of a single experiment.
+    function sharedSubmissionConflicts(unitIds) {
+      const prepared = activeDiscoveryState().prepared;
+      if (!prepared) return [];
+      const selected = new Set([...unitIds].filter(Boolean).map(String));
+      const conflicts = [];
+      (prepared.studies || []).forEach((study) => {
+        const unit = String(study.source_unit_id || study.accession || "");
+        if (!selected.has(unit)) return;
+        const peers = (study.shared_submission_units || []).filter((peer) => selected.has(String(peer)));
+        if (peers.length) conflicts.push({ unit, peers: peers.map(String) });
+      });
+      return conflicts;
+    }
+
+    function renderIndependenceWarning(unitIds) {
+      const holder = $("preparedCandidates");
+      const existing = holder.querySelector(".independence-warning");
+      if (existing) existing.remove();
+      const conflicts = sharedSubmissionConflicts(unitIds);
+      if (!conflicts.length) return;
+      const named = conflicts
+        .map((item) => [item.unit, ...item.peers].sort().join(" + "))
+        .filter((value, index, all) => all.indexOf(value) === index);
+      const node = document.createElement("div");
+      node.className = "independence-warning";
+      node.setAttribute("role", "status");
+      node.innerHTML = `<strong>These may not be independent studies.</strong> `
+        + `${esc(named.join("; "))} share a title and none is linked to a publication, `
+        + `so they are probably one submission deposited as several series. DEGORA counts them as `
+        + `separate source units, which would treat correlated data as replication. `
+        + `Untick all but one unless you have confirmed they are separate experiments.`;
+      holder.insertBefore(node, holder.firstChild);
+    }
+
     function updateAnalysisEligibility() {
       const rows = selectedCandidateRows();
       $("preparedCandidates").querySelectorAll(".candidate-row").forEach(updateSampleCounts);
@@ -2861,6 +2929,7 @@ INDEX_HTML = """<!doctype html>
         }
         markInvalid(row, enabled && !rowValid);
       });
+      renderIndependenceWarning(units);
       const eligible = units.size >= 2 && reviewComplete;
       const state = activeDiscoveryState();
       $("runDiscoveryAnalysis").disabled = !eligible || state.analyzing;

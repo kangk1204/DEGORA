@@ -29,7 +29,7 @@ from .discovery import (
     normalize_species,
     prepare_geo_studies,
 )
-from .discovery_federated import canonical_record_id
+from .discovery_federated import canonical_record_id, flag_shared_submission_records
 from .discovery_sources import (
     MAX_ARCHIVE_DEPTH,
     MAX_ARCHIVE_EXPANDED_BYTES,
@@ -85,6 +85,9 @@ def prepare_publication_records(
         raise DiscoveryError("max_files_per_record must be a whole number from 1 to 12")
 
     selected, initially_excluded = _select_unique_records(records, max_records=max_records)
+    # Recomputed rather than carried: the flag is set on the search snapshot,
+    # and re-merging on the way here drops fields the merge does not know about.
+    flag_shared_submission_records(selected)
     target = Path(materialize_dir).resolve()
     target.parent.mkdir(parents=True, exist_ok=True)
     _validate_target(target, force=force)
@@ -558,6 +561,8 @@ def _publication_metadata_fields(record: dict[str, Any]) -> dict[str, Any]:
         "provider_accession": _first(record.get("provider_accession"), record.get("canonical_id")),
         "source_unit_id": str(record.get("source_unit_id") or "").strip() or _source_unit_id(record),
         "source_unit_conflict": list(record.get("source_unit_conflict") or []),
+        "shared_submission_units": [str(value) for value in (record.get("shared_submission_units") or []) if value],
+        "shared_submission_warning": str(record.get("shared_submission_warning") or ""),
         "source_unit_pubmed_ids": pmids,
         "pubmed_ids": pmids,
         "doi": doi,

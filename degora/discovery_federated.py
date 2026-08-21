@@ -312,7 +312,7 @@ def search_publications(
     diagnostics["detailed_resolution_truncated"] = len(preliminary) > resolution_limit
     report(0.95, "Scoring DEG-input readiness")
     merged = merge_publication_records(resolved_records, target)
-    ranked = rank_publication_records(merged)
+    ranked = flag_shared_submission_records(rank_publication_records(merged))
     readiness_counts: dict[str, int] = {}
     for record in ranked:
         state = record.get("data_readiness", {}).get("verification_state", "unknown")
@@ -470,6 +470,8 @@ def _prepare_record(record: dict[str, Any], target: SpeciesSpec) -> dict[str, An
     if row["relevance_rank"] == float("inf"):
         row["relevance_rank"] = None
     row["source_unit_id"] = _source_unit_id(row)
+    row["shared_submission_units"] = _sorted_strings(_as_list(row.get("shared_submission_units")))
+    row["shared_submission_warning"] = _clean_text(row.get("shared_submission_warning"))
     _add_ui_aliases(row)
     return row
 
@@ -493,6 +495,10 @@ def _merge_group(group: list[dict[str, Any]], target: SpeciesSpec) -> dict[str, 
         "candidates": [],
         "species_evidence": _merge_species_evidence(ordered),
         "relevance_rank": min((_number_or_inf(row.get("relevance_rank")) for row in ordered), default=float("inf")),
+        "shared_submission_units": _sorted_strings(
+            unit for row in ordered for unit in _as_list(row.get("shared_submission_units"))
+        ),
+        "shared_submission_warning": _first_text(row.get("shared_submission_warning") for row in ordered),
         "target_species_verified": any(_truthy(row.get("target_species_verified")) for row in ordered),
         "target_species_evidence": _first_present(ordered, "target_species_evidence")
         or _first_present(ordered, "mixed_rescue_evidence")
@@ -562,10 +568,22 @@ def _readiness(record: dict[str, Any], target: SpeciesSpec) -> dict[str, Any]:
         state = "verified_ready"
         tier = "verified_ready"
         basis.append("mixed_species_target_file_verified" if decision == "mixed_rescued" else "target_species_verified")
-    elif _has_file_candidate(record) or _collect_accessions(record):
+    elif _has_file_candidate(record):
         state = "likely_ready"
         tier = "likely_ready"
         basis.append("public_data_candidate_present_unverified")
+    elif _collect_accessions(record):
+        # A repository accession is not evidence that a usable table exists.
+        # Treating it as `likely_ready` put every GEO row in the top tier, so
+        # the primary sort key stopped discriminating and the first result was
+        # routinely one whose files turned out to be browser tracks.
+        state = "candidate"
+        tier = "candidate"
+        basis.append(
+            "repository_record_not_inspected"
+            if str(record.get("detail_assessment") or "") == "not_evaluated"
+            else "repository_record_without_tabular_file"
+        )
     elif not tier or tier == "unknown":
         state = "metadata_only"
         tier = "metadata_only"
@@ -816,6 +834,55 @@ def _merge_resolution_events(records: Iterable[dict[str, Any]]) -> list[dict[str
             marker = repr(sorted((str(key), repr(value)) for key, value in row.items()))
             merged.setdefault(marker, row)
     return [merged[key] for key in sorted(merged)]
+
+
+def _first_text(values: Iterable[Any]) -> str:
+    for value in values:
+        text = _clean_text(value)
+        if text:
+            return text
+    return ""
+
+
+def _submission_title_key(record: dict[str, Any]) -> str:
+    text = _clean_text(record.get("paper_title") or record.get("title"))
+    key = re.sub(r"[^a-z0-9]+", "", text.lower())
+    # Short titles collide by accident; a submission title does not.
+    return key if len(key) >= 24 else ""
+
+
+def flag_shared_submission_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Warn where separate repository records are almost certainly one submission.
+
+    Source units collapse on a shared PubMed ID. A submission that has not been
+    published yet has no PMID to collapse on, so its arms - deposited as
+    separate GEO series under one title - each count as an independent source
+    unit. DEGORA's whole replication claim rests on that count, so the reader
+    has to be told before treating them as two studies.
+    """
+
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for record in records:
+        if _as_list(record.get("pubmed_ids")) or _clean_text(record.get("pmid")):
+            continue  # A publication link would already have collapsed these.
+        key = _submission_title_key(record)
+        if key:
+            groups.setdefault(key, []).append(record)
+
+    for members in groups.values():
+        units = _sorted_strings(record.get("source_unit_id") for record in members)
+        if len(members) < 2 or len(units) < 2:
+            continue
+        for record in members:
+            own = _clean_text(record.get("source_unit_id"))
+            record["shared_submission_units"] = [unit for unit in units if unit != own]
+            record["shared_submission_warning"] = (
+                "shares its title with "
+                f"{len(units) - 1} other repository record"
+                f"{'' if len(units) == 2 else 's'} and none is linked to a publication, "
+                "so these may be one submission rather than independent studies"
+            )
+    return records
 
 
 def _source_unit_id(record: dict[str, Any]) -> str:

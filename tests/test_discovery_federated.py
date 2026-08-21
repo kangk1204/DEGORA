@@ -99,13 +99,41 @@ def test_human_plus_primate_is_quarantined_and_unsubstantiated_rescue_is_rejecte
     assert row["data_readiness"]["verification_state"] == "mixed_quarantined"
 
 
-def test_accession_without_verified_file_is_likely_not_content_verified() -> None:
+def test_an_accession_alone_does_not_promise_a_usable_table() -> None:
+    """`likely_ready` used to follow from having a GEO accession at all.
+
+    Readiness is the primary sort key, so that put every repository row in the
+    top tier and the first result was routinely one whose files turned out to
+    be browser tracks. An accession now means a record exists, nothing more.
+    """
+
     row = merge_publication_records(
         [{"pmid": "4", "accession": "GSE4", "species": "Human", "target_species_verified": True}],
         "Human",
     )[0]
 
-    assert row["data_readiness"]["verification_state"] == "likely_ready"
+    assert row["data_readiness"]["verification_state"] == "candidate"
+    assert "repository_record" in " ".join(row["data_readiness"]["basis"])
+
+    with_table = merge_publication_records(
+        [
+            {
+                "pmid": "5",
+                "accession": "GSE5",
+                "species": "Human",
+                "target_species_verified": True,
+                "target_species_evidence": "GEO taxon is Homo sapiens.",
+                "supplementary_file_candidates": [
+                    {"url": "https://example.org/GSE5_DESeq2.csv", "name": "GSE5_DESeq2.csv", "role": "deg_table"}
+                ],
+            }
+        ],
+        "Human",
+    )[0]
+
+    # A record that does carry a tabular candidate still outranks it.
+    assert with_table["data_readiness"]["verification_state"] == "verified_ready"
+    assert with_table["data_readiness"]["priority"] < row["data_readiness"]["priority"]
 
 
 def test_rank_120_ready_item_enters_first_top_20_after_global_sort() -> None:
@@ -183,7 +211,9 @@ def test_search_publications_caps_evaluated_records_at_1000() -> None:
     assert snapshot["diagnostics"]["evaluated_limit"] == 1000
     assert snapshot["diagnostics"]["evaluated_records"] == 1000
     assert snapshot["total_records"] == 1000
-    assert snapshot["records"][0]["data_readiness"]["verification_state"] == "likely_ready"
+    # The stub records carry an accession and no file candidate, which is a
+    # repository record rather than a promise of a usable table.
+    assert snapshot["records"][0]["data_readiness"]["verification_state"] == "candidate"
 
 
 def test_search_publications_lazily_imports_default_providers(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -567,3 +597,67 @@ def test_unavailable_resolution_is_retried_rather_than_reused() -> None:
     flaky = {"canonical_id": "PMID:9", "pmid": "9", "title": "nine", "resolution_state": "unavailable"}
     resolve_publication_records([flaky], "human", providers=[_Provider()])
     assert [call.lower() for call in calls] == ["pmid:9"]
+
+
+# --- one submission is not two studies -------------------------------------
+
+
+def test_same_title_repository_records_are_flagged_as_one_possible_submission() -> None:
+    """Source units collapse on a shared PubMed ID, and an unpublished
+    submission has none.
+
+    Three GEO series deposited under one title therefore count as three
+    independent source units, which is the exact number DEGORA's replication
+    claim rests on. The reader has to be told before treating them as three
+    studies.
+    """
+
+    from degora.discovery_federated import flag_shared_submission_records
+
+    title = "m6A depletion attenuates the macrophage type I interferon response"
+    records = flag_shared_submission_records(
+        [
+            {"paper_title": title, "source_unit_id": "GSE343561"},
+            {"paper_title": title, "source_unit_id": "GSE343559"},
+            {"paper_title": title, "source_unit_id": "GSE343705"},
+            {"paper_title": "An unrelated renal hypoxia study", "source_unit_id": "GSE297242"},
+        ]
+    )
+
+    assert records[0]["shared_submission_units"] == ["GSE343559", "GSE343705"]
+    assert "one submission" in records[0]["shared_submission_warning"]
+    # Each member names the others, and nobody names themselves.
+    assert "GSE343561" not in records[0]["shared_submission_units"]
+    assert set(records[1]["shared_submission_units"]) == {"GSE343561", "GSE343705"}
+    assert not records[3].get("shared_submission_units")
+
+
+def test_a_published_pair_is_left_alone() -> None:
+    """A PubMed link already collapses them, so a warning would be noise."""
+
+    from degora.discovery_federated import flag_shared_submission_records
+
+    title = "Distinct STAT5 concentrations uniquely control mammary epithelium"
+    records = flag_shared_submission_records(
+        [
+            {"paper_title": title, "pmid": "23275557", "source_unit_id": "PMID:23275557"},
+            {"paper_title": title, "pubmed_ids": ["23275557"], "source_unit_id": "PMID:23275557"},
+        ]
+    )
+
+    assert not any(record.get("shared_submission_units") for record in records)
+
+
+def test_a_short_title_is_never_treated_as_a_submission_key() -> None:
+    """Short titles collide by accident; a submission title does not."""
+
+    from degora.discovery_federated import flag_shared_submission_records
+
+    records = flag_shared_submission_records(
+        [
+            {"paper_title": "Hypoxia", "source_unit_id": "GSE1"},
+            {"paper_title": "Hypoxia", "source_unit_id": "GSE2"},
+        ]
+    )
+
+    assert not any(record.get("shared_submission_units") for record in records)
