@@ -1232,3 +1232,22 @@ def test_a_page_no_longer_exhausts_the_selection_budget_on_its_own() -> None:
 
     assert DEFAULT_PAGE_SIZE < MAX_SELECTED_STUDIES
     assert f"const MAX_SELECTED_STUDIES = {MAX_SELECTED_STUDIES};" in INDEX_HTML
+
+
+def test_dashboard_warns_before_counting_one_submission_as_replication() -> None:
+    """The gate counts source units, and an unpublished submission split across
+    several series counts as several.
+
+    Nothing in the interface said so, and the whole replication claim is that
+    count.
+    """
+
+    from degora.api import INDEX_HTML
+
+    html = INDEX_HTML
+    assert "sharedSubmissionNote" in html
+    assert "sharedSubmissionConflicts" in html
+    assert "renderIndependenceWarning" in html
+    assert "These may not be independent studies." in html
+    assert "would treat correlated data as replication" in html
+    assert "May be one submission with" in html
