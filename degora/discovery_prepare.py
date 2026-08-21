@@ -137,7 +137,32 @@ def _prepare_into_staging(
     if geo_records:
         accessions = _unique_gse_accessions(geo_records)
         selected_accessions = accessions
-        report(0.05, f"Downloading {len(accessions)} repository record(s)")
+        record_by_accession = _record_by_geo_accession(geo_records)
+        # Several selected publications can report the same GEO series. That is
+        # one dataset, so it stays one study - but the publications it absorbs
+        # used to vanish from the bundle entirely, leaving a selection of 20
+        # that reconciled to neither the prepared nor the excluded list.
+        for geo_record in geo_records:
+            covered = _geo_accessions(geo_record)
+            if any(record_by_accession.get(accession) is geo_record for accession in covered):
+                continue
+            duplicate = covered[0] if covered else ""
+            owner = record_by_accession.get(duplicate) or {}
+            excluded.append(
+                _excluded(
+                    geo_record,
+                    f"repository series {duplicate} is already prepared from {_record_id(owner)}; "
+                    "publications reporting the same series count as one source unit",
+                )
+            )
+        # The reader selected publications; this phase downloads series. Saying
+        # only "12 repository record(s)" against a selection of 20 reads like a
+        # miscount.
+        report(
+            0.05,
+            f"Downloading {len(accessions)} repository series "
+            f"linked by {len(geo_records)} of {len(geo_records) + len(direct_records)} selected publications",
+        )
         try:
             geo_result = prepare_geo_studies(
                 accessions,
@@ -156,11 +181,13 @@ def _prepare_into_staging(
                 excluded.append(_excluded(geo_record, f"repository preparation failed: {exc}"))
         else:
             excluded.extend(geo_result.get("excluded_studies", []))
-            record_by_accession = _record_by_geo_accession(geo_records)
             studies.extend(_augment_geo_studies(geo_result.get("studies", []), record_by_accession))
 
     geo_share = len(geo_records) / total_units
-    report(0.05 + 0.85 * geo_share, f"Inspecting {len(direct_records)} linked file source(s)")
+    report(
+        0.05 + 0.85 * geo_share,
+        f"Inspecting {len(direct_records)} publication(s) with a directly linked file",
+    )
     for direct_index, record in enumerate(direct_records, start=1):
         report(
             0.05 + 0.85 * ((len(geo_records) + direct_index - 1) / total_units),

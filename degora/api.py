@@ -330,6 +330,15 @@ INDEX_HTML = """<!doctype html>
     .candidate-name { font-weight: 720; overflow-wrap: anywhere; }
     .candidate-note { display: block; margin-top: 4px; color: var(--muted); font-size: 11px; line-height: 1.4; }
     .candidate-fields { display: grid; gap: 7px; }
+    /* The author card carries six children but the track list above defines
+       four columns, so these last two groups wrapped onto an implicit second
+       row - the metadata fields landing inside the 28px checkbox column and
+       colliding with the confirmation lines. Give them the full width under
+       the header instead. */
+    .candidate-row > .candidate-fields-wide,
+    .candidate-row > .candidate-confirms { grid-column: 2 / -1; }
+    .candidate-fields-wide { grid-template-columns: repeat(auto-fit, minmax(168px, 1fr)); column-gap: 10px; }
+    .candidate-confirms { margin-top: 2px; padding-top: 9px; border-top: 1px solid var(--line); }
     .candidate-fields label { display: grid; gap: 4px; color: var(--muted); font-size: 11px; }
     .candidate-fields input, .candidate-fields select { height: 32px; font-size: 12px; }
     .candidate-fields [aria-invalid="true"], .sample-groups[aria-invalid="true"] { outline: 2px solid #fda4af; outline-offset: 1px; }
@@ -337,11 +346,25 @@ INDEX_HTML = """<!doctype html>
     .confirm-line input { width: 16px; height: 16px; }
     .candidate-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
     .candidate-tools button { width: auto; min-width: 0; height: 30px; padding: 0 10px; border-radius: 6px; font-size: 11px; }
-    .sample-groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; max-height: 190px; overflow: auto; }
+    .sample-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 5px; max-height: 300px; overflow: auto; }
     .sample-counts { grid-column: 1 / -1; display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 11px; }
     .sample-counts strong { color: var(--ink); font-variant-numeric: tabular-nums; }
-    .sample-item { display: grid; grid-template-columns: minmax(0, 1fr) 92px; align-items: center; gap: 5px; }
+    .sample-item {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 92px;
+      grid-template-areas: "id select" "label select" "traits select";
+      align-items: center;
+      gap: 1px 6px;
+      padding: 4px 5px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+    }
     .sample-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+    .sample-id { grid-area: id; font-variant-numeric: tabular-nums; color: var(--muted); font-size: 10px; }
+    .sample-label { grid-area: label; color: var(--ink); font-weight: 620; }
+    .sample-traits { grid-area: traits; color: var(--muted); font-size: 10px; }
+    .sample-item select { grid-area: select; }
     .sample-item select { height: 28px; padding: 0 5px; font-size: 11px; }
     .status-pill { display: inline-flex; padding: 4px 8px; border-radius: 999px; background: #e7f5f2; color: #0f5d56; font-size: 11px; font-weight: 720; }
     .status-pill.blocked { background: #f4f2e8; color: var(--warn); }
@@ -2197,7 +2220,7 @@ INDEX_HTML = """<!doctype html>
           <label>P-value column<input class="p-column" value="${esc(pColumn)}" maxlength="160" autocomplete="off"></label>
           <label>Adjusted-p column<input class="padj-column" value="${esc(padjColumn)}" maxlength="160" autocomplete="off"></label>
         </div>
-        <div class="candidate-fields">
+        <div class="candidate-fields candidate-fields-wide">
           <label>Row filter column<input class="row-filter-column" value="${esc(rowFilterColumn)}" maxlength="160" autocomplete="off"></label>
           <label>Row filter value<input class="row-filter-value" value="${esc(rowFilterValue)}" maxlength="240" autocomplete="off"></label>
           <label>Duplicate genes<select class="duplicate-gene-policy"><option value="harmonizer" ${duplicateGenePolicy === "harmonizer" ? "selected" : ""}>DEGORA default: lowest p, then largest |log2FC|</option><option value="keep_first" ${duplicateGenePolicy === "keep_first" ? "selected" : ""}>Legacy/manual: keep first source row</option></select></label>
@@ -2207,7 +2230,7 @@ INDEX_HTML = """<!doctype html>
           <label>Duration h (optional)<input class="duration-h" value="${esc(durationH)}" maxlength="32" placeholder="e.g. 24 or 24-48" autocomplete="off"></label>
           <label>Platform (optional)<input class="platform" value="${esc(platform)}" maxlength="80" autocomplete="off"></label>
         </div>
-        <div class="candidate-fields">
+        <div class="candidate-fields candidate-confirms">
           <label class="confirm-line"><input class="direction-confirmed" type="checkbox" ${draft.direction ? "checked" : ""}> Positive log2FC is treatment/case minus control</label>
           <label class="confirm-line"><input class="column-mapping-confirmed" type="checkbox" ${draft.columnMappingConfirmed ? "checked" : ""}> Sheet and gene/log2FC/p mappings are intentionally confirmed</label>
           <label class="confirm-line"><input class="adjusted-p-as-pvalue-confirmed" type="checkbox" ${draft.adjustedPAsPvalueConfirmed ? "checked" : ""}> Adjusted-p/FDR column may be used as p-value for this activation</label>
@@ -2227,9 +2250,16 @@ INDEX_HTML = """<!doctype html>
       const matrixTypeControl = role === "unknown_matrix" ? `<label>Matrix type<select class="matrix-type"><option value="" ${matrixType === "" ? "selected" : ""}>Choose matrix type</option><option value="normalized_expression_matrix" ${matrixType === "normalized_expression_matrix" ? "selected" : ""}>Normalized expression</option><option value="count_matrix" ${matrixType === "count_matrix" ? "selected" : ""}>Raw counts</option></select></label>` : "";
       const normalizedScale = draft.normalizedScale || "";
       const normalizedScaleControl = role === "count_matrix" ? "" : `<label>Normalized value scale<select class="normalized-scale"><option value="" ${normalizedScale === "" ? "selected" : ""}>Choose confirmed scale</option><option value="log2" ${normalizedScale === "log2" ? "selected" : ""}>Already log2 scale</option><option value="linear" ${normalizedScale === "linear" ? "selected" : ""}>Linear, apply log2(x + 1)</option></select></label>`;
+      // A GSM accession on its own tells a reader nothing about which arm it
+      // belongs to, and this is the one control they must not get wrong.
+      const sampleLabels = study.sample_labels || {};
       const samples = (inspection.sample_columns || []).map((sample) => {
         const group = draft.samples?.[sample] || "";
-        return `<label class="sample-item" title="${esc(sample)}"><span>${esc(sample)}</span><select data-sample="${esc(sample)}"><option value="" ${group === "" ? "selected" : ""}>Ignore</option><option value="control" ${group === "control" ? "selected" : ""}>Control</option><option value="treatment" ${group === "treatment" ? "selected" : ""}>Treatment</option></select></label>`;
+        const meta = sampleLabels[String(sample).toUpperCase()] || {};
+        const descriptor = meta.title || meta.source || "";
+        const traits = (meta.characteristics || []).join(" · ");
+        const tip = [sample, descriptor, traits].filter(Boolean).join(" — ");
+        return `<label class="sample-item" title="${esc(tip)}"><span class="sample-id">${esc(sample)}</span><span class="sample-label">${esc(descriptor || "no submitter label")}</span>${traits ? `<span class="sample-traits">${esc(traits)}</span>` : ""}<select data-sample="${esc(sample)}"><option value="" ${group === "" ? "selected" : ""}>Ignore</option><option value="control" ${group === "control" ? "selected" : ""}>Control</option><option value="treatment" ${group === "treatment" ? "selected" : ""}>Treatment</option></select></label>`;
       }).join("");
       return `<div class="candidate-row" data-candidate-id="${esc(candidate.candidate_id)}" data-accession="${esc(study.accession)}" data-source-unit="${esc(study.source_unit_id || study.accession)}" data-mode="fallback" data-role="${esc(role)}">
         <input class="candidate-enable" type="checkbox" aria-label="Use ${esc(candidate.name)}" ${draft.enabled ? "checked" : ""}>
