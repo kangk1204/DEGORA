@@ -108,7 +108,8 @@ def test_federated_discover_page_two_uses_global_row_numbers(tmp_path, monkeypat
 
     numbered_rows = [line for line in capsys.readouterr().out.splitlines() if re.match(r"\s*\d+\.", line)]
     assert numbered_rows
-    assert numbered_rows[0].lstrip().startswith("21.")
+    # Ten rows per page, so page two opens at the eleventh globally ranked row.
+    assert numbered_rows[0].lstrip().startswith("11.")
 
 
 def test_federated_network_unavailability_is_reported_without_traceback(tmp_path, monkeypatch, capsys) -> None:
@@ -223,7 +224,7 @@ def test_legacy_geo_mode_keeps_geo_search_contract(tmp_path, monkeypatch, capsys
 
     assert main(["discover", "hypoxia", "--source", "geo", "--species", "human", "--limit", "12", "--output-dir", str(tmp_path / "geo")]) == 0
 
-    assert captured["page_size"] == 20
+    assert captured["page_size"] == 10
     assert captured["global_rank"] is True
     assert captured["global_limit"] == 12
     assert "legacy GEO globally ranked" in capsys.readouterr().out

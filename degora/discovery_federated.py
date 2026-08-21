@@ -328,7 +328,7 @@ def search_publications(
         "evaluated_records": len(preliminary),
         "ranking_limit": evaluated_limit,
         "ranking_truncated": len(merged_search_records) > evaluated_limit,
-        "ranking_contract": "Partially resolved readiness, then provider relevance; 20 rows per browser page, with later selections resolved on demand.",
+        "ranking_contract": "Partially resolved readiness, then provider relevance; 10 rows per browser page, with later selections resolved on demand.",
         "provider_status": "partial" if diagnostics["errors"] else "complete",
         "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "provider_events": provider_events,

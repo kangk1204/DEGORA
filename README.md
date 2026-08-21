@@ -265,7 +265,7 @@ degora discover "hypoxia HIF1" \
   --output-dir search-mouse
 ```
 
-The search collects at most 1,000 exact, unique records before sorting and displays 20 rows per page. Detailed file resolution is bounded: the leading page is inspected first, while later selections are resolved on demand. A result is therefore a review queue, not an automatically approved analysis input.
+The search collects at most 1,000 exact, unique records before sorting and displays 10 rows per page. Detailed file resolution is bounded: the leading page is inspected first, while later selections are resolved on demand. A result is therefore a review queue, not an automatically approved analysis input.
 
 Search exports include JSON, CSV, and Excel snapshots with identifiers, title, authors, journal, year, species evidence, source-unit information, readiness, and provider diagnostics.
 

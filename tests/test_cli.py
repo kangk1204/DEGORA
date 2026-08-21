@@ -14,7 +14,7 @@ from degora.excel_template import TEMPLATE_SHEETS
 from degora.slice_runner import DegoraConfigError
 
 
-def test_legacy_geo_discover_exports_species_scoped_twenty_result_page(tmp_path, monkeypatch, capsys) -> None:
+def test_legacy_geo_discover_exports_species_scoped_result_page(tmp_path, monkeypatch, capsys) -> None:
     import degora.discovery as discovery
 
     captured = {}
@@ -68,7 +68,7 @@ def test_legacy_geo_discover_exports_species_scoped_twenty_result_page(tmp_path,
         "query": "hypoxia",
         "species": "human",
         "page": 2,
-        "page_size": 20,
+        "page_size": 10,
         "assess_files": True,
         "global_rank": True,
         "global_limit": 1000,
