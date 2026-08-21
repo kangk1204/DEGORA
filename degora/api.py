@@ -378,6 +378,27 @@ INDEX_HTML = """<!doctype html>
     .sample-label { grid-area: label; color: var(--ink); font-weight: 620; }
     .sample-traits { grid-area: traits; color: var(--muted); font-size: 10px; }
     .sample-label-missing { color: var(--muted); font-weight: 500; font-style: italic; }
+    .prepared-blocked {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+      padding: 10px 12px;
+      border: 1px solid #f0b8b8;
+      border-radius: 9px;
+      background: #fff3f3;
+      color: #8b3333;
+      font-size: 12px;
+      line-height: 1.55;
+    }
+    .prepared-blocked strong { color: #6f2626; }
+    .prepared-blocked button { width: auto; min-width: 0; height: 28px; padding: 0 10px; border-radius: 7px; font-size: 11px; }
+    /* Everything stays readable and selectable; only the controls go inert. */
+    .is-unanalyzable .candidate-row { background: #f7f8f8; }
+    .is-unanalyzable .candidate-row input:disabled,
+    .is-unanalyzable .candidate-row select:disabled,
+    .is-unanalyzable .candidate-row button:disabled { opacity: 0.5; cursor: not-allowed; }
     .unusable-files ul { margin: 5px 0 6px; padding-left: 18px; }
     .unusable-files li { margin: 2px 0; }
     .unusable-files code { font-size: 11px; overflow-wrap: anywhere; }
@@ -1586,6 +1607,20 @@ INDEX_HTML = """<!doctype html>
     // actually opened the files, the row should report what was found instead
     // of the guess that sent the reader there - otherwise the same study gets
     // picked again next week.
+    // DEGORA needs two independent source units. When a preparation cannot
+    // reach that, every field below is work that will be discarded the moment
+    // a new selection is prepared - state.draft is reset on each run - so the
+    // review is not merely blocked at the end, it is pointless from the start.
+    function usableSourceUnits(prepared) {
+      const units = new Set();
+      (prepared && prepared.studies || []).forEach((study) => {
+        if (!(study.files || []).some(eligibleCandidate)) return;
+        units.add(String(study.source_unit_id || study.accession || study.canonical_id || ""));
+      });
+      units.delete("");
+      return units.size;
+    }
+
     function preparedOutcomes(state) {
       const prepared = state.prepared;
       if (!prepared) return {};
@@ -2536,9 +2571,26 @@ INDEX_HTML = """<!doctype html>
         const label = item.paper_title || item.canonical_id || item.source_unit_id || item.accession || "Unidentified publication";
         return `<div class="candidate-study"><h4>${esc(label)}</h4><p>${esc(item.reason)}</p></div>`;
       }).join("");
-      $("preparedCandidates").innerHTML = html + excluded || `<div class="discovery-empty">No candidates were prepared.</div>`;
+      const units = usableSourceUnits(state.prepared);
+      const excludedCount = (state.prepared.excluded_studies || []).length;
+      const blocked = units < 2;
+      const blockedNotice = blocked
+        ? `<div class="prepared-blocked" role="status">`
+          + `<strong>This preparation cannot be analysed.</strong> `
+          + `${units} of ${studies.length + excludedCount} prepared stud${studies.length + excludedCount === 1 ? "y" : "ies"} produced a usable candidate, `
+          + `and DEGORA needs two independent source units. The review fields below are switched off because preparing a new selection clears them — `
+          + `go back to the results, add another study, and prepare again.`
+          + `<button class="action-secondary" type="button" data-back-to-results>Back to studies</button></div>`
+        : "";
+      $("preparedCandidates").innerHTML = blockedNotice + (html + excluded || `<div class="discovery-empty">No candidates were prepared.</div>`);
+      $("preparedCandidates").classList.toggle("is-unanalyzable", blocked);
       $("preparedCandidates").querySelectorAll(".candidate-row").forEach(refreshSampleFilter);
-      $("preparedStatus").textContent = `${studies.length} studies prepared`;
+      $("preparedCandidates")
+        .querySelectorAll(".candidate-row input, .candidate-row select, .candidate-row button")
+        .forEach((control) => { control.disabled = blocked; });
+      $("preparedStatus").textContent = blocked
+        ? `${studies.length} prepared · ${units} usable`
+        : `${studies.length} studies prepared`;
       $("analysisCompleteCard").hidden = !state.run;
       if (state.run) {
         $("analysisCompleteTitle").textContent = `${speciesLabel(activeSpecies)} DEGORA analysis complete`;
@@ -2565,6 +2617,22 @@ INDEX_HTML = """<!doctype html>
         await new Promise((resolve) => setTimeout(resolve, 650));
       }
       return null;
+    }
+
+    // Prepare takes tens of seconds and its progress card sits below a full
+    // page of results, so pressing the button looked like nothing happened.
+    // Bring the card into view when the work starts, not only when it ends.
+    function revealPreparedCard() {
+      const card = $("preparedCard");
+      if (!card || card.hidden) return;
+      const box = card.getBoundingClientRect();
+      const viewport = window.innerHeight || document.documentElement.clientHeight || 0;
+      // Already comfortably on screen: scrolling again would only jitter the
+      // view under a reader who is mid-sentence.
+      if (box.top >= 0 && box.top < viewport * 0.75) return;
+      const reduced = window.matchMedia
+        && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      card.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
     }
 
     async function prepareSelectedStudies({ recordIds: explicitIds = null } = {}) {
@@ -2595,6 +2663,7 @@ INDEX_HTML = """<!doctype html>
         invalidateAtlasContext();
         renderPreparedState();
         updateSelectedStatus();
+        revealPreparedCard();
       }
       try {
         const started = await postJson("/api/discovery/prepare-jobs", {
@@ -2613,7 +2682,9 @@ INDEX_HTML = """<!doctype html>
         state.cloneCounter = 0;
         if (activeSpecies === requestSpecies) {
           renderPreparedState();
-          $("preparedCard").scrollIntoView({ behavior: "smooth", block: "start" });
+          // Usually a no-op now: the card was brought into view when the work
+          // started, so a reader who scrolled away on purpose is left alone.
+          revealPreparedCard();
         }
       } catch (error) {
         if (requestId !== state.prepareRequest) return;
@@ -2650,6 +2721,20 @@ INDEX_HTML = """<!doctype html>
     function updateAnalysisEligibility() {
       const rows = selectedCandidateRows();
       $("preparedCandidates").querySelectorAll(".candidate-row").forEach(updateSampleCounts);
+      // A switched-off form must not also be painted red for being incomplete.
+      const blockedState = activeDiscoveryState();
+      if (blockedState.prepared && usableSourceUnits(blockedState.prepared) < 2) {
+        $("preparedCandidates").querySelectorAll("[aria-invalid]").forEach((node) => {
+          node.removeAttribute("aria-invalid");
+        });
+        $("runDiscoveryAnalysis").disabled = true;
+        $("runDiscoveryAnalysis").textContent = "Run species-specific DEGORA";
+        $("analysisEligibility").textContent =
+          `Not analysable: ${usableSourceUnits(blockedState.prepared)} usable stud`
+          + `${usableSourceUnits(blockedState.prepared) === 1 ? "y" : "ies"} in this preparation, and DEGORA needs two `
+          + `independent ${speciesLabel(activeSpecies)} source units. Add another study and prepare again.`;
+        return;
+      }
       const units = new Set(rows.map((row) => row.dataset.sourceUnit || row.dataset.accession));
       const hasFallback = rows.some((row) => row.dataset.mode === "fallback");
       const textValue = (row, selector) => (row.querySelector(selector)?.value || "").trim();
@@ -3563,6 +3648,11 @@ INDEX_HTML = """<!doctype html>
       if (clone) clone.scrollIntoView({ behavior: "smooth", block: "nearest" });
     });
     $("backToResults").addEventListener("click", () => $("discoveryResultsCard").scrollIntoView({ behavior: "smooth" }));
+    $("preparedCandidates").addEventListener("click", (event) => {
+      if (event.target.closest("[data-back-to-results]")) {
+        $("discoveryResultsCard").scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    });
     $("runDiscoveryAnalysis").addEventListener("click", runSelectedAnalysis);
     $("openAnalysis").addEventListener("click", openDiscoveryAnalysis);
     $("downloadAnalysisExcel").addEventListener("click", downloadAnalysisExcel);
