@@ -35,7 +35,7 @@ def test_quickstart_script_parses() -> None:
 def test_quickstart_help_lists_every_documented_option() -> None:
     result = subprocess.run([_bash(), str(SCRIPT), "--help"], capture_output=True, text=True, cwd=ROOT)
     assert result.returncode == 0, result.stderr
-    for option in ("--port", "--dir", "--config", "--update", "--no-browser", "--no-demo"):
+    for option in ("--port", "--dir", "--ref", "--config", "--update", "--no-browser", "--no-demo"):
         assert option in result.stdout
     # The help text stops at the end of the comment banner.
     assert "set -euo pipefail" not in result.stdout
@@ -47,6 +47,7 @@ def test_quickstart_help_lists_every_documented_option() -> None:
         (["--port", "not-a-number"], "whole number"),
         (["--port", "0"], "between 1 and 65535"),
         (["--port"], "needs a value"),
+        (["--ref"], "needs a value"),
         (["--nonsense"], "unknown option"),
     ],
 )
@@ -94,3 +95,162 @@ def test_readme_documents_the_quickstart_script() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     assert "scripts/degora_quickstart.sh" in readme
     assert "--no-browser" in readme
+
+
+# --- --ref behaviour -------------------------------------------------------
+# `--ref` is the difference between a reviewer running the branch under test and
+# a reviewer silently running the default branch, so these exercise real git.
+
+
+def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "user.name=Test",
+            "-c",
+            "commit.gpgsign=false",
+            *args,
+        ],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+
+def _write(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+
+
+def _origin_with_a_branch(tmp_path: Path) -> tuple[Path, str, str]:
+    """An origin whose `feature` branch is one commit ahead of `main`."""
+
+    origin = tmp_path / "origin"
+    origin.mkdir()
+    _git(origin, "init", "--quiet", "--initial-branch=main", ".")
+    _write(origin / "pyproject.toml", '[project]\nname = "degora"\nversion = "0"\n')
+    _write(origin / "payload.txt", "base\n")
+    _git(origin, "add", "-A")
+    _git(origin, "commit", "--quiet", "-m", "base")
+    base = _git(origin, "rev-parse", "HEAD").stdout.strip()
+    _git(origin, "checkout", "--quiet", "-b", "feature")
+    _write(origin / "payload.txt", "feature\n")
+    _git(origin, "commit", "--quiet", "-am", "feature")
+    feature = _git(origin, "rev-parse", "HEAD").stdout.strip()
+    _git(origin, "checkout", "--quiet", "main")
+    return origin, base, feature
+
+
+def _checkout_running_the_script(tmp_path: Path, origin: Path) -> Path:
+    repo = tmp_path / "checkout"
+    subprocess.run(["git", "clone", "--quiet", str(origin), str(repo)], check=True)
+    # Untracked, so switching branches never rewrites the script while it runs.
+    (repo / "scripts").mkdir(exist_ok=True)
+    shutil.copy2(SCRIPT, repo / "scripts" / "degora_quickstart.sh")
+    return repo
+
+
+def _env_that_stops_after_git(tmp_path: Path) -> dict[str, str]:
+    """A PATH whose python passes the version gate but cannot build a venv.
+
+    The script then exits right after the git step, which is the part under
+    test, without spending a minute on pip.
+    """
+
+    bin_dir = tmp_path / "stub-bin"
+    bin_dir.mkdir(exist_ok=True)
+    for tool in (
+        "git",
+        "uname",
+        "grep",
+        "awk",
+        "sed",
+        "dirname",
+        "mktemp",
+        "rm",
+        "mkdir",
+        "cat",
+        "tee",
+        "bash",
+    ):
+        source = shutil.which(tool)
+        if source and not (bin_dir / tool).exists():
+            (bin_dir / tool).symlink_to(source)
+    stub = bin_dir / "python3"
+    stub.write_text(
+        "#!/bin/sh\n"
+        'case "$1" in\n'
+        '  --version) echo "Python 3.12.0"; exit 0 ;;\n'
+        "  -c) exit 0 ;;\n"
+        '  -m) [ "$2" = venv ] && { echo "stub: venv disabled" >&2; exit 1; }; exit 0 ;;\n'
+        "esac\nexit 0\n",
+        encoding="utf-8",
+    )
+    stub.chmod(0o755)
+    return dict(os.environ, PATH=str(bin_dir))
+
+
+def _run_quickstart(repo: Path, env: dict[str, str], *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [_bash(), str(repo / "scripts" / "degora_quickstart.sh"), *args],
+        capture_output=True,
+        text=True,
+        cwd=repo,
+        env=env,
+    )
+
+
+def test_ref_checks_out_the_requested_branch(tmp_path: Path) -> None:
+    origin, base, feature = _origin_with_a_branch(tmp_path)
+    repo = _checkout_running_the_script(tmp_path, origin)
+    assert _git(repo, "rev-parse", "HEAD").stdout.strip() == base
+
+    result = _run_quickstart(repo, _env_that_stops_after_git(tmp_path), "--ref", "feature")
+
+    assert "Checking out feature" in result.stdout, result.stdout + result.stderr
+    assert _git(repo, "rev-parse", "HEAD").stdout.strip() == feature
+    assert (repo / "payload.txt").read_text(encoding="utf-8") == "feature\n"
+
+
+def test_ref_fast_forwards_a_stale_local_branch(tmp_path: Path) -> None:
+    """A reviewer who ran the branch last week must not silently serve old code."""
+
+    origin, base, feature = _origin_with_a_branch(tmp_path)
+    repo = _checkout_running_the_script(tmp_path, origin)
+    _git(repo, "checkout", "--quiet", "-b", "feature", base)
+    assert _git(repo, "rev-parse", "HEAD").stdout.strip() == base
+
+    result = _run_quickstart(repo, _env_that_stops_after_git(tmp_path), "--ref", "feature")
+
+    assert _git(repo, "rev-parse", "HEAD").stdout.strip() == feature, result.stdout + result.stderr
+
+
+def test_ref_refuses_to_run_a_diverged_local_branch(tmp_path: Path) -> None:
+    origin, base, _feature = _origin_with_a_branch(tmp_path)
+    repo = _checkout_running_the_script(tmp_path, origin)
+    _git(repo, "checkout", "--quiet", "-b", "feature", base)
+    _write(repo / "payload.txt", "local divergence\n")
+    _git(repo, "commit", "--quiet", "-am", "local work")
+    diverged = _git(repo, "rev-parse", "HEAD").stdout.strip()
+
+    result = _run_quickstart(repo, _env_that_stops_after_git(tmp_path), "--ref", "feature")
+
+    assert result.returncode != 0
+    assert "diverged" in result.stderr
+    # The local work is still there; nothing was discarded to force the ref.
+    assert _git(repo, "rev-parse", "HEAD").stdout.strip() == diverged
+
+
+def test_ref_reports_an_unknown_name_instead_of_serving_the_wrong_code(tmp_path: Path) -> None:
+    origin, base, _feature = _origin_with_a_branch(tmp_path)
+    repo = _checkout_running_the_script(tmp_path, origin)
+
+    result = _run_quickstart(repo, _env_that_stops_after_git(tmp_path), "--ref", "no-such-branch")
+
+    assert result.returncode != 0
+    assert "could not fetch" in result.stderr
+    assert _git(repo, "rev-parse", "HEAD").stdout.strip() == base

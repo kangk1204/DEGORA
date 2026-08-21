@@ -12,6 +12,7 @@
 #   --port N        Preferred browser/API port (default 8765; the next free
 #                   port is used when it is taken).
 #   --dir PATH      Where to place or find the checkout when run standalone.
+#   --ref NAME      Branch or tag to check out (default: the repository default).
 #   --config PATH   Serve this DEGORA config instead of the bundled demo.
 #   --update        git pull an existing checkout before installing.
 #   --no-browser    Do not try to open a browser (headless or remote shells).
@@ -22,6 +23,7 @@ set -euo pipefail
 
 PORT=8765
 TARGET_DIR=""
+GIT_REF=""
 CONFIG_PATH=""
 DO_UPDATE=0
 OPEN_BROWSER=1
@@ -37,6 +39,7 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --port) [ "$#" -ge 2 ] || die "--port needs a value"; PORT="$2"; shift 2 ;;
     --dir) [ "$#" -ge 2 ] || die "--dir needs a value"; TARGET_DIR="$2"; shift 2 ;;
+    --ref) [ "$#" -ge 2 ] || die "--ref needs a value"; GIT_REF="$2"; shift 2 ;;
     --config) [ "$#" -ge 2 ] || die "--config needs a value"; CONFIG_PATH="$2"; shift 2 ;;
     --update) DO_UPDATE=1; shift ;;
     --no-browser) OPEN_BROWSER=0; shift ;;
@@ -115,7 +118,23 @@ else
 fi
 cd "$REPO_ROOT"
 
-if [ "$DO_UPDATE" -eq 1 ]; then
+if [ -n "$GIT_REF" ]; then
+  note "Checking out $GIT_REF"
+  git fetch --quiet origin "$GIT_REF" \
+    || die "could not fetch '$GIT_REF' from origin; check the branch or tag name."
+  REF_COMMIT="$(git rev-parse --verify --quiet "FETCH_HEAD^{commit}")" \
+    || die "'$GIT_REF' does not point at a commit."
+  if git checkout --quiet "$GIT_REF" 2>/dev/null; then
+    # A branch or tag of that name already existed locally; make sure it is
+    # not an old copy, otherwise the run would silently serve stale code.
+    if [ "$(git rev-parse HEAD)" != "$REF_COMMIT" ]; then
+      git merge --ff-only --quiet "$REF_COMMIT" 2>/dev/null \
+        || die "local '$GIT_REF' has diverged from origin; rename or delete it and re-run."
+    fi
+  else
+    git checkout --quiet -b "$GIT_REF" "$REF_COMMIT" || die "could not check out '$GIT_REF'."
+  fi
+elif [ "$DO_UPDATE" -eq 1 ]; then
   note "Updating the checkout"
   git pull --ff-only --quiet || die "git pull failed; resolve local changes and re-run without --update."
 fi
