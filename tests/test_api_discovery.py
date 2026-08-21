@@ -216,7 +216,7 @@ def test_discovery_api_search_prepare_analyze_and_run_query_are_species_scoped(t
 
     assert search["species"]["key"] == "human"
     assert search["page"] == 2
-    assert search["page_size"] == 20
+    assert search["page_size"] == 10
     assert search_calls[0] == {
         "assess_files": True,
         "global_rank": True,

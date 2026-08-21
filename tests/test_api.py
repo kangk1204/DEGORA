@@ -149,7 +149,7 @@ def test_local_api_serves_health_gene_list_and_detail(tmp_path) -> None:
     assert 'data-species="human"' in html
     assert 'data-species="mouse"' in html
     assert 'aria-pressed="true"' in html
-    assert "20 per page · up to 1,000 ranked" in html
+    assert "10 per page · up to 1,000 ranked" in html
     assert "MAX_SELECTED_STUDIES = 20" in html
     assert "Find Human or Mouse studies" in html
     assert ".discovery-search input { width: 100%; min-width: 0; }" in html
@@ -1195,3 +1195,40 @@ def test_dashboard_stops_a_review_that_can_never_be_analysed() -> None:
     # The controls go inert; the file names and reasons stay readable.
     assert '.querySelectorAll(".candidate-row input, .candidate-row select, .candidate-row button")' in html
     assert "Not analysable: " in html
+
+
+def test_a_browser_page_holds_ten_publications() -> None:
+    """The page size is stated in four places and they have to agree.
+
+    The number appears in the dashboard constant, the caption a reader sees,
+    the CLI's own paging, and the ranking contract written into every audit
+    bundle - so a change in one place that misses the others publishes a claim
+    the tool does not honour.
+    """
+
+    import inspect
+
+    from degora import discovery_federated
+    from degora.api import INDEX_HTML
+    from degora.cli import DISCOVERY_PAGE_SIZE
+    from degora.discovery import DEFAULT_PAGE_SIZE
+
+    assert DEFAULT_PAGE_SIZE == 10
+    assert DISCOVERY_PAGE_SIZE == DEFAULT_PAGE_SIZE
+    assert f"const DISCOVERY_PAGE_SIZE = {DEFAULT_PAGE_SIZE};" in INDEX_HTML
+    assert f"{DEFAULT_PAGE_SIZE} per page · up to 1,000 ranked" in INDEX_HTML
+    assert f"{DEFAULT_PAGE_SIZE} rows per browser page" in inspect.getsource(discovery_federated)
+
+
+def test_a_page_no_longer_exhausts_the_selection_budget_on_its_own() -> None:
+    """Ten per page against a cap of twenty is why the cap now spans pages.
+
+    With both at twenty, ticking select-all on page one spent the whole budget
+    and page two was locked before the reader ever reached it.
+    """
+
+    from degora.api import INDEX_HTML
+    from degora.discovery import DEFAULT_PAGE_SIZE, MAX_SELECTED_STUDIES
+
+    assert DEFAULT_PAGE_SIZE < MAX_SELECTED_STUDIES
+    assert f"const MAX_SELECTED_STUDIES = {MAX_SELECTED_STUDIES};" in INDEX_HTML

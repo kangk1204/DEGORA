@@ -15,7 +15,7 @@ from . import format_version_info, runtime_version_info
 DEFAULT_OUTPUT_DIR = Path("outputs/results/degora-run")
 DEFAULT_HARMONIZED_DIR = Path("data/deg/harmonized")
 WARNING_DISPLAY_LIMIT = 8
-DISCOVERY_PAGE_SIZE = 20
+DISCOVERY_PAGE_SIZE = 10
 DISCOVERY_MAX_LIMIT = 1000
 
 

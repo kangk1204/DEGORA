@@ -1015,7 +1015,7 @@ INDEX_HTML = """<!doctype html>
         <div class="cross-species-action"><button id="discoverySearchBoth" class="action-secondary" type="button">Run separate Human + Mouse searches</button></div>
         <div class="policy-row" aria-label="Analysis policy">
           <span class="policy-chip">Human and Mouse never pooled</span>
-          <span class="policy-chip">20 per page · up to 1,000 ranked</span>
+          <span class="policy-chip">10 per page · up to 1,000 ranked</span>
         </div>
       </div>
 
@@ -1478,7 +1478,7 @@ INDEX_HTML = """<!doctype html>
       return response.json();
     }
 
-    const DISCOVERY_PAGE_SIZE = 20;
+    const DISCOVERY_PAGE_SIZE = 10;
     const DISCOVERY_GLOBAL_RANK_LIMIT = 1000;
     const MAX_SELECTED_STUDIES = 20;
     const newSpeciesState = () => ({
@@ -4716,7 +4716,7 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
         return rows
 
     def _discovery_search(self, params: dict[str, list[str]]) -> dict[str, Any]:
-        from .discovery import DEFAULT_GLOBAL_RANK_LIMIT, search_geo
+        from .discovery import DEFAULT_GLOBAL_RANK_LIMIT, DEFAULT_PAGE_SIZE, search_geo
 
         query = _text_param(params, "q", maximum=200)
         species = _text_param(params, "species", maximum=32)
@@ -4727,7 +4727,7 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
             query,
             species,
             page=page,
-            page_size=20,
+            page_size=DEFAULT_PAGE_SIZE,
             assess_files=True,
             global_rank=True,
             global_limit=DEFAULT_GLOBAL_RANK_LIMIT,
@@ -4866,11 +4866,13 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
         }
 
     def _discovery_publication_records(self, search_id: str, params: dict[str, list[str]]) -> dict[str, Any]:
+        from .discovery import DEFAULT_PAGE_SIZE
+
         search = self.server.discovery_search_store.get_search(search_id)
         if search is None:
             raise FileNotFoundError("discovery search was not found")
         page = _int_param(params, "page", 1, minimum=1, maximum=500)
-        page_size = _int_param(params, "page_size", 20, minimum=1, maximum=20)
+        page_size = _int_param(params, "page_size", DEFAULT_PAGE_SIZE, minimum=1, maximum=20)
         sort_by = _text_param(params, "sort_by", "readiness", maximum=40).lower()
         if sort_by not in DISCOVERY_SEARCH_SORT_COLUMNS:
             allowed = ", ".join(sorted(DISCOVERY_SEARCH_SORT_COLUMNS))
