@@ -382,6 +382,11 @@ INDEX_HTML = """<!doctype html>
     .unusable-files li { margin: 2px 0; }
     .unusable-files code { font-size: 11px; overflow-wrap: anywhere; }
     .sample-labels-missing { grid-column: 1 / -1; color: #7a5a12; }
+    .sample-bulk { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 5px; padding-bottom: 2px; }
+    .sample-bulk .sample-filter { flex: 1 1 130px; min-width: 110px; height: 26px; font-size: 11px; }
+    .sample-bulk button { width: auto; min-width: 0; height: 26px; padding: 0 8px; border-radius: 6px; font-size: 11px; }
+    .sample-bulk-count { color: var(--muted); font-size: 10px; }
+    .sample-item.is-filtered-out { display: none; }
     .sample-item select { grid-area: select; }
     .sample-item select { height: 28px; padding: 0 5px; font-size: 11px; }
     .status-pill { display: inline-flex; padding: 4px 8px; border-radius: 999px; background: #e7f5f2; color: #0f5d56; font-size: 11px; font-weight: 720; }
@@ -1577,7 +1582,43 @@ INDEX_HTML = """<!doctype html>
       return value == null ? "" : String(value);
     }
 
-    function readinessBadge(study) {
+    // The search badge is an estimate from metadata. Once preparation has
+    // actually opened the files, the row should report what was found instead
+    // of the guess that sent the reader there - otherwise the same study gets
+    // picked again next week.
+    function preparedOutcomes(state) {
+      const prepared = state.prepared;
+      if (!prepared) return {};
+      const outcomes = {};
+      const put = (keys, outcome) => {
+        keys.filter(Boolean).forEach((key) => { outcomes[String(key)] = outcome; });
+      };
+      (prepared.studies || []).forEach((study) => {
+        const usable = (study.files || []).filter(eligibleCandidate);
+        const outcome = !usable.length
+          ? { label: "no usable table", ok: false, reason: "Preparation opened every linked file and none was a DEG table or expression matrix." }
+          : usable.some(isAuthorReviewable)
+          ? { label: "author DEG ready", ok: true, reason: "An author DEG table was resolved; confirm the contrast direction." }
+          : { label: "needs group assignment", ok: true, reason: "Only an expression matrix was resolved; assign control and treatment samples." };
+        put([publicationKey(study), study.accession, study.canonical_id, study.source_unit_id], outcome);
+      });
+      (prepared.excluded_studies || []).forEach((item) => {
+        put(
+          [item.canonical_id, item.accession, item.source_unit_id, item.paper_title],
+          { label: "excluded", ok: false, reason: item.reason || "" },
+        );
+      });
+      return outcomes;
+    }
+
+    function readinessBadge(study, outcomes) {
+      const outcome = outcomes
+        ? outcomes[publicationKey(study)] || outcomes[String(study.accession || "")] || null
+        : null;
+      if (outcome) {
+        return `<span class="deg-input ${outcome.ok ? "author_deg_likely" : "unresolved"}"`
+          + ` title="${esc(outcome.reason)}">${esc(`prepared · ${outcome.label}`)}</span>`;
+      }
       const detail = study.data_readiness && typeof study.data_readiness === "object" ? study.data_readiness : {};
       const readiness = detail.verification_state || detail.tier || study.readiness || study.readiness_label || study.status || "provisional";
       const verified = Boolean(study.verified || study.final || study.readiness_verified || readiness === "verified_ready");
@@ -1818,6 +1859,7 @@ INDEX_HTML = """<!doctype html>
           : `<div class="discovery-empty">No ${esc(speciesLabel(activeSpecies))} publication records were returned on this page.</div>`;
       } else {
         const blockedReason = pageSelectability(state);
+        const outcomes = preparedOutcomes(state);
         const capReached = state.selected.size >= MAX_SELECTED_STUDIES;
         const rows = state.studies.map((study) => {
           const key = publicationKey(study);
@@ -1849,7 +1891,7 @@ INDEX_HTML = """<!doctype html>
             <td>${esc(study.journal || "—")}</td>
             <td>${esc(study.year || "—")}</td>
             <td><span class="mobile-field-label">Linked data</span>${esc(dataSources || "—")}</td>
-            <td><span class="mobile-field-label">DEG readiness</span>${readinessBadge(study)}<span class="dataset-title">Relevance ${esc(relevanceText(study))}</span></td>
+            <td><span class="mobile-field-label">DEG readiness</span>${readinessBadge(study, outcomes)}<span class="dataset-title">Relevance ${esc(relevanceText(study))}</span></td>
             <td><button class="action-secondary study-inspect" type="button" data-study-inspect="${esc(key)}" aria-label="Inspect DEG inputs for ${esc(title)}">Inspect</button></td>
           </tr>`;
         }).join("");
@@ -2308,6 +2350,76 @@ INDEX_HTML = """<!doctype html>
       </div>`;
     }
 
+    // Twenty-odd samples assigned one dropdown at a time is where attention
+    // runs out. Filtering by the label text keeps the choice explicit and
+    // reviewable - the reader still sees which rows moved - while removing the
+    // clicking. Any bulk move clears the direction attestations, because they
+    // were made about a different assignment.
+    function sampleBulkHtml() {
+      return `<div class="sample-bulk">
+        <input class="sample-filter" type="search" placeholder="Filter by label, e.g. uninduced" aria-label="Filter samples by label" autocomplete="off">
+        <button class="action-secondary sample-bulk-apply" type="button" data-group="control">Set Control</button>
+        <button class="action-secondary sample-bulk-apply" type="button" data-group="treatment">Set Treatment</button>
+        <button class="action-secondary sample-bulk-apply" type="button" data-group="">Set Ignore</button>
+        <span class="sample-bulk-count" aria-live="polite"></span>
+      </div>`;
+    }
+
+    function sampleFilterText(item) {
+      return String(item.textContent || "").toLowerCase();
+    }
+
+    function matchingSampleItems(row) {
+      const field = row.querySelector(".sample-filter");
+      const needle = String(field ? field.value : "").trim().toLowerCase();
+      const items = [...row.querySelectorAll(".sample-item")];
+      return needle ? items.filter((item) => sampleFilterText(item).includes(needle)) : items;
+    }
+
+    function refreshSampleFilter(row) {
+      const field = row.querySelector(".sample-filter");
+      if (!field) return;
+      const needle = field.value.trim().toLowerCase();
+      const items = [...row.querySelectorAll(".sample-item")];
+      let matched = 0;
+      items.forEach((item) => {
+        const hit = !needle || sampleFilterText(item).includes(needle);
+        item.classList.toggle("is-filtered-out", Boolean(needle) && !hit);
+        if (hit) matched += 1;
+      });
+      const counter = row.querySelector(".sample-bulk-count");
+      if (counter) {
+        counter.textContent = needle
+          ? `${matched} of ${items.length} match`
+          : `${items.length} sample${items.length === 1 ? "" : "s"}`;
+      }
+      // Matching is plain substring, so "induced" also matches "uninduced".
+      // The visible rows are the preview; the count on the button makes the
+      // press a decision about a stated number rather than a hopeful one.
+      const names = { control: "Control", treatment: "Treatment", "": "Ignore" };
+      row.querySelectorAll(".sample-bulk-apply").forEach((button) => {
+        button.textContent = `Set ${names[button.dataset.group] || "Ignore"} (${matched})`;
+        button.disabled = matched === 0;
+      });
+    }
+
+    function applySampleBulk(row, group) {
+      const targets = matchingSampleItems(row);
+      if (!targets.length) return;
+      targets.forEach((item) => {
+        const select = item.querySelector("[data-sample]");
+        if (select) select.value = group;
+      });
+      // The attestations below were ticked about the previous assignment.
+      ["direction-confirmed", "biological-replicates-confirmed"].forEach((name) => {
+        const box = row.querySelector(`.${name}`);
+        if (box && box.checked) box.checked = false;
+      });
+      updateSampleCounts(row);
+      capturePreparedDraft();
+      updateAnalysisEligibility();
+    }
+
     function fallbackCandidateHtml(study, candidate) {
       const inspection = candidate.inspection || {};
       const draft = activeDiscoveryState().draft[candidate.candidate_id] || {};
@@ -2357,7 +2469,7 @@ INDEX_HTML = """<!doctype html>
           <label class="confirm-line"><input class="direction-confirmed" type="checkbox" ${draft.direction ? "checked" : ""}> Groups and treatment-minus-control direction verified</label>
           <label class="confirm-line"><input class="biological-replicates-confirmed" type="checkbox" ${draft.biologicalReplicates ? "checked" : ""}> Selected columns are independent biological replicates, not lanes, technical repeats, paired/repeated samples, or cells</label>
         </div>
-        <div class="sample-groups" role="group" aria-label="Assign independent biological control and treatment samples"><div class="sample-counts" aria-live="polite"><span>Control <strong data-control-count>0</strong></span><span>Treatment <strong data-treatment-count>0</strong></span><span>Required: 2 + 2</span>${columns.length && !labelledCount ? `<span class="sample-labels-missing">GEO returned no matching sample labels for these columns — check the series page before assigning.</span>` : ""}</div>${samples || `<span class="candidate-note">No numeric sample columns detected.</span>`}</div>
+        <div class="sample-groups" role="group" aria-label="Assign independent biological control and treatment samples"><div class="sample-counts" aria-live="polite"><span>Control <strong data-control-count>0</strong></span><span>Treatment <strong data-treatment-count>0</strong></span><span>Required: 2 + 2</span>${columns.length && !labelledCount ? `<span class="sample-labels-missing">GEO returned no matching sample labels for these columns — check the series page before assigning.</span>` : ""}</div>${columns.length > 4 ? sampleBulkHtml() : ""}${samples || `<span class="candidate-note">No numeric sample columns detected.</span>`}</div>
       </div>`;
     }
 
@@ -2425,6 +2537,7 @@ INDEX_HTML = """<!doctype html>
         return `<div class="candidate-study"><h4>${esc(label)}</h4><p>${esc(item.reason)}</p></div>`;
       }).join("");
       $("preparedCandidates").innerHTML = html + excluded || `<div class="discovery-empty">No candidates were prepared.</div>`;
+      $("preparedCandidates").querySelectorAll(".candidate-row").forEach(refreshSampleFilter);
       $("preparedStatus").textContent = `${studies.length} studies prepared`;
       $("analysisCompleteCard").hidden = !state.run;
       if (state.run) {
@@ -2668,7 +2781,19 @@ INDEX_HTML = """<!doctype html>
       $("runDiscoveryAnalysis").disabled = !eligible || state.analyzing;
       $("runDiscoveryAnalysis").textContent = state.analyzing ? "Running DEGORA..." : "Run species-specific DEGORA";
       if (units.size < 2) {
-        $("analysisEligibility").textContent = `Select candidates from at least two independent ${speciesLabel(activeSpecies)} studies.`;
+        // "Select candidates from at least two independent studies" is true and
+        // useless when only one of the prepared studies has a candidate to
+        // select. Say how much supply there is.
+        const prepared = state.prepared || {};
+        const preparedStudies = prepared.studies || [];
+        const usable = preparedStudies.filter((study) => (study.files || []).some(eligibleCandidate)).length;
+        const total = preparedStudies.length + (prepared.excluded_studies || []).length;
+        const supply = total
+          ? ` ${usable} of ${total} prepared stud${total === 1 ? "y" : "ies"} produced a usable candidate.`
+          : "";
+        $("analysisEligibility").textContent = units.size === 1
+          ? `One independent ${speciesLabel(activeSpecies)} study is selected; DEGORA needs two.${supply}`
+          : `Select candidates from at least two independent ${speciesLabel(activeSpecies)} studies.${supply}`;
       } else if (!reviewComplete) {
         $("analysisEligibility").textContent = hasFallback
           ? "Complete each exact contrast and direction confirmation; fallback matrices also require scale, biological-replicate attestation, and 2 + 2 sample assignment."
@@ -3401,8 +3526,23 @@ INDEX_HTML = """<!doctype html>
     $("downloadSearchExcel").addEventListener("click", downloadSearchExcel);
     $("prepareSelected").addEventListener("click", prepareSelectedStudies);
     $("preparedCandidates").addEventListener("change", () => { capturePreparedDraft(); updateAnalysisEligibility(); });
-    $("preparedCandidates").addEventListener("input", () => { capturePreparedDraft(); updateAnalysisEligibility(); });
+    $("preparedCandidates").addEventListener("input", (event) => {
+      const filter = event.target.closest(".sample-filter");
+      if (filter) {
+        const filterRow = filter.closest(".candidate-row");
+        if (filterRow) refreshSampleFilter(filterRow);
+        return;
+      }
+      capturePreparedDraft();
+      updateAnalysisEligibility();
+    });
     $("preparedCandidates").addEventListener("click", (event) => {
+      const bulk = event.target.closest(".sample-bulk-apply");
+      if (bulk) {
+        const bulkRow = bulk.closest(".candidate-row");
+        if (bulkRow) applySampleBulk(bulkRow, bulk.dataset.group || "");
+        return;
+      }
       const button = event.target.closest(".clone-author-candidate");
       if (!button) return;
       const row = button.closest(".candidate-row");
