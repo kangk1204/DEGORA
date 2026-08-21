@@ -33,6 +33,7 @@ from .discovery import (
     DEFAULT_PACE_SECONDS,
     DiscoveryError,
     DiscoveryUnavailableError,
+    DiscoveryUnsafeArchiveError,
     MAX_CANDIDATE_BYTES,
     MAX_JSON_BYTES,
     MAX_SOFT_BYTES,
@@ -779,16 +780,59 @@ def download_public_candidate(
     }
 
 
+# A publisher that has retired a supplementary file usually still answers the
+# request - with an HTML error page, a login redirect, or the wrong format
+# entirely.  "not a valid ZIP file" sends the reader looking for a corrupt
+# download; naming what actually arrived sends them to the right place.
+_PAYLOAD_SIGNATURES: tuple[tuple[bytes, str], ...] = (
+    (b"\x1f\x8b", "a gzip stream (.gz), not a ZIP"),
+    (b"BZh", "a bzip2 stream, not a ZIP"),
+    (b"\xfd7zXZ\x00", "an xz stream, not a ZIP"),
+    (b"7z\xbc\xaf\x27\x1c", "a 7-Zip archive, not a ZIP"),
+    (b"Rar!", "a RAR archive, not a ZIP"),
+    (b"%PDF", "a PDF, not a data archive"),
+    (b"\x89PNG", "a PNG image, not a data archive"),
+    (b"\xff\xd8\xff", "a JPEG image, not a data archive"),
+    (b"\xd0\xcf\x11\xe0", "a legacy Office document (.xls/.doc), not a ZIP"),
+)
+_HTML_MARKERS: tuple[bytes, ...] = (b"<!doctype html", b"<html", b"<head", b"<?xml")
+
+
+def describe_unexpected_payload(payload: bytes) -> str:
+    """Name what a download turned out to be when it is not the ZIP we asked for."""
+
+    if not payload:
+        return "an empty response"
+    for signature, label in _PAYLOAD_SIGNATURES:
+        if payload.startswith(signature):
+            return label
+    head = payload[:1024].lstrip().lower()
+    for marker in _HTML_MARKERS:
+        if head.startswith(marker):
+            return "a web page, so the file has most likely moved or now needs a login"
+    if payload[257:262] == b"ustar":
+        return "a tar archive, not a ZIP"
+    if head[:1] in (b"{", b"[") and b'"' in head:
+        return "a JSON document, not a data archive"
+    try:
+        text = payload[:256].decode("utf-8")
+    except UnicodeDecodeError:
+        return "an unrecognized binary format"
+    if text.strip():
+        return "plain text, not a ZIP"
+    return "an unrecognized binary format"
+
+
 def _safe_archive_member(info: zipfile.ZipInfo) -> None:
     name = info.filename
     path = PurePosixPath(name)
     if not name or path.is_absolute() or ".." in path.parts:
-        raise DiscoveryError("archive contains an unsafe member path")
+        raise DiscoveryUnsafeArchiveError("archive contains an unsafe member path")
     mode = info.external_attr >> 16
     if stat.S_ISLNK(mode):
-        raise DiscoveryError("archive contains a symbolic link")
+        raise DiscoveryUnsafeArchiveError("archive contains a symbolic link")
     if info.file_size > MAX_ARCHIVE_MEMBER_BYTES:
-        raise DiscoveryError("archive contains an oversized member")
+        raise DiscoveryUnsafeArchiveError("archive contains an oversized member")
 
 
 def inspect_public_archive(
@@ -806,7 +850,7 @@ def inspect_public_archive(
     def visit(data: bytes, prefix: str, depth: int) -> None:
         nonlocal total_members, total_expanded
         if depth > max_depth:
-            raise DiscoveryError("nested ZIP depth exceeds the safety limit")
+            raise DiscoveryUnsafeArchiveError("nested ZIP depth exceeds the safety limit")
         try:
             with zipfile.ZipFile(io.BytesIO(data)) as archive:
                 for info in archive.infolist():
@@ -815,10 +859,10 @@ def inspect_public_archive(
                     _safe_archive_member(info)
                     total_members += 1
                     if total_members > MAX_ARCHIVE_MEMBERS:
-                        raise DiscoveryError("archive contains too many members")
+                        raise DiscoveryUnsafeArchiveError("archive contains too many members")
                     total_expanded += info.file_size
                     if total_expanded > MAX_ARCHIVE_EXPANDED_BYTES:
-                        raise DiscoveryError("archive expanded-size cap exceeded")
+                        raise DiscoveryUnsafeArchiveError("archive expanded-size cap exceeded")
                     member_name = f"{prefix}{info.filename}"
                     lower = info.filename.lower()
                     if lower.endswith(".zip"):
@@ -839,7 +883,9 @@ def inspect_public_archive(
                             }
                         )
         except zipfile.BadZipFile as exc:
-            raise DiscoveryError("candidate archive is not a valid ZIP file") from exc
+            raise DiscoveryError(
+                f"candidate archive is not a valid ZIP file: the download is {describe_unexpected_payload(data)}"
+            ) from exc
 
     visit(payload, "", 0)
     return records

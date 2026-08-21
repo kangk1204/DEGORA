@@ -348,3 +348,208 @@ def test_prepared_author_candidate_is_compatible_with_run_discovery_analysis(tmp
 
     assert result["status"] == "complete"
     assert Path(result["db_path"]).is_file()
+
+
+# --- one bad candidate must not cost the whole selection --------------------
+# A researcher who selects 20 studies and loses all of them to a single
+# retired supplementary file has to start the download over from nothing.
+
+
+class FlakyTransport(FakeTransport):
+    """Serves payloads, and raises whatever a real public source might raise."""
+
+    def __init__(self, payloads: dict[str, bytes], failures: dict[str, Exception] | None = None) -> None:
+        super().__init__(payloads)
+        self.failures = failures or {}
+
+    def get_bytes(self, url: str, *, max_bytes: int) -> bytes:
+        self.urls.append(url)
+        failure = self.failures.get(url)
+        if failure is not None:
+            raise failure
+        return super().get_bytes(url, max_bytes=max_bytes)
+
+
+def _html_error_page() -> bytes:
+    return b"<!DOCTYPE html>\n<html><head><title>404 Not Found</title></head><body>Gone</body></html>\n"
+
+
+def _zip_candidate(url: str, name: str = "supplement.zip") -> dict:
+    return {"url": url, "name": name, "role": "deg_table"}
+
+
+def _healthy_record() -> dict:
+    return _record(canonical_id="pmid:2", source_unit_id="PMID:2", pmid="2", title="Healthy study")
+
+
+def test_an_unreadable_archive_excludes_its_own_study_and_spares_the_rest(tmp_path: Path) -> None:
+    broken = _record(
+        canonical_id="pmid:broken",
+        source_unit_id="PMID:broken",
+        pmid="broken",
+        title="Study whose supplement was retired",
+        direct_file_candidates=[_zip_candidate("https://zenodo.org/files/supplement.zip")],
+    )
+    result = prepare_publication_records(
+        [broken, _healthy_record()],
+        "human",
+        query="hypoxia renal epithelial",
+        materialize_dir=tmp_path / "prepared",
+        transport=FakeTransport(
+            {
+                "https://zenodo.org/files/supplement.zip": _html_error_page(),
+                "https://zenodo.org/files/deg.csv": _deg_table(),
+            }
+        ),
+    )
+
+    assert result["returned_studies"] == 1
+    assert result["studies"][0]["canonical_id"] == "pmid:2"
+    excluded = {item["canonical_id"]: item for item in result["excluded_studies"]}
+    reason = excluded["pmid:broken"]["reason"]
+    assert "not a valid ZIP" in reason
+    # The reader is told what actually arrived, not just that a ZIP was expected.
+    assert "web page" in reason
+    assert excluded["pmid:broken"]["candidate_errors"][0]["status"] == "rejected"
+
+
+@pytest.mark.parametrize(
+    ("failure", "expected_status", "expected_fragment"),
+    [
+        (DiscoveryError("remote response exceeds the 26214400-byte safety cap"), "rejected", "safety cap"),
+        (DiscoveryUnavailableError("public source did not respond"), "unavailable", "temporarily unavailable"),
+    ],
+)
+def test_every_public_source_failure_class_is_survivable(
+    tmp_path: Path, failure: Exception, expected_status: str, expected_fragment: str
+) -> None:
+    """DiscoveryError and DiscoveryUnavailableError are siblings, so both must be caught."""
+
+    failing = _record(
+        canonical_id="pmid:huge",
+        source_unit_id="PMID:huge",
+        pmid="huge",
+        title="Study with an unusable candidate",
+        direct_file_candidates=[
+            {"url": "https://zenodo.org/files/huge.csv", "name": "huge_DESeq2.csv", "role": "deg_table"}
+        ],
+    )
+    result = prepare_publication_records(
+        [failing, _healthy_record()],
+        "human",
+        materialize_dir=tmp_path / "prepared",
+        transport=FlakyTransport(
+            {"https://zenodo.org/files/deg.csv": _deg_table()},
+            {"https://zenodo.org/files/huge.csv": failure},
+        ),
+    )
+
+    assert result["returned_studies"] == 1
+    excluded = {item["canonical_id"]: item for item in result["excluded_studies"]}
+    assert excluded["pmid:huge"]["candidate_errors"][0]["status"] == expected_status
+    assert expected_fragment in excluded["pmid:huge"]["reason"]
+
+
+def test_a_study_keeps_the_candidates_that_did_work(tmp_path: Path) -> None:
+    mixed = _record(
+        canonical_id="pmid:mixed",
+        source_unit_id="PMID:mixed",
+        pmid="mixed",
+        title="Study with one good and one broken candidate",
+        direct_file_candidates=[
+            _zip_candidate("https://zenodo.org/files/broken.zip", name="broken.zip"),
+            {"url": "https://zenodo.org/files/good.csv", "name": "author_DESeq2_results.csv", "role": "deg_table"},
+        ],
+    )
+    result = prepare_publication_records(
+        [mixed],
+        "human",
+        materialize_dir=tmp_path / "prepared",
+        transport=FakeTransport(
+            {
+                "https://zenodo.org/files/broken.zip": b"\x1f\x8bnot really a zip",
+                "https://zenodo.org/files/good.csv": _deg_table(),
+            }
+        ),
+    )
+
+    study = result["studies"][0]
+    names = [item["name"] for item in study["files"]]
+    assert len(names) == 1 and names[0].endswith("author_DESeq2_results.csv"), names
+    assert study["candidate_errors"][0]["status"] == "rejected"
+    assert "gzip" in study["candidate_errors"][0]["error"]
+
+
+def test_a_corrupt_member_does_not_discard_the_tables_beside_it(tmp_path: Path) -> None:
+    outer = _zip({"author_DESeq2_results.csv": _deg_table(), "extra.zip": b"not a zip at all"})
+    record = _record(
+        canonical_id="pmid:nested",
+        source_unit_id="PMID:nested",
+        pmid="nested",
+        title="Study with a corrupt nested archive",
+        direct_file_candidates=[_zip_candidate("https://zenodo.org/files/bundle.zip", name="bundle.zip")],
+    )
+    result = prepare_publication_records(
+        [record],
+        "human",
+        materialize_dir=tmp_path / "prepared",
+        transport=FakeTransport({"https://zenodo.org/files/bundle.zip": outer}),
+    )
+
+    study = result["studies"][0]
+    names = [item["name"] for item in study["files"]]
+    assert len(names) == 1 and names[0].endswith("author_DESeq2_results.csv"), names
+    assert any("extra.zip" in item["error"] for item in study["candidate_errors"])
+
+
+def test_an_archive_safety_violation_still_refuses_the_whole_run(tmp_path: Path) -> None:
+    """A malformed download is one study's problem; a hostile archive is not.
+
+    Making unreadable files survivable must not quietly downgrade zip-slip and
+    zip-bomb rejection into a skipped row nobody reads.
+    """
+
+    target = tmp_path / "prepared"
+    slip = _zip({"../escape.csv": _deg_table()})
+    with pytest.raises(DiscoveryError, match="unsafe member path"):
+        prepare_publication_records(
+            [
+                _record(direct_file_candidates=[_zip_candidate("https://zenodo.org/files/slip.zip", name="slip.zip")]),
+                _healthy_record(),
+            ],
+            "human",
+            materialize_dir=target,
+            transport=FakeTransport(
+                {
+                    "https://zenodo.org/files/slip.zip": slip,
+                    "https://zenodo.org/files/deg.csv": _deg_table(),
+                }
+            ),
+        )
+    assert not target.exists()
+    assert not (tmp_path / "escape.csv").exists()
+
+
+def test_a_rejected_candidate_leaves_no_downloaded_file_behind(tmp_path: Path) -> None:
+    prepared = tmp_path / "prepared"
+    record = _record(
+        canonical_id="pmid:rejected",
+        source_unit_id="PMID:rejected",
+        pmid="rejected",
+        title="Study whose only candidate is unreadable",
+        direct_file_candidates=[_zip_candidate("https://zenodo.org/files/broken.zip", name="broken.zip")],
+    )
+    result = prepare_publication_records(
+        [record, _healthy_record()],
+        "human",
+        materialize_dir=prepared,
+        transport=FakeTransport(
+            {
+                "https://zenodo.org/files/broken.zip": _html_error_page(),
+                "https://zenodo.org/files/deg.csv": _deg_table(),
+            }
+        ),
+    )
+
+    assert result["returned_studies"] == 1
+    assert not list(prepared.rglob("*broken.zip")), "the unusable download was shipped in the bundle"
