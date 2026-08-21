@@ -248,27 +248,53 @@ def read_deg_table(path: str | Path, mapping: TableMapping) -> pd.DataFrame:
 ROW_LABEL_COLUMN = "row_name"
 
 
-def _restore_unnamed_row_labels(frame: pd.DataFrame) -> pd.DataFrame:
-    """Expose R ``write.csv`` row labels as a named column.
+_PANDAS_PLACEHOLDER = re.compile(r"^Unnamed: \d+$")
 
-    ``write.csv(results, file)`` writes a header with one fewer field than the
-    data rows. pandas resolves that by consuming the first column as an unnamed
-    index, which put the gene identifiers somewhere no catalog mapping could
-    reference. Move them back into a column instead.
+
+def _restore_unnamed_row_labels(frame: pd.DataFrame) -> pd.DataFrame:
+    """Expose R ``write.csv`` row labels as one predictable column name.
+
+    ``write.csv(results, file)`` has two shapes in the wild. It can write a header
+    with one fewer field than the data rows, which pandas resolves by consuming
+    the gene identifiers as an unnamed index - somewhere no catalog mapping could
+    reference. It can also write an empty leading header field, which pandas names
+    ``Unnamed: 0``. Both become ``row_name`` so a catalog author learns one name.
     """
 
-    if isinstance(frame.index, pd.RangeIndex) or frame.index.name is not None:
-        return frame
-    if isinstance(frame.index, pd.MultiIndex):
-        return frame
-    name = ROW_LABEL_COLUMN
-    suffix = 2
-    while name in frame.columns:
-        name = f"{ROW_LABEL_COLUMN}_{suffix}"
-        suffix += 1
-    restored = frame.reset_index()
-    restored = restored.rename(columns={restored.columns[0]: name})
-    return restored
+    def free_name(columns: Any) -> str:
+        name = ROW_LABEL_COLUMN
+        suffix = 2
+        while name in columns:
+            name = f"{ROW_LABEL_COLUMN}_{suffix}"
+            suffix += 1
+        return name
+
+    if (
+        not isinstance(frame.index, pd.MultiIndex)
+        and frame.index.name is None
+        and not isinstance(frame.index, pd.RangeIndex)
+    ):
+        restored = frame.reset_index()
+        return restored.rename(columns={restored.columns[0]: free_name(frame.columns)})
+
+    if len(frame.columns) and _PANDAS_PLACEHOLDER.match(str(frame.columns[0])):
+        rest = frame.columns[1:]
+        return frame.rename(columns={frame.columns[0]: free_name(rest)})
+    return frame
+
+
+def resolve_column_name(frame: pd.DataFrame, requested: str) -> str:
+    """Accept the pandas placeholder spelling for restored row labels.
+
+    Catalogs written before the rename refer to the first column as
+    ``Unnamed: 0``; keep those working.
+    """
+
+    if requested in frame.columns:
+        return requested
+    if _PANDAS_PLACEHOLDER.match(str(requested)) and ROW_LABEL_COLUMN in frame.columns:
+        return ROW_LABEL_COLUMN
+    return requested
 
 
 # Catalog authors reach for the word before the escape, so accept both. Without
@@ -316,6 +342,7 @@ def _row_label_hint(frame: pd.DataFrame) -> str:
 
 
 def _series_as_numeric(frame: pd.DataFrame, column: str) -> pd.Series:
+    column = resolve_column_name(frame, column)
     if column not in frame.columns:
         raise KeyError(
             f"Required column {column!r} not found. Available columns: {list(frame.columns)!r}."
@@ -520,6 +547,19 @@ def _collapse_duplicate_gene_symbols(out: pd.DataFrame, study_meta: dict[str, An
                 f"{study_id}: duplicate gene symbols were collapsed by "
                 f"{GENE_SYMBOL_COLLAPSE_RULE}; set probe_collapse in the config if this is expected."
             )
+        elif _looks_stacked(counts):
+            # A gene appearing twice in an RNA-seq table is ordinary. A table that
+            # carries a whole block of rows per gene is usually several contrasts or
+            # models stacked together, and keeping the most significant row of each
+            # block selects on the outcome.
+            dropped = int(len(out) - out["gene_symbol"].nunique())
+            warning = (
+                f"{study_id}: {dropped:,} of {len(out):,} rows shared a gene identifier "
+                f"(up to {int(counts.max())} rows per gene) and were collapsed by "
+                f"{GENE_SYMBOL_COLLAPSE_RULE}, which keeps the most significant row of each group "
+                "and therefore selects on the outcome. If this table stacks several contrasts, "
+                "models or cell types, filter it to one contrast before running."
+            )
         else:
             warning = ""
     elif requested_norm in BEST_PROBE_COLLAPSE_ALIASES:
@@ -534,6 +574,24 @@ def _collapse_duplicate_gene_symbols(out: pd.DataFrame, study_meta: dict[str, An
         )
     collapsed["gene_symbol_collapse_warning"] = warning
     return collapsed
+
+
+# A gene appearing twice is ordinary; a block of rows per gene is a stacked table.
+STACKED_TABLE_MIN_ROWS_PER_GENE = 3
+STACKED_TABLE_MIN_DUPLICATE_SHARE = 0.25
+
+
+def _looks_stacked(counts: pd.Series) -> bool:
+    """Report whether duplication looks like stacked contrasts rather than noise."""
+
+    total = int(len(counts))
+    if total == 0:
+        return False
+    duplicated_rows = int((counts > 1).sum())
+    return (
+        int(counts.max()) >= STACKED_TABLE_MIN_ROWS_PER_GENE
+        and duplicated_rows / total >= STACKED_TABLE_MIN_DUPLICATE_SHARE
+    )
 
 
 def _reject_invalid_unit_interval(
@@ -560,11 +618,15 @@ def harmonize_frame(frame: pd.DataFrame, mapping: TableMapping, study_meta: dict
     """Return canonical per-gene DEG rows for one study/contrast."""
 
     scope = assess_table_scope(frame, mapping, study_meta.get("table_scope", AUTO_TABLE_SCOPE))
-    if mapping.gene_column not in frame.columns:
+    # Catalogs written before restored row labels got one name refer to that column
+    # by whatever pandas happened to call it.
+    gene_column = resolve_column_name(frame, mapping.gene_column)
+    if gene_column not in frame.columns:
         raise KeyError(
-            f"Required column {mapping.gene_column!r} not found. Available columns: {list(frame.columns)!r}"
+            f"Required column {mapping.gene_column!r} not found. Available columns: {list(frame.columns)!r}."
+            + _row_label_hint(frame)
         )
-    genes = _clean_gene_symbol(frame[mapping.gene_column])
+    genes = _clean_gene_symbol(frame[gene_column])
     lfc = _series_as_numeric(frame, mapping.lfc_column)
     pvalue = _series_as_numeric(frame, mapping.p_column)
     _reject_invalid_unit_interval(
