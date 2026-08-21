@@ -447,6 +447,10 @@ def _run_from_config(args: argparse.Namespace, *, serve_after: bool = False) -> 
         },
     )
     progress.done(f"{int(summary.get('n_gene_scores', 0) or 0):,} genes scored")
+    _print_run_warnings(
+        {"warnings": summary.get("significance_warnings", [])},
+        metrics_path=output_dir / "degora_score_db_summary.json",
+    )
     if int(summary.get("n_gene_scores", 0) or 0) == 0:
         raise CliUsageError(
             f"DEGORA scored zero genes at min_studies={min_studies}. No gene had usable, "

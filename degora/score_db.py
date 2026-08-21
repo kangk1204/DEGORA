@@ -2136,6 +2136,42 @@ def _write_sqlite(
         raise
 
 
+NOMINAL_SIGNIFICANCE_THRESHOLD = 0.05
+
+
+def _corpus_significance_warnings(gene_scores: pd.DataFrame) -> list[str]:
+    """Warn when the evidence tiers are ordering an entirely non-significant corpus.
+
+    DEGORA scores are deliberately relative, so the strongest genes in a corpus
+    with no signal still land in tier A. Without a note, "Evidence tier A" over a
+    best adjusted p-value of 0.26 reads as a finding.
+    """
+
+    if gene_scores.empty or "stouffer_padj" not in gene_scores.columns:
+        return []
+    padj = pd.to_numeric(gene_scores["stouffer_padj"], errors="coerce").dropna()
+    if padj.empty:
+        return []
+    best = float(padj.min())
+    if best <= NOMINAL_SIGNIFICANCE_THRESHOLD:
+        return []
+    top_tier = ""
+    if "evidence_tier" in gene_scores.columns:
+        tiers = sorted(str(value) for value in gene_scores["evidence_tier"].dropna().unique())
+        top_tier = tiers[0] if tiers else ""
+    tier_note = (
+        f" The strongest genes are still reported in tier {top_tier}, because tiers rank genes"
+        " within this corpus rather than against a significance threshold."
+        if top_tier
+        else ""
+    )
+    return [
+        f"No gene reached adjusted significance: the smallest stouffer_padj is {best:.3g}, above "
+        f"{NOMINAL_SIGNIFICANCE_THRESHOLD}.{tier_note} Treat this ranking as a relative ordering of weak "
+        "evidence, not as a set of findings."
+    ]
+
+
 def write_score_database(
     harmonized_path: Path,
     output_dir: Path,
@@ -2229,6 +2265,7 @@ def write_score_database(
         "primary_rank_column": metadata.get("primary_rank_column", PRIMARY_RANK_COLUMN),
         "primary_score_column": metadata.get("primary_score_column", PRIMARY_SCORE_COLUMN),
         "top_genes": gene_scores.head(20)["gene_symbol"].tolist(),
+        "significance_warnings": _corpus_significance_warnings(gene_scores),
     }
 
     staging_parent = output_dir.parent
