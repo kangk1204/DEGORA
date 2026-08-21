@@ -1157,3 +1157,41 @@ def test_dashboard_offers_filtered_bulk_sample_assignment_that_clears_attestatio
     assert "`Set ${names[button.dataset.group] || \"Ignore\"} (${matched})`" in html
     # Only offered where it earns its space.
     assert "columns.length > 4 ? sampleBulkHtml() : \"\"" in html
+
+
+def test_dashboard_shows_the_prepare_progress_where_the_reader_is_looking() -> None:
+    """Prepare runs for tens of seconds behind a full page of results.
+
+    Pressing the button and seeing nothing move is indistinguishable from a
+    button that did not work.
+    """
+
+    from degora.api import INDEX_HTML
+
+    html = INDEX_HTML
+    assert "revealPreparedCard" in html
+    # Brought into view when the work starts, not only when it finishes.
+    assert "updateSelectedStatus();\n        revealPreparedCard();" in html
+    # And left alone when it is already on screen, or when motion is unwanted.
+    assert "viewport * 0.75" in html
+    assert "prefers-reduced-motion: reduce" in html
+
+
+def test_dashboard_stops_a_review_that_can_never_be_analysed() -> None:
+    """One usable study cannot reach two independent source units.
+
+    Every field would be filled for nothing, and worse, state.draft is cleared
+    on the next preparation, so the work is provably discarded.
+    """
+
+    from degora.api import INDEX_HTML
+
+    html = INDEX_HTML
+    assert "usableSourceUnits" in html
+    assert "This preparation cannot be analysed." in html
+    assert "preparing a new selection clears them" in html
+    assert "is-unanalyzable" in html
+    assert "data-back-to-results" in html
+    # The controls go inert; the file names and reasons stay readable.
+    assert '.querySelectorAll(".candidate-row input, .candidate-row select, .candidate-row button")' in html
+    assert "Not analysable: " in html
