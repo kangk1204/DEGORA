@@ -146,11 +146,17 @@ Useful options:
 ```text
 --port N        Preferred port (default 8765; the next free port is used when taken)
 --dir PATH      Where to place or find the checkout when run standalone
+--ref NAME      Branch or tag to run (default: the repository default branch)
 --config PATH   Serve your own DEGORA config instead of the bundled demo
 --update        git pull an existing checkout before installing
 --no-browser    Do not try to open a browser (headless or remote shells)
 --no-demo       Skip demo creation and serve an existing database
 ```
+
+Use `--ref` to review a specific branch or release tag in one command, for
+example `bash degora_quickstart.sh --ref v0.4.5`. It fetches the name from
+`origin`, fast-forwards a local copy that is behind, and stops rather than
+serving stale code when a local branch of the same name has diverged.
 
 The script is safe to re-run and stops with an actionable message when the
 platform is missing Python 3.10+, `git`, or the Debian/Ubuntu `python3-venv`
