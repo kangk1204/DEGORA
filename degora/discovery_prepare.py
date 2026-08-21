@@ -21,6 +21,7 @@ from .discovery import (
     DISCOVERY_BUNDLE_MARKER,
     DiscoveryError,
     DiscoveryUnavailableError,
+    DiscoveryUnsafeArchiveError,
     classify_filename,
     export_discovery_bundle,
     inspect_candidate_bytes,
@@ -34,6 +35,7 @@ from .discovery_sources import (
     MAX_ARCHIVE_EXPANDED_BYTES,
     MAX_ARCHIVE_MEMBER_BYTES,
     MAX_ARCHIVE_MEMBERS,
+    describe_unexpected_payload,
     download_public_candidate,
 )
 
@@ -136,19 +138,26 @@ def _prepare_into_staging(
         accessions = _unique_gse_accessions(geo_records)
         selected_accessions = accessions
         report(0.05, f"Downloading {len(accessions)} repository record(s)")
-        geo_result = prepare_geo_studies(
-            accessions,
-            spec.key,
-            query=query,
-            inspection_budget=max(1, len(accessions) * max_files_per_record),
-            max_files_per_study=max_files_per_record,
-            materialize_dir=staging,
-            client=geo_client,
-            force=True,
-        )
-        excluded.extend(geo_result.get("excluded_studies", []))
-        record_by_accession = _record_by_geo_accession(geo_records)
-        studies.extend(_augment_geo_studies(geo_result.get("studies", []), record_by_accession))
+        try:
+            geo_result = prepare_geo_studies(
+                accessions,
+                spec.key,
+                query=query,
+                inspection_budget=max(1, len(accessions) * max_files_per_record),
+                max_files_per_study=max_files_per_record,
+                materialize_dir=staging,
+                client=geo_client,
+                force=True,
+            )
+        except (DiscoveryError, DiscoveryUnavailableError) as exc:
+            # The repository half failing is not a reason to throw away the
+            # publication half the reader also selected.
+            for geo_record in geo_records:
+                excluded.append(_excluded(geo_record, f"repository preparation failed: {exc}"))
+        else:
+            excluded.extend(geo_result.get("excluded_studies", []))
+            record_by_accession = _record_by_geo_accession(geo_records)
+            studies.extend(_augment_geo_studies(geo_result.get("studies", []), record_by_accession))
 
     geo_share = len(geo_records) / total_units
     report(0.05 + 0.85 * geo_share, f"Inspecting {len(direct_records)} linked file source(s)")
@@ -157,19 +166,22 @@ def _prepare_into_staging(
             0.05 + 0.85 * ((len(geo_records) + direct_index - 1) / total_units),
             f"Downloading and inspecting {direct_index} of {len(direct_records)}",
         )
-        study = _prepare_direct_record(record, spec, staging, max_files_per_record, transport)
+        try:
+            study = _prepare_direct_record(record, spec, staging, max_files_per_record, transport)
+        except DiscoveryUnsafeArchiveError:
+            raise
+        except (DiscoveryError, DiscoveryUnavailableError) as exc:
+            excluded.append(_excluded(record, f"preparation failed for this record: {exc}"))
+            continue
         if study is None:
             excluded.append(_excluded(record, "publication record has no public tabular or archive candidate"))
         elif study["files"]:
             studies.append(study)
         else:
             candidate_errors = list(study.get("candidate_errors") or [])
-            reason = (
-                "public candidate source was temporarily unavailable"
-                if candidate_errors
-                else "no usable author DEG table or upstream matrix resolved"
+            excluded.append(
+                _excluded(record, _exclusion_reason(candidate_errors), candidate_errors=candidate_errors)
             )
-            excluded.append(_excluded(record, reason, candidate_errors=candidate_errors))
 
     result = {
         "query": str(query or "").strip(),
@@ -265,42 +277,63 @@ def _prepare_direct_record(
     candidate_errors: list[dict[str, str]] = []
     for index, candidate in enumerate(candidates, start=1):
         downloaded_path = study_dir / f"source_{index:02d}_{_candidate_name(candidate)}"
+        # One unreadable supplementary file must cost its own study at most.
+        # DiscoveryError and DiscoveryUnavailableError are siblings, so both
+        # have to be named here or a rejected archive escapes and takes the
+        # whole selection down with it.
         try:
             downloaded = download_public_candidate(candidate, downloaded_path, transport=transport)
-        except DiscoveryUnavailableError as exc:
+            source_url = str(downloaded["url"])
+            payload = downloaded_path.read_bytes()
+            if downloaded_path.suffix.lower() == ".zip":
+                notes: list[str] = []
+                files.extend(
+                    _materialize_archive_tables(
+                        record=record,
+                        archive_path=downloaded_path,
+                        payload=payload,
+                        source_url=source_url,
+                        output_dir=study_dir / f"source_{index:02d}_archive",
+                        max_files=max_files_per_record - len(files),
+                        notes=notes,
+                    )
+                )
+                for note in notes:
+                    candidate_errors.append(
+                        {
+                            "candidate": _candidate_name(candidate),
+                            "provider": str(candidate.get("provider") or candidate.get("source") or "public source"),
+                            "status": "rejected",
+                            "error": note,
+                        }
+                    )
+            else:
+                file_record = _file_entry(
+                    record=record,
+                    name=downloaded_path.name,
+                    source_url=source_url,
+                    local_path=downloaded_path,
+                    payload=payload,
+                    declared_role=str(candidate.get("role") or ""),
+                )
+                if file_record is not None:
+                    files.append(file_record)
+        except DiscoveryUnsafeArchiveError:
+            # A hostile archive is not a flaky download; refuse the whole run.
+            raise
+        except (DiscoveryError, DiscoveryUnavailableError) as exc:
             candidate_errors.append(
                 {
                     "candidate": _candidate_name(candidate),
                     "provider": str(candidate.get("provider") or candidate.get("source") or "public source"),
-                    "status": "unavailable",
+                    # "unavailable" is worth retrying later; "rejected" never will be.
+                    "status": "unavailable" if isinstance(exc, DiscoveryUnavailableError) else "rejected",
                     "error": str(exc),
                 }
             )
+            downloaded_path.unlink(missing_ok=True)
+            shutil.rmtree(study_dir / f"source_{index:02d}_archive", ignore_errors=True)
             continue
-        source_url = str(downloaded["url"])
-        payload = downloaded_path.read_bytes()
-        if downloaded_path.suffix.lower() == ".zip":
-            files.extend(
-                _materialize_archive_tables(
-                    record=record,
-                    archive_path=downloaded_path,
-                    payload=payload,
-                    source_url=source_url,
-                    output_dir=study_dir / f"source_{index:02d}_archive",
-                    max_files=max_files_per_record - len(files),
-                )
-            )
-        else:
-            file_record = _file_entry(
-                record=record,
-                name=downloaded_path.name,
-                source_url=source_url,
-                local_path=downloaded_path,
-                payload=payload,
-                declared_role=str(candidate.get("role") or ""),
-            )
-            if file_record is not None:
-                files.append(file_record)
         if len(files) >= max_files_per_record:
             break
 
@@ -311,7 +344,7 @@ def _prepare_direct_record(
             "candidate_file_count": 0,
             "ready_for_review_count": 0,
             "upstream_matrix_count": 0,
-            "preparation_status": "source_unavailable" if candidate_errors else "no_usable_table_resolved",
+            "preparation_status": _preparation_status(candidate_errors),
             "candidate_errors": candidate_errors,
         }
     ready = sum(item.get("inspection", {}).get("status") == "ready_for_review" for item in files)
@@ -342,16 +375,18 @@ def _materialize_archive_tables(
     source_url: str,
     output_dir: Path,
     max_files: int,
+    notes: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     files: list[dict[str, Any]] = []
     materialized_names: set[str] = set()
     total_members = 0
     total_expanded = 0
+    nested_notes = notes if notes is not None else []
 
     def visit(data: bytes, prefix: str, depth: int) -> None:
         nonlocal total_members, total_expanded
         if depth > MAX_ARCHIVE_DEPTH:
-            raise DiscoveryError("nested ZIP depth exceeds the safety limit")
+            raise DiscoveryUnsafeArchiveError("nested ZIP depth exceeds the safety limit")
         try:
             with zipfile.ZipFile(io.BytesIO(data)) as archive:
                 for info in archive.infolist():
@@ -360,10 +395,10 @@ def _materialize_archive_tables(
                     _validate_archive_member(info)
                     total_members += 1
                     if total_members > MAX_ARCHIVE_MEMBERS:
-                        raise DiscoveryError("archive contains too many members")
+                        raise DiscoveryUnsafeArchiveError("archive contains too many members")
                     total_expanded += info.file_size
                     if total_expanded > MAX_ARCHIVE_EXPANDED_BYTES:
-                        raise DiscoveryError("archive expanded-size cap exceeded")
+                        raise DiscoveryUnsafeArchiveError("archive expanded-size cap exceeded")
                     member_name = f"{prefix}{info.filename}"
                     is_nested_archive = info.filename.lower().endswith(".zip")
                     is_tabular = bool(_TABULAR_MEMBER_RE.search(info.filename))
@@ -401,7 +436,15 @@ def _materialize_archive_tables(
                     else:
                         local_path.unlink(missing_ok=True)
         except zipfile.BadZipFile as exc:
-            raise DiscoveryError("candidate archive is not a valid ZIP file") from exc
+            if depth == 0:
+                raise DiscoveryError(
+                    f"candidate archive is not a valid ZIP file: the download is {describe_unexpected_payload(data)}"
+                ) from exc
+            # A corrupt member deep inside an otherwise readable archive costs
+            # that member, not the tables already extracted beside it.
+            nested_notes.append(
+                f"nested archive {prefix.rstrip('!/')} could not be read: {describe_unexpected_payload(data)}"
+            )
 
     visit(payload, "", 0)
     if not files:
@@ -624,6 +667,33 @@ def _source_unit_id(record: dict[str, Any]) -> str:
     return _record_id(record)
 
 
+def _preparation_status(candidate_errors: list[dict[str, str]]) -> str:
+    if not candidate_errors:
+        return "no_usable_table_resolved"
+    if any(str(item.get("status") or "") == "rejected" for item in candidate_errors):
+        return "source_rejected"
+    return "source_unavailable"
+
+
+def _exclusion_reason(candidate_errors: list[dict[str, str]]) -> str:
+    """Say why a study produced nothing, in terms the reader can act on.
+
+    A source that was briefly down is worth re-running; a file the checks
+    rejected never will be, and calling both "temporarily unavailable" sends
+    people back to repeat a download that cannot succeed.
+    """
+
+    if not candidate_errors:
+        return "no usable author DEG table or upstream matrix resolved"
+    rejected = [item for item in candidate_errors if str(item.get("status") or "") == "rejected"]
+    if not rejected:
+        return "public candidate source was temporarily unavailable"
+    detail = str(rejected[0].get("error") or "").strip()
+    name = str(rejected[0].get("candidate") or "").strip()
+    prefix = f"public candidate file {name} was rejected" if name else "public candidate file was rejected"
+    return f"{prefix}: {detail}" if detail else prefix
+
+
 def _excluded(record: dict[str, Any], reason: str, **details: Any) -> dict[str, Any]:
     excluded = {
         "canonical_id": _record_id(record),
@@ -640,11 +710,11 @@ def _excluded(record: dict[str, Any], reason: str, **details: Any) -> dict[str, 
 def _validate_archive_member(info: zipfile.ZipInfo) -> None:
     path = PurePosixPath(info.filename)
     if not info.filename or path.is_absolute() or ".." in path.parts:
-        raise DiscoveryError("archive contains an unsafe member path")
+        raise DiscoveryUnsafeArchiveError("archive contains an unsafe member path")
     if stat.S_ISLNK(info.external_attr >> 16):
-        raise DiscoveryError("archive contains a symbolic link")
+        raise DiscoveryUnsafeArchiveError("archive contains a symbolic link")
     if info.file_size > MAX_ARCHIVE_MEMBER_BYTES:
-        raise DiscoveryError("archive contains an oversized member")
+        raise DiscoveryUnsafeArchiveError("archive contains an oversized member")
 
 
 def _write_marker(path: Path, species_key: str) -> None:

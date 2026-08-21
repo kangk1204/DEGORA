@@ -103,6 +103,15 @@ class DiscoveryError(ValueError):
     """Invalid discovery input or unsafe candidate content."""
 
 
+class DiscoveryUnsafeArchiveError(DiscoveryError):
+    """An archive broke a safety rule: path escape, symlink, or a size/count cap.
+
+    Kept distinct from an unreadable or missing file. A malformed download is
+    one study's problem; a hostile archive is the operator's, and preparation
+    still refuses the whole run rather than quietly skipping it.
+    """
+
+
 class DiscoveryUnavailableError(RuntimeError):
     """A remote discovery source could not be resolved after bounded retries."""
 

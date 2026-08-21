@@ -15,6 +15,7 @@ from degora.discovery_sources import (
     NcbiPubmedProvider,
     PublicRepositoryResolver,
     SafePublicTransport,
+    describe_unexpected_payload,
     download_public_candidate,
     inspect_public_archive,
     _link_looks_public_repository,
@@ -597,3 +598,34 @@ def test_inspect_public_archive_rejects_zip_slip_symlink_and_bomb() -> None:
         archive.writestr("huge.csv", b"0" * (51 * 1024 * 1024))
     with pytest.raises(DiscoveryError, match="oversized member"):
         inspect_public_archive(bomb.getvalue())
+
+
+# --- naming what a failed download actually was ----------------------------
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [
+        (b"<!DOCTYPE html>\n<html><body>404</body></html>", "web page"),
+        (b"<html><head><title>Sign in</title></head>", "web page"),
+        (b"\x1f\x8b\x08\x00\x00\x00\x00\x00", "gzip"),
+        (b"%PDF-1.7\n%\xe2\xe3", "PDF"),
+        (b'{"error": "not found"}', "JSON"),
+        (b"", "empty response"),
+        (b"gene\tlog2FC\tpvalue\nTP53\t2.1\t0.001\n", "plain text"),
+        (b"\x00" * 257 + b"ustar\x0000", "tar archive"),
+    ],
+)
+def test_a_failed_download_is_described_by_what_it_actually_is(payload: bytes, expected: str) -> None:
+    """"Not a valid ZIP" sends the reader hunting for a corrupt file.
+
+    Naming the payload tells them whether the link moved, needs a login, or was
+    simply published in another format.
+    """
+
+    assert expected in describe_unexpected_payload(payload)
+
+
+def test_an_invalid_archive_reports_what_arrived_instead(tmp_path: Path) -> None:
+    with pytest.raises(DiscoveryError, match="web page"):
+        inspect_public_archive(b"<!DOCTYPE html><html><body>Not found</body></html>")
