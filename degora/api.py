@@ -296,6 +296,19 @@ INDEX_HTML = """<!doctype html>
     .study-inspect { width: auto; min-width: 70px; height: 32px; padding: 0 10px; }
     .mobile-field-label { display: none; }
     .study-table input[type="checkbox"], .candidate-row input[type="checkbox"] { width: 17px; height: 17px; accent-color: var(--accent); }
+    /* Browsers grey a disabled 17px checkbox almost imperceptibly, so a row the
+       cap has locked looked identical to one waiting to be ticked. */
+    .study-table input[type="checkbox"]:disabled { opacity: 0.3; cursor: not-allowed; }
+    .selection-limit {
+      margin: 0 0 8px;
+      padding: 8px 11px;
+      border: 1px solid #f5d68a;
+      border-radius: 8px;
+      background: #fdf6e3;
+      color: #7a5a12;
+      font-size: 12px;
+      line-height: 1.5;
+    }
     .table-footer {
       display: flex;
       align-items: center;
@@ -1840,7 +1853,16 @@ INDEX_HTML = """<!doctype html>
           ["title", "Publication"], ["authors", "Authors"], ["journal", "Journal"],
           ["year", "Year"], ["data_sources", "Data sources"]
         ].map(([key, label]) => `<option value="${key}" ${state.sort.key === key ? "selected" : ""}>${label}</option>`).join("");
-        $("discoveryResults").innerHTML = `<div class="mobile-study-tools"><label>Sort persisted records<select id="mobileStudySort">${sortOptions}</select></label><button id="mobileStudyOrder" type="button" aria-label="Reverse global sort order">${state.sort.order === "asc" ? "Ascending" : "Descending"}</button></div><div class="results-scroll"><table class="study-table">
+        // A disabled checkbox fires no click, so the notice the click handler
+        // sets can never appear - the reader presses "select all" on page 2 and
+        // gets silence. Say it before they press anything.
+        const selectableHere = selectableKeys(state).filter((value) => !state.selected.has(value)).length;
+        const limitBanner = capReached && selectableHere > 0
+          ? `<div class="selection-limit">Selection limit reached: ${MAX_SELECTED_STUDIES} publications across all pages`
+            + ` (${state.selected.size - state.studies.reduce((total, study) => total + (state.selected.has(publicationKey(study)) ? 1 : 0), 0)} of them on other pages).`
+            + ` Untick a row or press Clear to choose different ones here.</div>`
+          : "";
+        $("discoveryResults").innerHTML = limitBanner + `<div class="mobile-study-tools"><label>Sort persisted records<select id="mobileStudySort">${sortOptions}</select></label><button id="mobileStudyOrder" type="button" aria-label="Reverse global sort order">${state.sort.order === "asc" ? "Ascending" : "Descending"}</button></div><div class="results-scroll"><table class="study-table">
           <thead><tr>
             <th><input id="selectPageStudies" type="checkbox" aria-label="Select all studies on this page"></th>
             <th class="sortable" aria-sort="${studyAriaSort("title")}">${studySortHead("Publication", "title")}</th>
