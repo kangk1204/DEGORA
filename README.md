@@ -34,7 +34,7 @@ GitHub names those folders `DEGORA-main` and `DEGORA-<version>`, respectively:
 
 ```bash
 cd DEGORA-main       # main-branch ZIP
-# or: cd DEGORA-0.4.5  # v0.4.5 release ZIP
+# or: cd DEGORA-0.4.6  # v0.4.6 release ZIP
 ```
 
 Confirm that the interpreter you will use is supported:
@@ -154,7 +154,7 @@ Useful options:
 ```
 
 Use `--ref` to review a specific branch or release tag in one command, for
-example `bash degora_quickstart.sh --ref v0.4.5`. It fetches the name from
+example `bash degora_quickstart.sh --ref v0.4.6`. It fetches the name from
 `origin`, fast-forwards a local copy that is behind, and stops rather than
 serving stale code when a local branch of the same name has diverged.
 
@@ -334,6 +334,63 @@ make smoke
 ```
 
 ## Release notes
+
+### 0.4.6
+
+The score contract is unchanged. `SCORE_VERSION` remains
+`degora_score_v1_2_source_unit_mean`, and the ranking, statistics, and
+leave-one-source-out semantics documented above are identical to v0.4.5.
+Everything below is discovery, preparation, and the browser.
+
+**A preparation no longer fails whole.** One unreadable supplementary file - a
+retired link answering with an error page, a download over the size cap, a URL
+shape the checks refuse - used to end the job for every selected publication.
+Failures are isolated at the candidate, the record, and the repository step, so
+partial results survive. Archive safety violations - path escapes, symlinks,
+and the size and count caps - still refuse the whole run, deliberately. A
+download that is not the archive it claimed to be is described by what it
+actually is, so a moved or login-walled file is distinguishable from a corrupt
+one.
+
+**Readiness reports what was seen.** `likely_ready` previously followed from
+carrying a repository accession at all, which placed every GEO row in the top
+tier of the primary sort key. It now requires a tabular file candidate;
+`verified_ready` requires that plus target-species evidence; a bare accession
+is `candidate`, and the basis distinguishes "never inspected" from "inspected
+and carrying no tabular file". Once files have been opened, each search row
+reports the prepared outcome in place of the estimate.
+
+**Records reporting one submission are flagged.** Source units collapse on a
+shared PubMed ID, so an unpublished submission deposited as several GEO series
+counted as several independent studies - the count the two-source-unit rule
+rests on. Records that share a title with no publication link are marked, and
+selecting more than one raises a warning before the run. It warns rather than
+blocks: only the reader knows whether they are separate experiments.
+
+**Every selection is accounted for.** Publications absorbed into a repository
+series another selection already covered appeared in neither the prepared nor
+the excluded list, so a selection of twenty reconciled to nothing. They are now
+excluded with the series and the covering publication named.
+
+**Group assignment is decidable in place.** The labeled fallback listed bare
+GSM accessions. Preparation now resolves matrix columns - including author
+matrices headed by the submitter's own column names - to their sample titles
+and characteristics, records the mapping in the audit bundle, and offers
+filtered bulk assignment that clears the direction attestations it invalidates.
+A study that produced nothing lists the files it did find and why each was
+unusable.
+
+**Browser.** Ten rows a page, so the page size no longer equals the selection
+cap and a selection genuinely spans pages. The cap explains itself before a
+click that cannot work. Search and preparation report real progress and lock
+the controls they own. The prepared card comes into view when the work starts.
+A preparation that cannot reach two source units says so above the review
+instead of offering fields that the next preparation would discard.
+
+**Quickstart.** `scripts/degora_quickstart.sh --ref NAME` runs a named branch
+or tag, so a reviewer pointed at one no longer runs the default branch instead.
+
+### 0.4.5
 
 Version 0.4.5 preserves the v0.4.4 primary ranking and score contract. It also
 ensures that stopping the local server records active fallback discovery work
