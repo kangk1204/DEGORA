@@ -833,3 +833,51 @@ def test_the_persisted_audit_points_at_the_published_bundle(tmp_path: Path) -> N
     # The archived document and the returned object must agree about the bundle.
     assert exports == result["exports"]
     assert Path(exports["output_dir"]).resolve() == target.resolve()
+
+
+def test_species_provenance_reaches_the_prepared_bundle_and_its_audit(tmp_path: Path) -> None:
+    """The audit a reviewer opens has to say which species claim a study carries.
+
+    The species gate reads these fields off the search record, so preparation kept
+    working while dropping them: the returned study and `discovery_audit.json`
+    both reported null, and the prepare UI renders its species provenance line
+    only when `species_decision` survives. Assert the whole chain, not the helper
+    -- a helper-level check is what missed this.
+    """
+
+    from degora.discovery_federated import _prepare_record, normalize_species
+
+    url = "https://zenodo.org/files/deg.csv"
+    record = _prepare_record(
+        {
+            "provider": "pubmed",
+            "pmid": "41932308",
+            "paper_title": "A literature-only publication",
+            "species_evidence": [{"species": "Homo sapiens", "basis": "PubMed organism-constrained query"}],
+            "direct_file_candidates": [{"name": "deg.csv", "source_url": url, "role": "deg_table"}],
+        },
+        normalize_species("human"),
+    )
+    assert record["species_decision"] == "query_constrained"
+
+    target = tmp_path / "prepared"
+    result = prepare_publication_records(
+        [record],
+        "human",
+        materialize_dir=target,
+        transport=FakeTransport({url: _deg_table()}),
+    )
+
+    study = result["studies"][0]
+    assert study["species_decision"] == "query_constrained"
+    assert study["species_evidence"] == [
+        {"species": "Human", "basis": "PubMed organism-constrained query"}
+    ]
+    assert study["target_species_verified"] is False
+
+    persisted = json.loads((target / "discovery_audit.json").read_text(encoding="utf-8"))["studies"][0]
+    assert persisted["species_decision"] == study["species_decision"]
+    assert persisted["target_species_verified"] == study["target_species_verified"]
+    assert [item["basis"] for item in persisted["species_evidence"]] == [
+        "PubMed organism-constrained query"
+    ]

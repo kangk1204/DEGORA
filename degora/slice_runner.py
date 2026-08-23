@@ -304,9 +304,12 @@ def _readable_read_failure(path: Path, exc: Exception) -> str:
             with zipfile.ZipFile(path) as archive:
                 names = set(archive.namelist())
         except (OSError, zipfile.BadZipFile):
+            # Only .xlsx is a ZIP container; a legacy .xls is an OLE2 compound file,
+            # so the ZIP wording would be wrong for the very extension it names.
+            container = "a ZIP archive" if path.suffix.lower() == ".xlsx" else "a workbook container"
             return (
-                f"{path.name} is not a readable Excel workbook. Excel files are ZIP archives, "
-                "and this file is not one - it may be a CSV or TSV that was renamed, or a partial download."
+                f"{path.name} is not a readable Excel workbook: it is not {container}. "
+                "It may be a CSV or TSV that was renamed, or a partial download."
             )
         if "[Content_Types].xml" not in names:
             sample = ", ".join(sorted(names)[:3]) or "(empty archive)"

@@ -577,6 +577,16 @@ def _publication_metadata_fields(record: dict[str, Any]) -> dict[str, Any]:
         "year": str(record.get("year") or ""),
         "resolution_state": str(record.get("resolution_state") or ""),
         "resolution_events": list(record.get("resolution_events") or []),
+        # The species gate reads these off the search record, but the prepared
+        # bundle and its persisted audit are what a reviewer opens. Dropping them
+        # here left the audit unable to say which species claim a study was
+        # activated under, and the prepare UI renders this provenance line only
+        # when species_decision survives.
+        "species_decision": str(record.get("species_decision") or ""),
+        "species_evidence": [
+            dict(item) for item in (record.get("species_evidence") or []) if isinstance(item, dict)
+        ],
+        "target_species_verified": bool(record.get("target_species_verified")),
     }
 
 

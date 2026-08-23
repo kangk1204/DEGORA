@@ -750,3 +750,16 @@ def test_an_unreadable_source_table_is_described_not_quoted(tmp_path) -> None:
     message = str(excinfo.value)
     assert "is a ZIP archive but not an Excel workbook" in message
     assert "io.excel" not in message
+
+
+def test_the_unreadable_workbook_message_matches_the_extension(tmp_path) -> None:
+    """Only .xlsx is a ZIP container; a legacy .xls is an OLE2 compound file."""
+
+    from degora.slice_runner import _readable_read_failure
+
+    modern = _readable_read_failure(tmp_path / "renamed.xlsx", ValueError("engine"))
+    legacy = _readable_read_failure(tmp_path / "renamed.xls", ValueError("engine"))
+
+    assert "not a ZIP archive" in modern
+    assert "ZIP" not in legacy
+    assert "not a workbook container" in legacy

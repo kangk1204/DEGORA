@@ -34,7 +34,7 @@ GitHub names those folders `DEGORA-main` and `DEGORA-<version>`, respectively:
 
 ```bash
 cd DEGORA-main       # main-branch ZIP
-# or: cd DEGORA-0.4.10  # v0.4.10 release ZIP
+# or: cd DEGORA-0.4.11  # v0.4.11 release ZIP
 ```
 
 Confirm that the interpreter you will use is supported:
@@ -154,7 +154,7 @@ Useful options:
 ```
 
 Use `--ref` to review a specific branch or release tag in one command, for
-example `bash degora_quickstart.sh --ref v0.4.10`. It fetches the name from
+example `bash degora_quickstart.sh --ref v0.4.11`. It fetches the name from
 `origin`, fast-forwards a local copy that is behind, and stops rather than
 serving stale code when a local branch of the same name has diverged.
 
@@ -343,6 +343,26 @@ make smoke
 ```
 
 ## Release notes
+
+### 0.4.11
+
+The score contract is unchanged. `SCORE_VERSION` remains
+`degora_score_v1_2_source_unit_mean`, and a run over unchanged inputs produces the
+same gene scores and evidence as v0.4.10.
+
+**Species provenance now reaches the prepared bundle and its audit.** v0.4.10 made
+the `query_constrained` label correct in the search snapshot, but preparing a
+selected publication dropped `species_decision`, `species_evidence` and
+`target_species_verified` on the way into the bundle. The species gate reads those
+fields off the search record, so preparation kept working while the archived
+`discovery_audit.json` -- the document a reviewer opens -- reported none of them,
+and the prepare view renders its species provenance line only when the decision
+survives. All three are now carried through, and the regression test asserts the
+whole chain rather than the helper that copies the fields.
+
+**The unreadable-workbook message matches the extension.** Only `.xlsx` is a ZIP
+container; a legacy `.xls` is an OLE2 compound file, so the message named the
+wrong container for one of the two extensions it covered.
 
 ### 0.4.10
 
