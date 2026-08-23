@@ -780,3 +780,45 @@ def test_replay_command_records_force_only_when_requested(tmp_path: Path) -> Non
     source_sidecar = Path(str(result["score_csv"]) + ".source")
     assert source_sidecar.is_file()
     assert "--force" not in source_sidecar.read_text(encoding="utf-8")
+
+
+def _disjoint_gene_bundle(root: Path) -> dict:
+    """Two valid source units whose gene identifier spaces do not overlap."""
+
+    prepared = _prepared_bundle(root)
+    genes = (["TP53", "CDKN1A", "VEGFA"], ["ENSG00000141510", "ENSG00000124762", "ENSG00000112715"])
+    for study, symbols in zip(prepared["studies"], genes, strict=True):
+        candidate = study["files"][0]
+        path = Path(candidate["inspection"]["local_path"])
+        pd.DataFrame(
+            {
+                "gene": symbols,
+                "log2FoldChange": [2.0, 1.3, -1.1],
+                "pvalue": [0.001, 0.01, 0.03],
+                "padj": [0.003, 0.02, 0.04],
+            }
+        ).to_csv(path, index=False)
+        candidate["inspection"]["full_file_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return prepared
+
+
+def test_discovery_analysis_refuses_a_run_that_scored_no_genes(tmp_path: Path) -> None:
+    """A run that scores nothing is a failure, not a run with an empty table.
+
+    Two source units that share no gene identifier produce a valid catalog and a
+    valid score database with zero rows. `degora run` refuses that; the discovery
+    path used to register it as status "complete" with an empty top_genes list
+    and a workbook holding nothing, which reads as a finished analysis.
+    """
+
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    prepared = _disjoint_gene_bundle(bundle)
+    output = tmp_path / "run"
+
+    with pytest.raises(DiscoveryError) as excinfo:
+        run_discovery_analysis(prepared, _selections(), output, species="human", min_studies=2)
+
+    assert "scored zero genes" in str(excinfo.value)
+    # The enclosing transaction must not leave the partial run behind.
+    assert not output.exists() or not any(output.iterdir())

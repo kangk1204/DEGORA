@@ -882,6 +882,18 @@ def _execute_discovery_analysis(
             "discovery_source_units": ",".join(source_units),
         },
     )
+    # A run that scored nothing is a failure, not a run with an empty table. The
+    # standard CLI already refuses it; without the same refusal here a discovery
+    # run registered status "complete" with top_genes [] and a workbook nobody
+    # could read anything out of, and the enclosing transaction kept that partial
+    # output as a finished run.
+    if int(score_summary.get("n_gene_scores", 0) or 0) == 0:
+        raise DiscoveryError(
+            f"DEGORA scored zero genes at min_studies={min_studies}. No gene had usable, "
+            "directional evidence from enough independent source units. Check that the "
+            "selected sources share a gene identifier space and that contrast direction "
+            "and table scope are correct, then prepare and analyze again."
+        )
     excel_workbook = export_run_workbook(
         results_dir,
         results_dir / DEFAULT_WORKBOOK_NAME,

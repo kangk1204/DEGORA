@@ -110,11 +110,16 @@ def prepare_publication_records(
         report(0.92, "Writing the prepared bundle")
         _retarget_paths(result, staging, target)
         result["materialize_dir"] = str(target)
-        result["exports"] = export_discovery_bundle(result, staging, force=True)
+        # Record where the bundle will live, not where it is being staged. The
+        # audit JSON is written into staging and then published under `target`,
+        # and the staging directory is removed moments later -- so a staging path
+        # baked into the persisted document is a link that never resolves for the
+        # reader who opens it.
+        result["exports"] = _export_paths(target)
+        export_discovery_bundle(result, staging, force=True)
         _write_marker(staging, spec.key)
         _publish_prepared_bundle(staging, target, force=force)
         report(1.0, "Prepared bundle published")
-        result["exports"] = _export_paths(target)
         return result
     finally:
         if staging.exists():
@@ -249,7 +254,6 @@ def _prepare_into_staging(
             "note": "Human and Mouse catalogs and DEGORA runs are always generated separately.",
         },
     }
-    result["exports"] = export_discovery_bundle(result, staging, force=True)
     return result
 
 

@@ -335,6 +335,37 @@ make smoke
 
 ## Release notes
 
+### Unreleased
+
+The score contract is unchanged. `SCORE_VERSION` remains
+`degora_score_v1_2_source_unit_mean`, and a run over unchanged inputs produces the
+same gene scores and evidence as v0.4.7.
+
+**A discovery analysis that scored nothing is now a failure.** `degora run`
+already refused a corpus in which no gene had directional evidence from enough
+independent source units. The discovery path did not: it registered the run as
+complete, with an empty top-gene list and a workbook holding no ranking. It now
+raises the same refusal, and the run's own transaction removes the partial
+output rather than keeping it as a finished analysis.
+
+**A prepared bundle's audit records the bundle, not the staging directory.** The
+audit JSON is written while the bundle is still being staged and is then
+published under its final directory. The export paths inside it were captured
+before that move, so the archived document pointed at four files that had been
+deleted by the time anyone opened it. It now records the published locations,
+and those paths are checked for existence by a test.
+
+**Stopping the server reaches a discovery job that is already running.**
+Cancelling queued work does not touch a worker that has started, so a
+preparation mid-download kept writing into the workspace after the run that
+owned it had been recorded as interrupted. Every stage already reports progress,
+so that is where a worker now notices the shutdown and unwinds.
+
+**`make check` says which interpreter it is using.** On a machine whose `python3`
+is older than 3.10 -- the macOS default -- the target used to select it silently
+and fail deep inside the suite on modern syntax. It now names the interpreter and
+stops with the command that fixes it.
+
 ### 0.4.7
 
 The score contract is unchanged. `SCORE_VERSION` remains

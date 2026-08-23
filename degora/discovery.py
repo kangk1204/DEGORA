@@ -2107,6 +2107,14 @@ def prepare_geo_studies(
         )
         _retarget_materialized_paths(result, staging, target)
         result["materialize_dir"] = str(target)
+        # Same reason as the federated path: the persisted audit has to describe
+        # the published bundle, not the staging directory it is written in.
+        result["exports"] = {
+            "output_dir": str(target),
+            "audit_json": str(target / "discovery_audit.json"),
+            "candidates_csv": str(target / "discovery_candidates.csv"),
+            "draft_catalog_csv": str(target / "DEGORA_discovery_draft_catalog.csv"),
+        }
         export_discovery_bundle(result, staging, force=True)
         marker_payload = {
             "artifact_type": DISCOVERY_BUNDLE_ARTIFACT_TYPE,
@@ -2118,12 +2126,6 @@ def prepare_geo_studies(
             json.dumps(marker_payload, indent=2, sort_keys=True) + "\n",
         )
         _publish_prepared_bundle(staging, target, force=force)
-        result["exports"] = {
-            "output_dir": str(target),
-            "audit_json": str(target / "discovery_audit.json"),
-            "candidates_csv": str(target / "discovery_candidates.csv"),
-            "draft_catalog_csv": str(target / "DEGORA_discovery_draft_catalog.csv"),
-        }
         return result
     finally:
         if staging.exists():

@@ -405,6 +405,16 @@ class DiscoveryStateStore:
         )
 
 
+class DiscoveryJobCancelled(BaseException):
+    """Raised inside a worker when the server it belongs to is stopping.
+
+    It derives from BaseException, not Exception, for the same reason
+    KeyboardInterrupt does: the discovery workers wrap progress reporting in
+    ``except Exception`` so that a reporting failure can never break a search,
+    and a cancellation that those guards could swallow would not cancel anything.
+    """
+
+
 class DiscoveryJobManager:
     """Submit discovery jobs to a thread pool while persisting state."""
 
@@ -426,7 +436,12 @@ class DiscoveryJobManager:
 
         def progress_callback(progress: float, message: str | None = None) -> dict[str, Any]:
             if self._closing.is_set():
-                return self.store.get_job(job["job_id"]) or job
+                # Cancellation point. cancel_futures only drops work that has not
+                # started; a worker already downloading or writing needs somewhere
+                # to notice the shutdown, and every stage already reports here.
+                raise DiscoveryJobCancelled(
+                    "discovery job was cancelled because the local DEGORA server is stopping"
+                )
             return self.store.update_job(job["job_id"], progress=progress, message=message)
 
         def run() -> None:
@@ -438,6 +453,11 @@ class DiscoveryJobManager:
                 if self._closing.is_set():
                     return
                 self.store.update_job(job["job_id"], status="completed", result=result, message="Job completed.")
+            except DiscoveryJobCancelled:
+                # interrupt_active_jobs has already written the terminal state, and
+                # anything this worker would have written next is exactly what the
+                # cancellation exists to prevent.
+                return
             except Exception as exc:  # noqa: BLE001 - persist arbitrary worker failures.
                 if self._closing.is_set():
                     return

@@ -7,7 +7,12 @@ import time
 
 import pytest
 
-from degora.discovery_store import DiscoveryJobManager, DiscoveryStateStore, DiscoveryStoreError
+from degora.discovery_store import (
+    DiscoveryJobCancelled,
+    DiscoveryJobManager,
+    DiscoveryStateStore,
+    DiscoveryStoreError,
+)
 
 
 def test_store_persists_jobs_across_reopen(tmp_path) -> None:
@@ -177,4 +182,51 @@ def test_interrupting_shutdown_returns_promptly_and_preserves_terminal_state(tmp
 
     release.set()
     manager.shutdown(wait=True)
+    assert store.get_job(job["job_id"])["status"] == "interrupted"
+
+
+def test_a_cancelled_worker_stops_instead_of_writing_after_shutdown(tmp_path) -> None:
+    """Shutdown has to reach a worker that is already running, not just the queue.
+
+    cancel_futures only drops work that has not started. A prepare already
+    downloading kept going after the server was stopped and the job was recorded
+    as interrupted, so files appeared in the workspace after the run that was
+    supposed to own them had ended. Every stage already reports progress, so that
+    is where the worker now notices.
+    """
+
+    store = DiscoveryStateStore(tmp_path / "discovery.sqlite3")
+    manager = DiscoveryJobManager(store, max_workers=1)
+    started = threading.Event()
+    release = threading.Event()
+    side_effect = tmp_path / "written-after-shutdown.txt"
+    outcome: list[str] = []
+
+    def worker(_job_id, _payload, progress):
+        progress(0.1, "stage one")
+        started.set()
+        release.wait(timeout=5)
+        try:
+            progress(0.5, "stage two")
+        except BaseException as exc:  # noqa: BLE001 - record what reached the worker
+            outcome.append(type(exc).__name__)
+            raise
+        side_effect.write_text("worker kept going", encoding="utf-8")
+        outcome.append("completed")
+        return {"ok": True}
+
+    job = manager.submit("publication_prepare", {}, worker)
+    assert started.wait(timeout=2)
+
+    manager.shutdown(wait=False, cancel_futures=True, interrupt=True)
+    assert store.get_job(job["job_id"])["status"] == "interrupted"
+
+    release.set()
+    for _ in range(50):
+        if outcome:
+            break
+        time.sleep(0.05)
+
+    assert outcome == ["DiscoveryJobCancelled"], outcome
+    assert not side_effect.exists(), "a cancelled worker still wrote to the workspace"
     assert store.get_job(job["job_id"])["status"] == "interrupted"

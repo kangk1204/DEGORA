@@ -802,3 +802,34 @@ def test_an_author_matrix_carries_a_label_for_every_column(tmp_path: Path) -> No
         if item.get("inspection", {}).get("sample_labels")
     )
     assert audit_matrix["inspection"]["sample_labels"]["4641CERM6M24M_S2"]["accession"] == "GSM6072341"
+
+
+def test_the_persisted_audit_points_at_the_published_bundle(tmp_path: Path) -> None:
+    """Every path the archived audit records has to resolve for the reader.
+
+    The audit JSON is written into a staging directory and then published under
+    the target, and the staging directory is removed immediately afterwards. The
+    export paths were captured before that move, so the persisted document -- the
+    one kept for provenance -- described four files that no longer existed, while
+    only the in-memory return value carried the real ones.
+    """
+
+    target = tmp_path / "prepared"
+    result = prepare_publication_records(
+        [_geo_record(), _healthy_record()],
+        "human",
+        materialize_dir=target,
+        transport=FakeTransport({"https://zenodo.org/files/deg.csv": _deg_table()}),
+        geo_client=LabelledGeoClient(),
+    )
+
+    persisted = json.loads((target / "discovery_audit.json").read_text(encoding="utf-8"))
+    exports = persisted["exports"]
+    assert set(exports) == {"output_dir", "audit_json", "candidates_csv", "draft_catalog_csv"}
+    for key, value in exports.items():
+        assert Path(value).exists(), f"persisted audit records a missing {key}: {value}"
+        assert ".prepare-" not in value, f"persisted audit records a staging path for {key}: {value}"
+
+    # The archived document and the returned object must agree about the bundle.
+    assert exports == result["exports"]
+    assert Path(exports["output_dir"]).resolve() == target.resolve()
