@@ -765,9 +765,10 @@ def study_gene_evidence(harmonized: pd.DataFrame) -> pd.DataFrame:
     frame = frame.dropna(subset=["gene_symbol", "study_id", "lfc", "signed_z", "pvalue", "normalized_rank"])
     frame = frame.loc[frame["gene_symbol"].ne("") & frame["study_id"].ne("")].copy()
 
-    n_total = frame["n_ctrl"] + frame["n_treat"]
-    frame["_weight"] = np.where(np.isfinite(n_total) & n_total.gt(0), np.sqrt(n_total), 1.0)
-
+    # Per-contrast source weights are derived downstream by
+    # aggregate.source_unit_rows_for_aggregation, which applies the documented
+    # MAX_SOURCE_SAMPLE_WEIGHT cap. Deriving them a second time here would leave an
+    # uncapped copy of the rule in the tree for a later reader to follow.
     for column, fallback in [
         ("pipeline", "unknown_pipeline"),
         ("assay_type", ""),
@@ -2041,58 +2042,65 @@ def degora_score_table(
     return scores[output_columns], evidence, metadata
 
 
-def _active_study_table(catalog_path: Path | None, evidence: pd.DataFrame) -> pd.DataFrame:
+STUDY_TABLE_COLUMNS = [
+    "study_id",
+    "source_unit_id",
+    "paper_id",
+    "pipeline",
+    "assay_type",
+    "source_input_type",
+    "platform",
+    "normalization",
+    "probe_collapse",
+    "species",
+    "cell_system",
+    "hypoxia_modality",
+    "duration_h",
+    "n_ctrl",
+    "n_treat",
+    "source_path",
+    "source_url",
+    "notes",
+]
+
+
+def _active_study_table(catalog_path: Path | None, harmonized: pd.DataFrame) -> pd.DataFrame:
+    """Return one row per active contrast for the SQLite ``studies`` table.
+
+    Both branches keep the same grain -- one row per contrast -- and the same
+    column set, so the table does not change shape or meaning depending on
+    whether a catalog was supplied.
+    """
+
     if catalog_path is not None and catalog_path.exists():
         catalog = read_catalog(catalog_path)
         active = catalog.loc[catalog_include_mask(catalog)].copy()
         active["source_unit_id"] = _source_unit_series(active)
-        columns = [
-            "study_id",
-            "source_unit_id",
-            "paper_id",
-            "pipeline",
-            "assay_type",
-            "source_input_type",
-            "platform",
-            "normalization",
-            "probe_collapse",
-            "species",
-            "cell_system",
-            "hypoxia_modality",
-            "duration_h",
-            "n_ctrl",
-            "n_treat",
-            "source_path",
-            "source_url",
-            "notes",
-        ]
-        return active[[column for column in columns if column in active.columns]].sort_values("study_id").reset_index(drop=True)
+        return (
+            active[[column for column in STUDY_TABLE_COLUMNS if column in active.columns]]
+            .sort_values("study_id")
+            .reset_index(drop=True)
+        )
 
-    columns = [
-        "study_id",
-        "source_unit_id",
-        "paper_id",
-        "pipeline",
-        "assay_type",
-        "source_input_type",
-        "platform",
-        "normalization",
-        "probe_collapse",
-        "species",
-        "cell_system",
-        "hypoxia_modality",
-        "duration_h",
-        "n_ctrl",
-        "n_treat",
-        "source_path",
-        "source_url",
-    ]
-    # Keep the SQLite "studies" schema invariant across catalog/no-catalog runs: the
-    # catalog branch carries a "notes" column, so the evidence-derived fallback adds an
-    # empty one rather than emitting a 17- vs 18-column table depending on the run path.
-    out = evidence[columns].drop_duplicates("study_id").sort_values("study_id").reset_index(drop=True)
-    out["notes"] = ""
-    return out
+    # Derive from the harmonized contrast rows, not from the collapsed evidence
+    # table. Evidence carries one row per (gene, source unit) and its study_id is
+    # the first contributing contrast for that gene, so a contrast that is never
+    # any gene's first -- for example a follow-up time point covering fewer genes
+    # than its sibling in the same source unit -- would never appear here, and the
+    # reported contrast count would disagree with n_contrasts_total.
+    frame = harmonized.copy()
+    if frame.empty:
+        return pd.DataFrame(columns=STUDY_TABLE_COLUMNS)
+    frame["source_unit_id"] = _source_unit_series(frame)
+    for column in STUDY_TABLE_COLUMNS:
+        if column not in frame.columns:
+            frame[column] = ""
+    return (
+        frame[STUDY_TABLE_COLUMNS]
+        .drop_duplicates("study_id")
+        .sort_values("study_id")
+        .reset_index(drop=True)
+    )
 
 
 def _write_sqlite(
@@ -2217,7 +2225,7 @@ def write_score_database(
         metadata.update(extra_metadata)
     metadata = sanitize_metadata(metadata, path_base)
     studies = _portable_source_path_columns(
-        _active_study_table(catalog_path, evidence),
+        _active_study_table(catalog_path, harmonized),
         source_path_base,
         path_base,
     )

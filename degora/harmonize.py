@@ -94,12 +94,14 @@ def _normalize_collapse_label(value: Any) -> str:
     return str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
 
 
-def _excel_date_gene_number_candidates(year: int, month: int, day: int) -> tuple[int, ...]:
+def _excel_date_gene_number_candidates(year: int, day: int) -> tuple[int, ...]:
     # Excel frequently stores "Sep-2" as 2002-09-01, but "2-Sep" as
     # <workbook-year>-09-02. Preserve the intended gene-family number in both cases.
+    # A candidate is only ever used when it names a real gene in the family, so the
+    # year suffix is offered first and silently ignored when it names nothing.
     candidates: list[int] = []
     year_suffix = year % 100
-    if day == 1 and 1 <= year_suffix <= 31 and year not in {2025, 2026}:
+    if day == 1 and 1 <= year_suffix <= 31:
         candidates.append(year_suffix)
     candidates.append(day)
     return tuple(dict.fromkeys(candidates))
@@ -129,7 +131,7 @@ def _repair_excel_date_gene_symbol(value: Any) -> Any:
         if prefix:
             symbol = _repair_excel_date_gene_symbol_from_candidates(
                 prefix,
-                _excel_date_gene_number_candidates(value.year, value.month, value.day),
+                _excel_date_gene_number_candidates(value.year, value.day),
             )
             if symbol:
                 return symbol
@@ -139,7 +141,7 @@ def _repair_excel_date_gene_symbol(value: Any) -> Any:
         if prefix:
             symbol = _repair_excel_date_gene_symbol_from_candidates(
                 prefix,
-                _excel_date_gene_number_candidates(value.year, value.month, value.day),
+                _excel_date_gene_number_candidates(value.year, value.day),
             )
             if symbol:
                 return symbol
@@ -158,7 +160,7 @@ def _repair_excel_date_gene_symbol(value: Any) -> Any:
         if prefix:
             symbol = _repair_excel_date_gene_symbol_from_candidates(
                 prefix,
-                _excel_date_gene_number_candidates(year, month, day),
+                _excel_date_gene_number_candidates(year, day),
             )
             if symbol:
                 return symbol

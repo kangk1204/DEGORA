@@ -308,7 +308,7 @@ Create or sign in to an NCBI account and open <https://account.ncbi.nlm.nih.gov/
 
 ## Reproduction boundary
 
-The included synthetic demo is numerically and semantically reproducible from this repository across the supported Python environments. Container or workbook metadata can make archive bytes differ even when tables and scores are identical. Larger external datasets are not bundled here and must be obtained from their original providers before they can be analyzed.
+The included synthetic demo is numerically and semantically reproducible from this repository across the supported Python environments. Repeating a run over the same inputs reproduces `degora_gene_scores.csv`, `degora_scores.db`, and `DEGORA_output.xlsx` byte for byte: the workbook's own timestamps and its archive member timestamps are pinned rather than taken from the clock. Larger external datasets are not bundled here and must be obtained from their original providers before they can be analyzed.
 
 ## Interpretation boundaries
 
@@ -334,6 +334,42 @@ make smoke
 ```
 
 ## Release notes
+
+### Unreleased
+
+The score contract is unchanged. `SCORE_VERSION` remains
+`degora_score_v1_2_source_unit_mean`, and a run over unchanged inputs produces a
+byte-identical `degora_gene_scores.csv` and `degora_scores.db` to v0.4.6.
+
+**The audit workbook is now reproducible too.** `DEGORA_output.xlsx` was the one
+generated artifact whose bytes changed between two identical runs, because the
+save time was written into the workbook properties and into every archive member.
+Both are pinned now, so the workbook's recorded sha256 verifies the way the CSV
+and database ones already did.
+
+**The contrast table no longer loses contrasts.** When a run is scored without a
+catalog, the SQLite `studies` table was built from collapsed evidence rows, which
+name only the first contributing contrast per gene and source unit. A follow-up
+contrast covering fewer genes than its sibling in the same source unit therefore
+never appeared, and the reported contrast count disagreed with
+`n_contrasts_total` in the same metadata. Both branches now report one row per
+contrast with the same columns.
+
+**Count-derived fallbacks use whole-matrix library sizes.** logCPM denominators
+were summed after the low-count filter, which made each sample's scaling depend
+on how much low-count mass that sample happened to lose. They are taken from the
+full count matrix now, as the convention the field expects.
+
+**A malformed workbook explains itself.** A `.xlsx` that is a valid ZIP but not a
+workbook raised an engine-selection traceback from the optional settings sheets
+before the catalog reader could report it. `degora validate` and `degora run` now
+return the same beginner-readable configuration error they return for every other
+unreadable config.
+
+Smaller fixes: `degora discover` help and output state the real page size instead
+of a stale one; a ZIP member cannot name a Windows drive-relative path; and a
+second server that fails to claim a discovery workspace no longer clears the
+owning server's in-process record of it.
 
 ### 0.4.6
 

@@ -13,7 +13,9 @@ import pytest
 from degora import SCORE_VERSION, __version__
 import degora.provenance as provenance
 import degora.score_db as score_db
+from degora.harmonize import TableMapping, harmonize_frame
 from degora.score_db import (
+    STUDY_TABLE_COLUMNS,
     _format_top_percent,
     _quality_label,
     _quality_label_frame,
@@ -1283,3 +1285,49 @@ def test_direction_confidence_is_neutral_when_consensus_z_ties() -> None:
     assert row["direction_total_source_units"] == 2
     assert row["direction_confidence_index"] == 0.5
     assert row["direction_posterior_mean"] == 0.5
+
+
+def test_studies_table_keeps_every_contrast_without_a_catalog(tmp_path) -> None:
+    """The fallback studies table must report contrasts, not collapsed evidence rows.
+
+    Evidence carries one row per (gene, source unit) and names the first contributing
+    contrast, so a follow-up contrast that covers fewer genes than its sibling in the
+    same source unit is never any gene's first. Deriving the table from evidence
+    dropped it, and the reported contrast count then disagreed with n_contrasts_total.
+    """
+
+    def contrast(study_id: str, unit: str, genes: list[str]) -> pd.DataFrame:
+        frame = pd.DataFrame(
+            {"gene": genes, "lfc": [2.0] * len(genes), "pvalue": [0.001] * len(genes)}
+        )
+        return harmonize_frame(
+            frame,
+            TableMapping("gene", "lfc", "pvalue"),
+            {"study_id": study_id, "paper_id": unit, "source_unit_id": unit, "n_ctrl": 3, "n_treat": 3},
+        )
+
+    harmonized = pd.concat(
+        [
+            contrast("u1_a_full", "u1", ["G1", "G2", "G3"]),
+            contrast("u1_b_subset", "u1", ["G1"]),
+            contrast("u2_c", "u2", ["G1", "G2", "G3"]),
+        ],
+        ignore_index=True,
+    )
+    harmonized_path = tmp_path / "harmonized.csv"
+    harmonized.to_csv(harmonized_path, index=False)
+
+    summary = write_score_database(harmonized_path, tmp_path / "out", min_studies=2)
+
+    with sqlite3.connect(summary["db_path"]) as connection:
+        studies = pd.read_sql_query("SELECT * FROM studies ORDER BY study_id", connection)
+        total = connection.execute(
+            "SELECT value FROM meta WHERE key = 'n_contrasts_total'"
+        ).fetchone()[0]
+
+    assert list(studies["study_id"]) == ["u1_a_full", "u1_b_subset", "u2_c"]
+    assert list(studies["source_unit_id"]) == ["u1", "u1", "u2"]
+    assert summary["n_contrasts"] == 3
+    assert int(total) == 3
+    # The catalog and no-catalog branches must stay schema-compatible.
+    assert list(studies.columns) == STUDY_TABLE_COLUMNS

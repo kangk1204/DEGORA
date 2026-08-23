@@ -6,7 +6,7 @@ import types
 
 import pytest
 
-from degora.cli import main
+from degora.cli import DISCOVERY_PAGE_SIZE, main
 
 
 def _snapshot() -> dict:
@@ -61,7 +61,7 @@ def test_federated_discover_is_default_and_exports_full_snapshot(tmp_path, monke
     assert captured["export"]["output_dir"] == output.resolve()
     out = capsys.readouterr().out
     assert "federated human PubMed+linked-data snapshot" in out
-    assert "page size is 20" in out
+    assert f"page size is {DISCOVERY_PAGE_SIZE}" in out
     assert "pmid:111" in out
     assert "First" in out
     assert "verified ready" in out

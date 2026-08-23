@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from pathlib import Path
 from zipfile import ZipFile
 
 import pandas as pd
@@ -133,3 +134,54 @@ def test_formula_like_strings_are_written_as_literal_xlsx_text(tmp_path) -> None
     with ZipFile(output) as archive:
         sheet_xml = archive.read("xl/worksheets/sheet1.xml")
     assert b"<f" not in sheet_xml
+
+
+def _minimal_result_dir(root, gene_symbol: str = "TOP"):
+    result_dir = root / "results"
+    result_dir.mkdir(parents=True)
+    db_path = result_dir / "degora_scores.db"
+    with sqlite3.connect(db_path) as connection:
+        pd.DataFrame(
+            {
+                "gene_symbol": [gene_symbol],
+                "quality_weighted_degora_rank": [1],
+                "quality_weighted_degora_score": [0.9],
+            }
+        ).to_sql("genes", connection, index=False)
+        pd.DataFrame({"gene_symbol": [gene_symbol], "study_id": ["S0"]}).to_sql(
+            "gene_evidence", connection, index=False
+        )
+        pd.DataFrame({"study_id": ["S0"], "source_unit_id": ["P0"]}).to_sql(
+            "studies", connection, index=False
+        )
+        pd.DataFrame({"key": ["corpus"], "value": ["repro-test"]}).to_sql(
+            "meta", connection, index=False
+        )
+    (result_dir / "degora_score_metadata.json").write_text("{}\n", encoding="utf-8")
+    return result_dir
+
+
+def test_workbook_bytes_are_identical_for_identical_inputs(tmp_path) -> None:
+    """The workbook must be reproducible like the CSV and SQLite outputs beside it.
+
+    openpyxl stamps the save time into docProps/core.xml and into every ZIP member,
+    so two runs over the same inputs used to differ in bytes while every sheet was
+    identical. That made the recorded artifact sha256 unusable for verification.
+    """
+
+    first = export_run_workbook(_minimal_result_dir(tmp_path / "a"), command="pytest repro")
+    second = export_run_workbook(_minimal_result_dir(tmp_path / "b"), command="pytest repro")
+
+    first_bytes = Path(first["output"]).read_bytes()
+    second_bytes = Path(second["output"]).read_bytes()
+    assert first_bytes == second_bytes
+
+    with ZipFile(first["output"]) as archive:
+        stamps = {info.date_time for info in archive.infolist()}
+        core = archive.read("docProps/core.xml").decode("utf-8")
+    assert stamps == {(2000, 1, 1, 0, 0, 0)}
+    assert "2000-01-01T00:00:00Z" in core
+
+    # The workbook must still be a readable OOXML file with its data intact.
+    workbook = load_workbook(first["output"], read_only=True, data_only=True)
+    assert workbook["Gene_scores"].max_row == 2

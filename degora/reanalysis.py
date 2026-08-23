@@ -179,12 +179,17 @@ def derive_welch_deg(
         if not bool(integer_like.all()):
             raise ValueError("count matrix must contain non-negative integer-like raw counts")
         collapsed = values.groupby("__gene__", sort=True)[control + treatment].sum(min_count=1)
+        # Library sizes come from the full count matrix, before the expression filter
+        # removes low-count genes. Summing the filtered matrix instead would make each
+        # sample's CPM denominator depend on how much low-count mass that particular
+        # sample lost, which is a per-sample shift in log space rather than the common
+        # scaling logCPM is defined as.
+        libraries = collapsed.sum(axis=0).replace(0.0, np.nan)
         expressed = low_count_filter_mask(collapsed)
         filter_summary = low_count_filter_summary(collapsed, expressed)
         collapsed = collapsed.loc[expressed]
         if collapsed.empty:
             raise ValueError("no genes remain after the predeclared low-count filter")
-        libraries = collapsed.sum(axis=0).replace(0.0, np.nan)
         transformed = np.log2(collapsed.divide(libraries, axis=1).mul(1_000_000.0).fillna(0.0) + 1.0)
         source_input_type = "derived_count_table"
         pipeline = "logCPM_Welch_derived_from_public_counts"

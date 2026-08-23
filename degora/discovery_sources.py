@@ -312,7 +312,8 @@ class SafePublicTransport:
                 last_error = exc
                 if attempt < self.retries - 1:
                     self.sleep(_retry_delay_seconds(exc, attempt))
-        assert last_error is not None
+        if last_error is None:  # pragma: no cover - retries is clamped to >= 1
+            raise DiscoveryUnavailableError("public source request was never attempted")
         detail = f"HTTP {last_error.code}" if isinstance(last_error, urllib.error.HTTPError) else type(last_error).__name__
         raise DiscoveryUnavailableError(
             f"public source request failed after {self.retries} attempt(s) ({detail})"

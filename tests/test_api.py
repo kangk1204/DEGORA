@@ -25,39 +25,38 @@ from degora.provenance import EXTERNAL_PATH_PREFIX
 from degora.score_db import write_score_database
 
 
-def test_local_discovery_fallback_interrupts_running_search(tmp_path, monkeypatch) -> None:
+def test_discovery_job_manager_interrupts_running_search(tmp_path) -> None:
+    """A stopped server must not block on an in-flight search, and must persist why.
+
+    This drives the same store/manager classes the running server uses, so the
+    interruption contract is exercised on the live path rather than on a stand-in.
+    """
+
+    store_class, manager_class = api._load_discovery_store_classes()
+    store = store_class(tmp_path / "discovery.sqlite3")
+    manager = manager_class(store, max_workers=1)
+
     started = threading.Event()
     release = threading.Event()
+    search_id = "a1b2c3d4e5f60718"
+    store.save_search(search_id, {"id": search_id, "query": "hypoxia", "status": "queued"})
 
-    def blocked_search(query: str, species: str, *, limit: int) -> dict:
+    def worker(_job_id, _payload, _progress):
         started.set()
         release.wait(timeout=5)
-        return {"query": query, "species": species, "limit": limit, "records": []}
+        return {"search_id": search_id}
 
-    monkeypatch.setattr(api, "_call_search_publications", blocked_search)
-    store = api._LocalDiscoveryStateStore(tmp_path / "discovery.sqlite3")
-    manager = api._LocalDiscoveryJobManager(store, max_workers=1)
-    search = store.create_search(query="hypoxia", species="human", limit=20)
-    job = store.create_job(search_id=search["id"])
-    manager.submit_search(
-        job_id=job["id"],
-        search_id=search["id"],
-        query="hypoxia",
-        species="human",
-        limit=20,
-    )
+    job = manager.submit("publication_search", {"search_id": search_id}, worker)
     assert started.wait(timeout=2)
 
     before = time.monotonic()
-    manager.close(wait=False, cancel_futures=True, interrupt=True)
+    manager.shutdown(wait=False, cancel_futures=True, interrupt=True)
     assert time.monotonic() - before < 0.5
-    assert store.get_job(job["id"])["status"] == "interrupted"
-    assert store.get_search(search["id"])["status"] == "interrupted"
+    assert store.get_job(job["job_id"])["status"] == "interrupted"
 
     release.set()
-    manager.close(wait=True)
-    assert store.get_job(job["id"])["status"] == "interrupted"
-    assert store.get_search(search["id"])["status"] == "interrupted"
+    manager.shutdown(wait=True)
+    assert store.get_job(job["job_id"])["status"] == "interrupted"
 
 
 def _harmonized() -> pd.DataFrame:

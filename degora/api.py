@@ -5,7 +5,6 @@ from __future__ import annotations
 import errno
 import inspect
 import ipaddress
-import io
 import json
 import math
 import os
@@ -16,7 +15,6 @@ import sqlite3
 import sys
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -4231,7 +4229,7 @@ def _select_publication_snapshot_records(
         raise ValueError("record_ids contains duplicate selections")
     records = _search_result_records(snapshot)
     selected: list[dict[str, Any]] = []
-    for original, key in zip(identifiers, normalized):
+    for original, key in zip(identifiers, normalized, strict=True):
         matches = [record for record in records if key in _publication_record_keys(record)]
         if not matches:
             raise ValueError(f"selected publication was not found in the persisted search: {original}")
@@ -4241,207 +4239,9 @@ def _select_publication_snapshot_records(
     return selected
 
 
-class _LocalDiscoveryStateStore:
-    """Small persistent adapter used until the planned discovery_store module is present."""
-
-    def __init__(self, path: str | Path) -> None:
-        self.path = Path(path).resolve()
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._lock = threading.RLock()
-        with self._connect() as connection:
-            connection.executescript(
-                """
-                CREATE TABLE IF NOT EXISTS discovery_searches (
-                  id TEXT PRIMARY KEY,
-                  query TEXT NOT NULL,
-                  species TEXT NOT NULL,
-                  limit_value INTEGER NOT NULL,
-                  status TEXT NOT NULL,
-                  snapshot_json TEXT NOT NULL DEFAULT '{}',
-                  error TEXT NOT NULL DEFAULT '',
-                  created_at REAL NOT NULL,
-                  updated_at REAL NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS discovery_jobs (
-                  id TEXT PRIMARY KEY,
-                  search_id TEXT NOT NULL,
-                  status TEXT NOT NULL,
-                  error TEXT NOT NULL DEFAULT '',
-                  created_at REAL NOT NULL,
-                  updated_at REAL NOT NULL,
-                  FOREIGN KEY(search_id) REFERENCES discovery_searches(id)
-                );
-                """
-            )
-
-    def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.path, timeout=30)
-        connection.row_factory = sqlite3.Row
-        return connection
-
-    def close(self) -> None:
-        return None
-
-    def interrupt_active_jobs(self, message: str) -> None:
-        """Persist terminal interruption for queued/running fallback work."""
-
-        now = time.time()
-        with self._lock, self._connect() as connection:
-            connection.execute(
-                """
-                UPDATE discovery_jobs
-                   SET status = 'interrupted', error = ?, updated_at = ?
-                 WHERE status IN ('queued', 'running')
-                """,
-                [message, now],
-            )
-            connection.execute(
-                """
-                UPDATE discovery_searches
-                   SET status = 'interrupted', error = ?, updated_at = ?
-                 WHERE status IN ('queued', 'running')
-                """,
-                [message, now],
-            )
-
-    def create_search(self, *, query: str, species: str, limit: int) -> dict[str, Any]:
-        now = time.time()
-        search_id = secrets.token_hex(8)
-        with self._lock, self._connect() as connection:
-            connection.execute(
-                """
-                INSERT INTO discovery_searches
-                  (id, query, species, limit_value, status, snapshot_json, created_at, updated_at)
-                VALUES (?, ?, ?, ?, 'queued', '{}', ?, ?)
-                """,
-                [search_id, query, species, limit, now, now],
-            )
-        return {"id": search_id, "query": query, "species": species, "limit": limit, "status": "queued"}
-
-    def create_job(self, *, search_id: str) -> dict[str, Any]:
-        now = time.time()
-        job_id = secrets.token_hex(8)
-        with self._lock, self._connect() as connection:
-            connection.execute(
-                """
-                INSERT INTO discovery_jobs (id, search_id, status, created_at, updated_at)
-                VALUES (?, ?, 'queued', ?, ?)
-                """,
-                [job_id, search_id, now, now],
-            )
-        return {"id": job_id, "search_id": search_id, "status": "queued"}
-
-    def update_job(self, job_id: str, *, status: str, error: str = "") -> None:
-        now = time.time()
-        with self._lock, self._connect() as connection:
-            connection.execute(
-                """
-                UPDATE discovery_jobs
-                   SET status = ?, error = ?, updated_at = ?
-                 WHERE id = ? AND status IN ('queued', 'running')
-                """,
-                [status, error, now, job_id],
-            )
-
-    def complete_search(self, search_id: str, snapshot: dict[str, Any]) -> None:
-        now = time.time()
-        with self._lock, self._connect() as connection:
-            connection.execute(
-                """
-                UPDATE discovery_searches
-                   SET status = 'complete', snapshot_json = ?, error = '', updated_at = ?
-                 WHERE id = ? AND status IN ('queued', 'running')
-                """,
-                [json.dumps(_jsonable(snapshot), sort_keys=True), now, search_id],
-            )
-
-    def fail_search(self, search_id: str, error: str) -> None:
-        now = time.time()
-        with self._lock, self._connect() as connection:
-            connection.execute(
-                """
-                UPDATE discovery_searches
-                   SET status = 'failed', error = ?, updated_at = ?
-                 WHERE id = ? AND status IN ('queued', 'running')
-                """,
-                [error, now, search_id],
-            )
-
-    def get_job(self, job_id: str) -> dict[str, Any] | None:
-        with self._lock, self._connect() as connection:
-            row = connection.execute("SELECT * FROM discovery_jobs WHERE id = ?", [job_id]).fetchone()
-        return dict(row) if row else None
-
-    def get_search(self, search_id: str) -> dict[str, Any] | None:
-        with self._lock, self._connect() as connection:
-            row = connection.execute("SELECT * FROM discovery_searches WHERE id = ?", [search_id]).fetchone()
-        if row is None:
-            return None
-        record = dict(row)
-        snapshot = json.loads(str(record.pop("snapshot_json") or "{}"))
-        return {
-            "id": record["id"],
-            "query": record["query"],
-            "species": record["species"],
-            "limit": record["limit_value"],
-            "status": record["status"],
-            "error": record["error"],
-            "snapshot": snapshot,
-            "total": snapshot.get("total", len(_search_result_records(snapshot))),
-            "created_at": record["created_at"],
-            "updated_at": record["updated_at"],
-        }
-
-
-class _LocalDiscoveryJobManager:
-    def __init__(self, store: _LocalDiscoveryStateStore, *, max_workers: int = 2) -> None:
-        self.store = store
-        self._executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="degora-discovery")
-        self._closing = threading.Event()
-
-    def submit_search(self, *, job_id: str, search_id: str, query: str, species: str, limit: int) -> None:
-        if self._closing.is_set():
-            raise RuntimeError("discovery job manager is closed")
-        self._executor.submit(self._run_search, job_id, search_id, query, species, limit)
-
-    def _run_search(self, job_id: str, search_id: str, query: str, species: str, limit: int) -> None:
-        if self._closing.is_set():
-            return
-        self.store.update_job(job_id, status="running")
-        try:
-            snapshot = _call_search_publications(query, species, limit=limit)
-        except Exception as exc:  # noqa: BLE001 - the job record is the failure boundary.
-            if self._closing.is_set():
-                return
-            message = str(exc) or exc.__class__.__name__
-            self.store.fail_search(search_id, message)
-            self.store.update_job(job_id, status="failed", error=message)
-            return
-        if self._closing.is_set():
-            return
-        self.store.complete_search(search_id, snapshot)
-        self.store.update_job(job_id, status="complete")
-
-    def close(
-        self,
-        *,
-        wait: bool = True,
-        cancel_futures: bool = True,
-        interrupt: bool = False,
-    ) -> None:
-        if interrupt:
-            self._closing.set()
-            self.store.interrupt_active_jobs(
-                "Job was interrupted because the local DEGORA server was stopped."
-            )
-        self._executor.shutdown(wait=wait, cancel_futures=cancel_futures)
-
-
 def _load_discovery_store_classes() -> tuple[type[Any], type[Any]]:
-    try:
-        from .discovery_store import DiscoveryJobManager, DiscoveryStateStore
-    except ImportError:
-        return _LocalDiscoveryStateStore, _LocalDiscoveryJobManager
+    from .discovery_store import DiscoveryJobManager, DiscoveryStateStore
+
     return DiscoveryStateStore, DiscoveryJobManager
 
 
@@ -4822,18 +4622,6 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
             raise ValueError("limit must be between 1 and 1000")
         store = self.server.discovery_search_store
         manager = self.server.discovery_job_manager
-        if hasattr(store, "create_search") and hasattr(manager, "submit_search"):
-            search = store.create_search(query=query, species=species, limit=limit)
-            job = store.create_job(search_id=str(search["id"]))
-            manager.submit_search(
-                job_id=str(job["id"]),
-                search_id=str(search["id"]),
-                query=query,
-                species=species,
-                limit=limit,
-            )
-            return {"job_id": job["id"], "search_id": search["id"], "status": "queued"}
-
         search_id = secrets.token_hex(8)
         now = time.time()
         search_payload = {
@@ -5229,12 +5017,14 @@ class _DiscoveryRootProcessLock:
         self.path = path.resolve()
         self._key = str(self.path)
         self._handle: Any | None = None
+        self._claimed = False
 
     def acquire(self) -> None:
         with _DISCOVERY_PROCESS_LOCK_GUARD:
             if self._key in _DISCOVERY_PROCESS_LOCKS:
                 raise DiscoveryWorkspaceInUseError("another DEGORA server is already using this discovery workspace")
             _DISCOVERY_PROCESS_LOCKS.add(self._key)
+            self._claimed = True
         handle = None
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -5255,10 +5045,18 @@ class _DiscoveryRootProcessLock:
         except (ImportError, OSError) as exc:
             if handle is not None:
                 handle.close()
-            with _DISCOVERY_PROCESS_LOCK_GUARD:
-                _DISCOVERY_PROCESS_LOCKS.discard(self._key)
+            self._release_claim()
             raise DiscoveryWorkspaceInUseError("another DEGORA server is already using this discovery workspace") from exc
         self._handle = handle
+
+    def _release_claim(self) -> None:
+        # Only drop the shared key this instance actually claimed. A caller that
+        # releases after a failed acquire would otherwise erase the entry belonging
+        # to the server that already owns the workspace.
+        with _DISCOVERY_PROCESS_LOCK_GUARD:
+            if self._claimed:
+                self._claimed = False
+                _DISCOVERY_PROCESS_LOCKS.discard(self._key)
 
     def release(self) -> None:
         handle = self._handle
@@ -5278,8 +5076,7 @@ class _DiscoveryRootProcessLock:
                 pass
             finally:
                 handle.close()
-        with _DISCOVERY_PROCESS_LOCK_GUARD:
-            _DISCOVERY_PROCESS_LOCKS.discard(self._key)
+        self._release_claim()
 
 
 class DegoraHttpServer(ThreadingHTTPServer):

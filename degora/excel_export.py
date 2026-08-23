@@ -13,7 +13,13 @@ from openpyxl.comments import Comment
 
 from . import runtime_version_info
 from .excel_io import read_config_sheet
-from .provenance import portable_command, portable_path, write_source_sidecar
+from .provenance import (
+    normalize_ooxml_zip,
+    portable_command,
+    portable_path,
+    set_reproducible_workbook_properties,
+    write_source_sidecar,
+)
 
 
 EXCEL_MAX_ROWS = 1_048_576
@@ -679,6 +685,12 @@ def export_run_workbook(
         _force_formula_like_text(writer)
         _annotate_headers(writer)
         _autosize(writer)
+        # Pin the workbook's own created/modified stamps before openpyxl saves them.
+        set_reproducible_workbook_properties(writer.book)
+    # The saved archive still carries per-member write timestamps, so rewrite it with
+    # fixed timestamps and a stable member order. Identical inputs then produce a
+    # byte-identical workbook, matching the CSV and SQLite outputs of the same run.
+    normalize_ooxml_zip(output)
 
     manifest = output.with_suffix(".manifest.json")
     validation = output.with_suffix(".validation.txt")

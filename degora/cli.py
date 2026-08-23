@@ -34,7 +34,11 @@ def _sheet_settings(path: Path, sheet: str, key_column: str) -> dict[str, str]:
 
     try:
         frame = read_config_sheet(path, sheet)
-    except ValueError:
+    except Exception:  # noqa: BLE001 - a malformed workbook is reported by the catalog reader.
+        # A file that is a valid ZIP but not an OOXML workbook raises engine-selection
+        # errors from pandas/openpyxl that are neither ValueError nor a DEGORA error.
+        # Optional Project/AdvancedSettings sheets must never be the thing that turns a
+        # bad config into a traceback; read_catalog raises the beginner-readable error.
         return {}
     if frame.empty:
         return {}
@@ -169,7 +173,7 @@ def _select_publication_records(records: list[dict[str, Any]], selections: list[
         raise CliUsageError("duplicate --select value(s): " + ", ".join(duplicates))
 
     matched: list[dict[str, Any]] = []
-    for original, normalized in zip(selections, normalized_selections):
+    for original, normalized in zip(selections, normalized_selections, strict=True):
         candidates = [record for record in records if normalized in _publication_selection_keys(record)]
         if not candidates:
             raise CliUsageError(f"--select did not match any publication/source-unit record: {original}")
@@ -563,7 +567,7 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "Search Human or Mouse publication/source-unit records. Default federated mode searches PubMed "
             "plus linked data, evaluates at most 1000 records, writes a full audit snapshot, and displays "
-            "20 rows per globally sorted page. Human and Mouse runs stay separate; searching both species "
+            f"{DISCOVERY_PAGE_SIZE} rows per globally sorted page. Human and Mouse runs stay separate; searching both species "
             "does not pool evidence. NCBI_EMAIL and NCBI_API_KEY are optional environment variables used "
             "for NCBI requests when configured."
         ),
@@ -586,7 +590,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--page",
         type=int,
         default=1,
-        help="One-based globally sorted display page; 20 rows per page.",
+        help=f"One-based globally sorted display page; {DISCOVERY_PAGE_SIZE} rows per page.",
     )
     discover.add_argument("--output-dir", required=True)
     discover.add_argument(
@@ -763,7 +767,10 @@ def main(argv: list[str] | None = None) -> int:
                     f"Wrote federated {args.species} PubMed+linked-data snapshot with "
                     f"{len(records)} globally ranked record(s) evaluated under the {args.limit}-record cap."
                 )
-                print(f"Display page {page['page']} contains {len(page.get('records', []))} row(s); page size is 20.")
+                print(
+                    f"Display page {page['page']} contains {len(page.get('records', []))} row(s); "
+                    f"page size is {DISCOVERY_PAGE_SIZE}."
+                )
                 _print_publication_page(
                     list(page.get("records", [])),
                     page=int(page["page"]),

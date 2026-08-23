@@ -3,13 +3,14 @@ from __future__ import annotations
 from decimal import Decimal
 import json
 import sqlite3
+from zipfile import ZipFile
 
 import pandas as pd
 import pytest
 from openpyxl import load_workbook
 
 from degora import SCORE_VERSION, __version__
-from degora.cli import _int_setting, _print_run_warnings, main
+from degora.cli import DISCOVERY_PAGE_SIZE, _int_setting, _print_run_warnings, main
 from degora.excel_template import TEMPLATE_SHEETS
 from degora.slice_runner import DegoraConfigError
 
@@ -528,3 +529,39 @@ def test_zero_gene_diagnostic_never_masks_the_real_error(tmp_path) -> None:
     from degora.cli import _zero_gene_diagnostic
 
     assert _zero_gene_diagnostic(tmp_path / "does-not-exist.csv", min_studies=2) == ""
+
+
+def test_discover_help_states_the_real_page_size(capsys) -> None:
+    """Help text must be derived from DISCOVERY_PAGE_SIZE, not restated by hand.
+
+    The constant and the prose disagreed once already; deriving both from the same
+    value is what keeps a documented page size from drifting away from the code.
+    """
+
+    with pytest.raises(SystemExit):
+        main(["discover", "--help"])
+
+    # argparse hard-wraps help text, so compare on collapsed whitespace.
+    text = " ".join(capsys.readouterr().out.split())
+    assert f"{DISCOVERY_PAGE_SIZE} rows per globally sorted page" in text
+    assert f"{DISCOVERY_PAGE_SIZE} rows per page" in text
+    assert "20 rows per" not in text
+
+
+def test_malformed_workbook_config_reports_a_config_error(tmp_path, capsys) -> None:
+    """A .xlsx that is a valid ZIP but not a workbook must not surface a traceback.
+
+    The optional Project/AdvancedSettings sheets are read before the catalog, and
+    pandas raises engine-selection errors there that are neither ValueError nor a
+    DEGORA error, so they escaped the beginner-readable error contract.
+    """
+
+    config = tmp_path / "broken.xlsx"
+    with ZipFile(config, "w") as archive:
+        archive.writestr("hello.txt", "not a workbook")
+
+    assert main(["validate", str(config)]) == 2
+
+    message = capsys.readouterr().err
+    assert "DEGORA config error: config file could not be read" in message
+    assert "valid CSV or Excel (.xlsx) workbook" in message

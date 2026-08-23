@@ -804,7 +804,10 @@ def _candidate_name(candidate: dict[str, Any]) -> str:
 
 
 def _safe_name(value: str) -> str:
-    safe = re.sub(r"[^A-Za-z0-9_.!:-]+", "_", str(value)).strip("._")
+    # ':' is deliberately excluded: on Windows "output_dir" / "C:member.csv" resolves to
+    # the drive-relative "C:member.csv", so an archive member could name a file outside
+    # the bundle even though the member path itself passed the traversal checks.
+    safe = re.sub(r"[^A-Za-z0-9_.!-]+", "_", str(value)).strip("._")
     return safe[:180] or hashlib.sha256(str(value).encode("utf-8")).hexdigest()[:16]
 
 
