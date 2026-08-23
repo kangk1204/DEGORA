@@ -134,7 +134,12 @@ def page_publication_snapshot(
     sort_by: str | None = None,
     sort_order: str | None = None,
 ) -> dict[str, Any]:
-    """Sort a full snapshot before slicing one page, capped at 20 rows."""
+    """Sort a full snapshot before slicing out one page.
+
+    ``page_size`` is the requested rows per page; 20 is the hard ceiling on that
+    request, not the page size itself. The default page a reader sees is
+    ``DEFAULT_PAGE_SIZE`` rows.
+    """
 
     requested_page = max(1, int(page))
     requested_size = max(1, min(20, int(page_size)))

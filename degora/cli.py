@@ -190,7 +190,7 @@ def _print_publication_page(
     page: int = 1,
     page_size: int = DISCOVERY_PAGE_SIZE,
 ) -> None:
-    """Print one compact, reviewable 20-row publication page."""
+    """Print one compact, reviewable page of publication rows."""
 
     start_index = (max(int(page), 1) - 1) * max(int(page_size), 1) + 1
     for index, record in enumerate(records, start=start_index):

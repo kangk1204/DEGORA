@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import http.client
 import sqlite3
+from pathlib import Path
 import threading
 import time
 import urllib.request
@@ -1217,6 +1218,41 @@ def test_a_browser_page_holds_ten_publications() -> None:
     assert f"const DISCOVERY_PAGE_SIZE = {DEFAULT_PAGE_SIZE};" in INDEX_HTML
     assert f"{DEFAULT_PAGE_SIZE} per page · up to 1,000 ranked" in INDEX_HTML
     assert f"{DEFAULT_PAGE_SIZE} rows per browser page" in inspect.getsource(discovery_federated)
+
+
+def test_no_prose_states_a_page_size_the_tool_does_not_honour() -> None:
+    """Catch the stale page-size claim the four-constant check above cannot see.
+
+    That check compares constants and two exact dashboard strings. It passed
+    while the README still promised a "20-row page" and the CLI docstring still
+    described a "20-row publication page", because both used a phrasing no
+    assertion named. Scan the shipped prose for any stated page size instead, so
+    the wording can change without the number drifting loose again.
+    """
+
+    import re
+
+    from degora.discovery import DEFAULT_PAGE_SIZE
+
+    root = Path(__file__).resolve().parents[1]
+    sources = [root / "README.md", *sorted((root / "degora").glob("*.py"))]
+    # "N-row page", "N rows per page", "N per page" -- every way the docs have
+    # spelled a page size so far.
+    claim = re.compile(r"(\d+)(?:-row page|\s+rows?\s+per\s+(?:page|browser page)|\s+per page)")
+
+    offenders = []
+    for path in sources:
+        for number, line_no, line in (
+            (match.group(1), index, text)
+            for index, text in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1)
+            for match in claim.finditer(text)
+        ):
+            if int(number) != DEFAULT_PAGE_SIZE:
+                offenders.append(f"{path.name}:{line_no}: {line.strip()[:120]}")
+
+    assert not offenders, "prose states a page size other than {}:\n{}".format(
+        DEFAULT_PAGE_SIZE, "\n".join(offenders)
+    )
 
 
 def test_a_page_no_longer_exhausts_the_selection_budget_on_its_own() -> None:
