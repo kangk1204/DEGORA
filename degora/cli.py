@@ -542,6 +542,20 @@ def build_parser() -> argparse.ArgumentParser:
     template.add_argument("output", nargs="?", default="DEGORA_template.xlsx")
     template.add_argument("--force", action="store_true", help="Overwrite the template if it already exists.")
 
+    init = subparsers.add_parser(
+        "init",
+        help="Build a config by answering questions about your DEG tables.",
+        description=(
+            "Read a folder of DEG result tables, work out the column mapping and table scope "
+            "from the files themselves, and ask only what a file cannot say. The contrast "
+            "direction is always asked and never guessed: reversing it inverts every up/down "
+            "call in the results while leaving them looking entirely reasonable."
+        ),
+    )
+    init.add_argument("output", nargs="?", default="degora_config.csv", help="Config file to write.")
+    init.add_argument("--deg-dir", default=".", help="Folder holding the DEG tables (default: current folder).")
+    init.add_argument("--force", action="store_true", help="Overwrite the config if it already exists.")
+
     demo = subparsers.add_parser("demo", help="Create a runnable demo workspace with tiny DEG tables.")
     demo.add_argument("output", nargs="?", default="degora-demo")
     demo.add_argument("--force", action="store_true", help="Overwrite demo files if the folder already exists.")
@@ -650,6 +664,24 @@ def main(argv: list[str] | None = None) -> int:
             path = write_template(args.output, force=args.force)
             print(f"Wrote Excel template: {path}")
             print("Next: edit the Contrasts sheet, then run: degora validate <your_config.xlsx>")
+            return 0
+        if args.command == "init":
+            from .beginner import run_init
+
+            summary = run_init(args.output, args.deg_dir, force=args.force)
+            print("")
+            print(f"Wrote config: {summary['config_path']}")
+            print(f"- Contrasts: {summary['n_contrasts']}")
+            print(f"- Independent source units: {summary['n_source_units']}")
+            if summary["n_excluded_reversed_direction"]:
+                print(
+                    f"- Excluded (positive means up in the control group): "
+                    f"{summary['n_excluded_reversed_direction']} - see the notes column"
+                )
+            for entry in summary["skipped"]:
+                print(f"- Skipped {entry['path']}: {entry['reason']}")
+            print("")
+            print(f"Next: degora validate {summary['config_path']}")
             return 0
         if args.command == "demo":
             from .demo import write_demo_workspace

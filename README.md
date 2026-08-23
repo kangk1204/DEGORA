@@ -208,7 +208,31 @@ Each generated result file also has `.source` and `.provenance.json` sidecars th
 
 ## Analyze your own tables
 
-Create a documented Excel template:
+If you have a folder of DEG result tables and would rather answer questions than
+fill in a spreadsheet:
+
+```bash
+degora init my_config.csv --deg-dir path/to/deg_tables
+degora validate my_config.csv
+degora run my_config.csv
+```
+
+`degora init` reads each table and works out what the file can tell it: which
+column holds the gene names, the effect size, the p-value and the adjusted
+p-value, and whether the table lists every gene tested or only the significant
+ones. It shows what it found and what else each column could have been, and asks
+only where a file is genuinely ambiguous. Files that are not DEG result tables --
+a sample sheet sitting in the same folder -- are recognised and skipped.
+
+One thing is never inferred. For every table it asks whether a positive value
+means the gene went **up in the treated samples**. Getting that backwards inverts
+every up/down call in the results while leaving them looking entirely reasonable,
+so there is nothing later for you to notice. If you answer no, the table is
+written into the config **excluded**, with the reason recorded: DEGORA does not
+reverse an effect column for you, because that is a correction it cannot verify.
+If you are unsure, say so and the table is skipped rather than guessed at.
+
+Or start from a documented Excel template instead:
 
 ```bash
 degora template DEGORA_template.xlsx
