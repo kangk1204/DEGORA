@@ -64,26 +64,49 @@ jobs:
       - name: Every reader the package advertises must be importable
         run: |
           /tmp/clean/bin/python -c "import xlrd, openpyxl; print('xlrd', xlrd.__version__, '| openpyxl', openpyxl.__version__)"
-      - name: A .xls DEG table validates and runs without the dev extra
+      - name: Build a real legacy .xls fixture
+        # Written with a throwaway interpreter: pandas dropped its xlwt writer, and
+        # the point is to hand the clean environment a genuine OLE2 workbook it had
+        # no part in making.
         run: |
-          /tmp/clean/bin/python -m pip install --quiet xlwt
-          /tmp/clean/bin/python - <<'PY'
-          import pandas as pd
-          frame = pd.DataFrame({
-              "gene": [f"G{i}" for i in range(10)],
-              "log2FoldChange": [2.0 - i * 0.1 for i in range(10)],
-              "pvalue": [0.001 * (i + 1) for i in range(10)],
-          })
-          frame.to_excel("legacy.xls", index=False, engine="xlwt")
-          rows = [
-              {"study_id": f"S{n}", "source_unit_id": f"U{n}", "source_path": "legacy.xls",
-               "gene_column": "gene", "lfc_column": "log2FoldChange", "p_column": "pvalue",
-               "n_ctrl": 3, "n_treat": 3}
-              for n in (1, 2)
-          ]
-          pd.DataFrame(rows).to_csv("legacy_catalog.csv", index=False)
+          python -m pip install --quiet xlwt
+          python - <<'PY'
+          import xlwt
+
+          book = xlwt.Workbook()
+          sheet = book.add_sheet("Sheet1")
+          for column, name in enumerate(("gene", "log2FoldChange", "pvalue")):
+              sheet.write(0, column, name)
+          for row in range(1, 11):
+              sheet.write(row, 0, f"G{row}")
+              sheet.write(row, 1, 2.0 - row * 0.1)
+              sheet.write(row, 2, 0.001 * row)
+          book.save("legacy.xls")
+
+          with open("legacy.xls", "rb") as handle:
+              assert handle.read(4) == b"\xd0\xcf\x11\xe0", "fixture is not an OLE2 file"
+
+          import csv
+
+          with open("legacy_catalog.csv", "w", newline="") as handle:
+              writer = csv.DictWriter(
+                  handle,
+                  fieldnames=[
+                      "study_id", "source_unit_id", "source_path", "gene_column",
+                      "lfc_column", "p_column", "n_ctrl", "n_treat",
+                  ],
+              )
+              writer.writeheader()
+              for unit in (1, 2):
+                  writer.writerow({
+                      "study_id": f"S{unit}", "source_unit_id": f"U{unit}",
+                      "source_path": "legacy.xls", "gene_column": "gene",
+                      "lfc_column": "log2FoldChange", "p_column": "pvalue",
+                      "n_ctrl": 3, "n_treat": 3,
+                  })
           PY
-          /tmp/clean/bin/python -m pip uninstall -y xlwt
+      - name: The .xls fixture validates and runs without the dev extra
+        run: |
           /tmp/clean/bin/degora validate legacy_catalog.csv
           /tmp/clean/bin/degora run legacy_catalog.csv --output-dir xls-out --harmonized-dir xls-harm --no-excel
           test -f xls-out/degora_gene_scores.csv
