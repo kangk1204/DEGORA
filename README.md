@@ -34,7 +34,7 @@ GitHub names those folders `DEGORA-main` and `DEGORA-<version>`, respectively:
 
 ```bash
 cd DEGORA-main       # main-branch ZIP
-# or: cd DEGORA-0.4.7  # v0.4.7 release ZIP
+# or: cd DEGORA-0.4.8  # v0.4.8 release ZIP
 ```
 
 Confirm that the interpreter you will use is supported:
@@ -154,7 +154,7 @@ Useful options:
 ```
 
 Use `--ref` to review a specific branch or release tag in one command, for
-example `bash degora_quickstart.sh --ref v0.4.7`. It fetches the name from
+example `bash degora_quickstart.sh --ref v0.4.8`. It fetches the name from
 `origin`, fast-forwards a local copy that is behind, and stops rather than
 serving stale code when a local branch of the same name has diverged.
 
@@ -335,7 +335,7 @@ make smoke
 
 ## Release notes
 
-### Unreleased
+### 0.4.8
 
 The score contract is unchanged. `SCORE_VERSION` remains
 `degora_score_v1_2_source_unit_mean`, and a run over unchanged inputs produces the
