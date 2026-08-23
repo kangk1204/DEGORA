@@ -824,6 +824,40 @@ def describe_unexpected_payload(payload: bytes) -> str:
     return "an unrecognized binary format"
 
 
+def read_archive_member(archive: zipfile.ZipFile, info: zipfile.ZipInfo, *, max_bytes: int) -> bytes:
+    """Decompress one member, refusing to exceed ``max_bytes``.
+
+    ``ZipFile.read`` decompresses the whole stream before it validates the CRC, so
+    a member that declares 1 KiB and holds a gigabyte of zeros is fully expanded in
+    memory first -- and every size cap in this module reads that declared value
+    from the central directory, which the archive's author controls. Streaming the
+    member and stopping at the cap makes the limits mean what they say.
+    """
+
+    remaining = int(max_bytes)
+    chunks: list[bytes] = []
+    try:
+        with archive.open(info) as stream:
+            while True:
+                chunk = stream.read(min(1024 * 1024, remaining + 1))
+                if not chunk:
+                    break
+                remaining -= len(chunk)
+                if remaining < 0:
+                    raise DiscoveryUnsafeArchiveError(
+                        "archive member expands beyond its declared size and the safety cap"
+                    )
+                chunks.append(chunk)
+    except zipfile.BadZipFile as exc:
+        # Reading stops at the declared length, so a member holding more than it
+        # declares fails its checksum here. That is the member lying about its
+        # size, not the archive being unreadable.
+        raise DiscoveryUnsafeArchiveError(
+            f"archive member {info.filename!r} does not match its declared size or checksum"
+        ) from exc
+    return b"".join(chunks)
+
+
 def _safe_archive_member(info: zipfile.ZipInfo) -> None:
     name = info.filename
     path = PurePosixPath(name)
@@ -867,7 +901,11 @@ def inspect_public_archive(
                     member_name = f"{prefix}{info.filename}"
                     lower = info.filename.lower()
                     if lower.endswith(".zip"):
-                        visit(archive.read(info), f"{member_name}!/", depth + 1)
+                        visit(
+                            read_archive_member(archive, info, max_bytes=MAX_ARCHIVE_MEMBER_BYTES),
+                            f"{member_name}!/",
+                            depth + 1,
+                        )
                         continue
                     assessment = classify_filename(info.filename)
                     if assessment.get("inspectable"):

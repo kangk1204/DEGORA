@@ -3205,6 +3205,12 @@ INDEX_HTML = """<!doctype html>
       geneDetailRequestSerial += 1;
       page = { query: null, loaded: 0, total: 0 };
       currentGeneDetail = null;
+      // Clear the filters with the context, not only the rows. A gene search left
+      // over from the previous run silently applied to the new one, so an analysis
+      // of 11,886 genes opened showing nine and read as an analysis that found nine.
+      $("query").value = "";
+      $("minUnits").value = "1";
+      $("direction").value = "";
       $("genes").innerHTML = "";
       $("loadMore").hidden = true;
       $("exportGenes").disabled = true;

@@ -41,6 +41,53 @@ jobs:
       - run: .venv/bin/python -m pip install -e .
       - run: make PYTHON=.venv/bin/python smoke
 
+  # The test suite runs under ".[dev]", which installs xlrd - so a .xls branch
+  # could be advertised by the package and unreachable for everyone who installs it
+  # normally, with every unit test still green. Exercise the built wheel with no
+  # dev extra at all.
+  wheel-no-dev-extra:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install --upgrade pip build
+      - run: python -m build
+      - name: Install the wheel into a clean environment
+        run: |
+          python -m venv /tmp/clean
+          /tmp/clean/bin/python -m pip install --upgrade pip --quiet
+          /tmp/clean/bin/python -m pip install dist/*.whl
+          /tmp/clean/bin/python -m pip list
+      - name: Every reader the package advertises must be importable
+        run: |
+          /tmp/clean/bin/python -c "import xlrd, openpyxl; print('xlrd', xlrd.__version__, '| openpyxl', openpyxl.__version__)"
+      - name: A .xls DEG table validates and runs without the dev extra
+        run: |
+          /tmp/clean/bin/python -m pip install --quiet xlwt
+          /tmp/clean/bin/python - <<'PY'
+          import pandas as pd
+          frame = pd.DataFrame({
+              "gene": [f"G{i}" for i in range(10)],
+              "log2FoldChange": [2.0 - i * 0.1 for i in range(10)],
+              "pvalue": [0.001 * (i + 1) for i in range(10)],
+          })
+          frame.to_excel("legacy.xls", index=False, engine="xlwt")
+          rows = [
+              {"study_id": f"S{n}", "source_unit_id": f"U{n}", "source_path": "legacy.xls",
+               "gene_column": "gene", "lfc_column": "log2FoldChange", "p_column": "pvalue",
+               "n_ctrl": 3, "n_treat": 3}
+              for n in (1, 2)
+          ]
+          pd.DataFrame(rows).to_csv("legacy_catalog.csv", index=False)
+          PY
+          /tmp/clean/bin/python -m pip uninstall -y xlwt
+          /tmp/clean/bin/degora validate legacy_catalog.csv
+          /tmp/clean/bin/degora run legacy_catalog.csv --output-dir xls-out --harmonized-dir xls-harm --no-excel
+          test -f xls-out/degora_gene_scores.csv
+
   # The dependency pins are a range, and only its floor was exercised. A pandas or
   # numpy release inside the allowed range could break a run for anyone installing
   # today, and nothing here would have said so.

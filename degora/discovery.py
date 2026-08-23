@@ -948,7 +948,13 @@ def _delimited_rows(text: str) -> list[list[str]]:
     lines = text.splitlines()[:80]
     candidates: list[tuple[int, list[list[str]]]] = []
     for separator in ("\t", ",", ";"):
-        parsed = list(csv.reader(lines, delimiter=separator))
+        try:
+            parsed = list(csv.reader(lines, delimiter=separator))
+        except csv.Error:
+            # A single field past csv's 128 KiB limit is not a DEG table, and this
+            # runs on files fetched from public repositories - so it has to read as
+            # "no usable table here", not as a traceback out of a whole preparation.
+            continue
         width = max((len(row) for row in parsed[:10]), default=0)
         candidates.append((width, parsed))
     return max(candidates, key=lambda item: item[0])[1] if candidates else []

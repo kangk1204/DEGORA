@@ -19,6 +19,7 @@ from scipy.stats import t as t_dist
 from . import SCORE_VERSION, runtime_version_info
 from .aggregate import (
     SOURCE_UNIT_COLLAPSE_RULE,
+    STOUFFER_WEIGHT_RULE,
     collapse_gene_source_units,
     slice_consensus,
     source_unit_rows_for_aggregation,
@@ -29,6 +30,7 @@ from .provenance import (
     artifact_provenance_path,
     artifact_source_path,
     is_external_path_reference,
+    output_directory_lock,
     portable_path,
     publish_staged_artifacts,
     sanitize_metadata,
@@ -220,10 +222,13 @@ REPLICATE_MULTIPLIER_RULE = (
 HETEROGENEITY_RULE = (
     "source-unit z heterogeneity is reported as a Cochran-Q-style descriptive index over "
     "collapsed source-unit z values, with Q weighted by fixed sqrt-sample-size source weights "
-    "(range 1-4, default 1) rather than inverse variance; under homogeneity E[Q] therefore "
-    "exceeds df, so heterogeneity_i2 = (Q-df)/Q is a positively biased weighted-dispersion "
-    "index that is not comparable to a calibrated Higgins' I2. It is an audit/review-trigger "
-    "field, not a calibrated random-effects model"
+    "(range 1-4, default 1) rather than inverse variance. Q is therefore not chi-square "
+    "distributed under any null and its scale is arbitrary, so heterogeneity_i2 = (Q-df)/Q "
+    "has no calibrated bias direction: raw values are frequently negative and are clamped to "
+    "0, which makes the reported index effectively bimodal - near 0 for most genes, near 1 "
+    "where the collapsed z values disagree. It is an audit/review-trigger field, not a "
+    "calibrated Higgins' I2 and not a random-effects model; effect_meta_i2 is the "
+    "inverse-variance-weighted estimate"
 )
 RANDOM_EFFECTS_STOUFFER_RULE = (
     "descriptive heterogeneity-aware reporting lane only: stouffer_z / sqrt(1 + "
@@ -1706,6 +1711,7 @@ def degora_score_table(
             "n_nonfinite_lfc_capped_for_score": n_nonfinite_lfc_capped,
             "independent_unit_for_consensus": "source_unit_id (paper_id when available, otherwise study_id)",
             "source_unit_collapse_rule": SOURCE_UNIT_COLLAPSE_RULE,
+            "stouffer_weight_rule": STOUFFER_WEIGHT_RULE,
             "direction_concordance_rule": "|signed_z|-strength-weighted concordance across independent source-unit representatives; the primary path is source-weight-free, while the quality-weighted variant additionally multiplies the strength by the source reliability weight",
             "heterogeneity_rule": HETEROGENEITY_RULE,
             "heterogeneity_flag_rule": "heterogeneity_i2 >= 0.75 is labeled high_context_dependent_review; >= 0.50 is moderate_context_review; flags are descriptive review aids, not score gates",
@@ -1714,15 +1720,19 @@ def degora_score_table(
                 "source_input_type_weights": SOURCE_INPUT_TYPE_QUALITY_WEIGHTS,
                 "table_scope_multipliers": TABLE_SCOPE_QUALITY_MULTIPLIERS,
                 "replicate_multiplier": REPLICATE_MULTIPLIER_RULE,
+                "replicate_multiplier_reachability": (
+                    "the CLI rejects a zero, negative or fractional group size during validation, "
+                    "so the 0.35 zero-count branch is reachable only through the Python API"
+                ),
                 "source_coherence_guardrail": "gold-panel-free source-source LFC Spearman check; low-quality sources with median pairwise Spearman < 0.05 receive source_coherence_weight=0.50 in the secondary score only",
                 "source_reliability_shrinkage": "secondary-score weight shrunk toward neutral 0.65 using source gene coverage and pairwise-comparison evidence; not a calibrated probability",
             },
-            "direction_confidence_rule": "Beta(1,1)-shrunk source-unit count concordance against the reported consensus signed-z direction: (1 + concordant source units) / (2 + observed source units); quality-weighted direction confidence uses reliability-weighted pseudo-counts against the quality-weighted consensus direction and is not a calibrated posterior probability",
+            "direction_confidence_rule": "Beta(1,1)-shrunk source-unit count concordance against the reported consensus signed-z direction: (1 + concordant source units) / (2 + observed source units). When the consensus z is exactly 0 the direction is a tie and every source unit is credited one half rather than zero, so the index is 0.5 rather than the 0.25 the formula alone would give, and direction_concordant_source_units carries that half-credit and is not a whole number. Quality-weighted direction confidence uses reliability-weighted pseudo-counts against the quality-weighted consensus direction and is not a calibrated posterior probability",
             "random_effects_stouffer_rule": RANDOM_EFFECTS_STOUFFER_RULE,
             "stouffer_inference_warning": _stouffer_inference_warning(evidence),
             "rra_rule": "parallel rank lane using beta order-statistic RobustRankAggreg-style rho over source-unit normalized ranks; missing source-unit lists are handled through the total source-unit universe; rho is computed in log space and rra_neglog10_rho (-log10 rho) preserves ordering for top genes whose rho underflows to 0; rho is not reported as a calibrated FDR",
             "effect_meta_rule": EFFECT_META_RULE,
-            "effect_meta_small_k_warning": "For effect_meta_k < 3, HKSJ intervals are especially unstable and should be read as descriptive only.",
+            "effect_meta_small_k_warning": "For effect_meta_k = 2 the HKSJ t critical value is 12.71, so the interval is wide enough to be uninformative in practice: it will usually span zero whatever the pooled estimate is. For k = 3 it is 4.30. Read these intervals as descriptive only, and do not read an interval covering zero at small k as evidence of no effect.",
             "loo_stability_rule": LOO_STABILITY_RULE,
             "source_quality_diagnostics": source_quality_diagnostics.to_dict(orient="records"),
         }
@@ -2004,6 +2014,10 @@ def degora_score_table(
             "source_input_type_weights": SOURCE_INPUT_TYPE_QUALITY_WEIGHTS,
             "table_scope_multipliers": TABLE_SCOPE_QUALITY_MULTIPLIERS,
             "replicate_multiplier": REPLICATE_MULTIPLIER_RULE,
+            "replicate_multiplier_reachability": (
+                "the CLI rejects a zero, negative or fractional group size during validation, "
+                "so the 0.35 zero-count branch is reachable only through the Python API"
+            ),
             "source_coherence_guardrail": "gold-panel-free source-source LFC Spearman check; low-quality sources with median pairwise Spearman < 0.05 receive source_coherence_weight=0.50 in the secondary score only",
             "source_reliability_shrinkage": "secondary-score weight shrunk toward neutral 0.65 using source gene coverage and pairwise-comparison evidence; not a calibrated probability",
         },
@@ -2016,17 +2030,18 @@ def degora_score_table(
         "n_nonfinite_lfc_capped_for_score": n_nonfinite_lfc_capped,
         "independent_unit_for_consensus": "source_unit_id (paper_id when available, otherwise study_id)",
         "source_unit_collapse_rule": SOURCE_UNIT_COLLAPSE_RULE,
+        "stouffer_weight_rule": STOUFFER_WEIGHT_RULE,
         "direction_concordance_rule": "evidence-strength-weighted concordance across independent source-unit representatives",
         "heterogeneity_rule": HETEROGENEITY_RULE,
         "heterogeneity_flag_rule": "heterogeneity_i2 >= 0.75 is labeled high_context_dependent_review; >= 0.50 is moderate_context_review; flags are descriptive review aids, not score gates",
         "rank_interpretation": "degora_rank is the absolute rank among scored genes; top_percent is rank / total scored genes * 100, so smaller is more selective; percentile is 100 for the top-ranked gene and decreases with rank.",
         "high_confidence_rule": f"relative browsing flag: n_source_units >= min(2, total_source_units) = {high_confidence_min_units}, sign_concordance >= 0.75, rank_score_component >= 0.80, evidence_score >= 0.50; does not use stouffer_padj as a calibrated inferential gate",
-        "direction_confidence_rule": "Beta(1,1)-shrunk source-unit count concordance against the reported consensus signed-z direction: (1 + concordant source units) / (2 + observed source units); quality-weighted direction confidence uses reliability-weighted pseudo-counts against the quality-weighted consensus direction and is not a calibrated posterior probability",
+        "direction_confidence_rule": "Beta(1,1)-shrunk source-unit count concordance against the reported consensus signed-z direction: (1 + concordant source units) / (2 + observed source units). When the consensus z is exactly 0 the direction is a tie and every source unit is credited one half rather than zero, so the index is 0.5 rather than the 0.25 the formula alone would give, and direction_concordant_source_units carries that half-credit and is not a whole number. Quality-weighted direction confidence uses reliability-weighted pseudo-counts against the quality-weighted consensus direction and is not a calibrated posterior probability",
         "random_effects_stouffer_rule": RANDOM_EFFECTS_STOUFFER_RULE,
         "stouffer_inference_warning": _stouffer_inference_warning(evidence),
         "rra_rule": "parallel rank lane using beta order-statistic RobustRankAggreg-style rho over source-unit normalized ranks; missing source-unit lists are handled through the total source-unit universe; rho is computed in log space and rra_neglog10_rho (-log10 rho) preserves ordering for top genes whose rho underflows to 0; rho is not reported as a calibrated FDR",
         "effect_meta_rule": EFFECT_META_RULE,
-        "effect_meta_small_k_warning": "For effect_meta_k < 3, HKSJ intervals are especially unstable and should be read as descriptive only.",
+        "effect_meta_small_k_warning": "For effect_meta_k = 2 the HKSJ t critical value is 12.71, so the interval is wide enough to be uninformative in practice: it will usually span zero whatever the pooled estimate is. For k = 3 it is 4.30. Read these intervals as descriptive only, and do not read an interval covering zero at small k as evidence of no effect.",
         "loo_stability_rule": LOO_STABILITY_RULE,
         "evidence_tier_rules": {
             "basis": "quality_weighted_top_percent and quality_weighted_sign_concordance (the primary lane)",
@@ -2203,6 +2218,28 @@ def write_score_database(
 ) -> dict[str, Any]:
     """Build score CSV, metadata JSON, and SQLite DB from a harmonized table."""
 
+    with output_directory_lock(output_dir):
+        return _write_score_database_locked(
+            harmonized_path,
+            output_dir,
+            catalog_path=catalog_path,
+            db_path=db_path,
+            min_studies=min_studies,
+            command=command,
+            extra_metadata=extra_metadata,
+        )
+
+
+def _write_score_database_locked(
+    harmonized_path: Path,
+    output_dir: Path,
+    *,
+    catalog_path: Path | None = None,
+    db_path: Path | None = None,
+    min_studies: int = 2,
+    command: str | None = None,
+    extra_metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     harmonized_path = harmonized_path.resolve()
     catalog_path = catalog_path.resolve() if catalog_path is not None else None
     output_dir = output_dir.resolve()

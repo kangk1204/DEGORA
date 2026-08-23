@@ -40,12 +40,27 @@ COLLAPSED_SOURCE_UNIT_COLUMNS = [
     "n_studies_in_source_unit",
 ]
 MAX_SOURCE_SAMPLE_WEIGHT = 4.0
+# Per-contrast Stouffer weight. Both group sizes must be present and positive;
+# anything else - missing, zero or negative - falls back to 1.0. Note that 1.0 is
+# BELOW the sqrt(2) = 1.41 a two-sample contrast earns, so an unstated group size
+# is a penalty in this lane, not the neutral value the quality lane gives it.
+STOUFFER_WEIGHT_RULE = (
+    "per-contrast weight = min(sqrt(n_ctrl + n_treat), "
+    f"{MAX_SOURCE_SAMPLE_WEIGHT:g}) when both group sizes are present and positive, otherwise 1.0; "
+    "the source-unit weight is the mean of its contrast weights. 1.0 is below the sqrt(2) a "
+    "two-sample contrast earns, so an unstated, zero or negative group size lowers a source's "
+    "weight here rather than leaving it neutral"
+)
 SOURCE_UNIT_COLLAPSE_RULE = (
     "source-unit mean aggregation: sample-size-weighted mean signed_z, "
     "sample-size-weighted mean log2FC, mean normalized rank, and mean source weight "
     f"with per-contrast sample-size weights capped at {MAX_SOURCE_SAMPLE_WEIGHT:g}; "
     "no max-|z| representative selection. Optional time_course_mode can preselect "
-    "mean, early, late, or peak_mean rows within a source unit before this aggregation."
+    "rows within a source unit before this aggregation: mean keeps every contrast; "
+    "early and late keep the contrast(s) at the smallest and largest numeric duration_h; "
+    "peak_mean keeps the strongest half by |signed_z| (at least two, and all of them when "
+    "the source unit has two or fewer), where |signed_z| is statistical strength derived "
+    "from the p-value rather than effect size, with ties broken by study_id."
 )
 
 
@@ -134,6 +149,19 @@ def _duration_numeric(values: pd.Series) -> pd.Series:
 
 
 def _apply_time_course_mode(frame: pd.DataFrame) -> pd.DataFrame:
+    """Preselect the contrasts of a source unit before collapsing it.
+
+    ``mean`` keeps every contrast. ``early`` and ``late`` keep the contrast(s) at
+    the smallest and largest numeric ``duration_h``; a source unit whose rows carry
+    no parsable duration keeps all of them. ``peak_mean`` keeps the strongest half
+    by ``|signed_z|`` - at least two, and all of them when the source unit has two
+    or fewer.
+
+    "Strongest" here means statistical strength: ``signed_z`` is derived from the
+    p-value, so a time point with a large fold change but a weak p-value is not the
+    peak. Ties are broken by ``study_id`` so the selection is deterministic.
+    """
+
     if "time_course_mode" in frame.columns:
         mode_column = "time_course_mode"
     elif "temporal_mode" in frame.columns:
@@ -225,11 +253,14 @@ def source_unit_rows_for_aggregation(harmonized: pd.DataFrame) -> pd.DataFrame:
         if "n_treat" in frame.columns
         else pd.Series(np.nan, index=frame.index)
     )
-    frame["_weight"] = np.where(
-        np.isfinite(n_ctrl) & np.isfinite(n_treat) & ((n_ctrl + n_treat) > 0),
-        np.sqrt(n_ctrl + n_treat),
-        1.0,
-    )
+    # Both groups must actually have samples. Testing only the sum let a contrast
+    # with no controls at all be weighted like a study of its treatment group -
+    # (0, 5) drew sqrt(5) - and let a negative count through as sqrt of whatever
+    # the pair summed to. A contrast that cannot state both group sizes falls back
+    # to the unweighted 1.0, which is the same thing a missing count gets.
+    usable_counts = np.isfinite(n_ctrl) & np.isfinite(n_treat) & (n_ctrl > 0) & (n_treat > 0)
+    total_samples = np.where(usable_counts, n_ctrl + n_treat, 1.0)
+    frame["_weight"] = np.where(usable_counts, np.sqrt(total_samples), 1.0)
     frame["_weight"] = np.minimum(frame["_weight"], MAX_SOURCE_SAMPLE_WEIGHT)
     frame = frame.dropna(subset=["gene_symbol", "study_id", "source_unit_id", "signed_z", "normalized_rank"])
     frame = frame.loc[frame["gene_symbol"].ne("") & frame["source_unit_id"].ne("")].copy()

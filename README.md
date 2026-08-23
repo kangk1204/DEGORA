@@ -34,7 +34,7 @@ GitHub names those folders `DEGORA-main` and `DEGORA-<version>`, respectively:
 
 ```bash
 cd DEGORA-main       # main-branch ZIP
-# or: cd DEGORA-0.4.11  # v0.4.11 release ZIP
+# or: cd DEGORA-0.4.12  # v0.4.12 release ZIP
 ```
 
 Confirm that the interpreter you will use is supported:
@@ -151,16 +151,18 @@ Useful options:
 --update        git pull an existing checkout before installing
 --no-browser    Do not try to open a browser (headless or remote shells)
 --no-demo       Skip demo creation and serve an existing database
+--demo-dir NAME Demo workspace folder (default: degora-demo)
 ```
 
 Use `--ref` to review a specific branch or release tag in one command, for
-example `bash degora_quickstart.sh --ref v0.4.11`. It fetches the name from
+example `bash degora_quickstart.sh --ref v0.4.12`. It fetches the name from
 `origin`, fast-forwards a local copy that is behind, and stops rather than
 serving stale code when a local branch of the same name has diverged.
 
-The script is safe to re-run and stops with an actionable message when the
-platform is missing Python 3.10+, `git`, or the Debian/Ubuntu `python3-venv`
-package. Press `Ctrl+C` to stop the server. The manual steps below do the same
+The script is safe to re-run: an existing demo workspace is reused, never
+deleted, so a config you edited there survives. Use `--demo-dir NAME` if you want
+a separate one. It stops with an actionable message when the platform is missing
+Python 3.10+, `git`, or the Debian/Ubuntu `python3-venv` package. Press `Ctrl+C` to stop the server. The manual steps below do the same
 work one command at a time.
 
 ## Run the included demo
@@ -323,6 +325,7 @@ The included synthetic demo is numerically and semantically reproducible from th
 
 - DEGORA prioritizes genes; its scores are not posterior probabilities.
 - Related contrasts are collapsed by source unit before cross-source aggregation.
+- `time_course_mode` chooses which contrasts of a source unit are kept before that collapse. `mean` keeps all of them; `early` and `late` keep the contrast(s) at the smallest and largest numeric `duration_h`; `peak_mean` keeps the strongest half by `|signed_z|`, at least two. `peak_mean` selects on statistical strength, not effect size: `signed_z` is derived from the p-value, so a time point with a large fold change but a weak p-value is not the peak.
 - A row with `pvalue = 1` or zero effect is neutral evidence and does not contribute directional signed-z support. Values below `1e-300` are floored and reported in the run warnings.
 - Stouffer p-values from DEG-only or significance-filtered tables are ranking aids, not calibrated genome-wide inferential p-values or false-discovery rates.
 - `heterogeneity_i2` is a sample-size-weighted descriptive dispersion index, not calibrated Higgins I-squared. The heterogeneity-adjusted Stouffer fields are screening aids only.
@@ -332,7 +335,7 @@ The included synthetic demo is numerically and semantically reproducible from th
 - `sign_convention` records provenance only. DEGORA does not infer or automatically reverse the input effect direction, so the supplied effect must already represent treatment relative to control.
 - Public-data fallback uses a documented Welch workflow and does not automatically correct study-level batch or condition confounding.
 - Result-table semantics, contrast direction, group labels, and species must be reviewed before activation.
-- Human and Mouse evidence is never pooled into one ranking.
+- The Search workflow keeps Human and Mouse in separate workspaces and never pools them, and a prepared discovery bundle is refused if its species does not match the run. Scoring itself matches on gene symbol and is **not** species-specific: a hand-written config naming sources from two species produces one pooled ranking, in which those sources can satisfy the `min_studies` replication rule between them. The run warns when it sees more than one `species` value, and every evidence row records the species it came from.
 
 ## Development checks
 
@@ -343,6 +346,108 @@ make smoke
 ```
 
 ## Release notes
+
+### 0.4.12
+
+The score contract is unchanged. `SCORE_VERSION` remains
+`degora_score_v1_2_source_unit_mean`, and a run over unchanged inputs produces the
+same gene scores and evidence as v0.4.11.
+
+**Re-running the quickstart no longer deletes your demo workspace.** The script
+removed `degora-demo` before rebuilding it, taking any config you had edited there
+and any results you had kept with it, while this page called re-running safe. An
+existing workspace is now reused and re-run in place; `--demo-dir NAME` gives you
+a separate one.
+
+**`.xls` files open on an ordinary install.** DEG tables ending in `.xls` were
+accepted, but the reader pandas needs for them shipped only in the development
+extra, so a plain install advertised a format it could not read. `xlrd` is a
+runtime dependency now.
+
+**An identifier cannot hold the character that joins identifier lists.**
+`contributing_study_ids`, `source_units` and `contributing_source_paths` are
+semicolon-joined, so a `study_id` of `A;B` made those lists ambiguous and inflated
+`n_contrasts_observed` - three contrasts published as four - while the scores,
+which count distinct values rather than splitting text, stayed correct. The
+preflight now rejects the delimiter in `study_id`, `paper_id` and
+`source_unit_id`, and a source unit derived from a DOI that contains one is
+sanitised rather than carried through.
+
+**Opening a different analysis clears the gene filters.** Switching context reset
+the rows, the page and the detail pane but not the gene search box, so a filter
+typed against one run silently applied to the next: an analysis of 11,886 genes
+could open showing the nine that matched, which reads as an analysis that found
+nine.
+
+**A ZIP member cannot expand past its cap.** Every archive size limit was
+computed from the uncompressed size the archive itself declares, and
+`ZipFile.read` decompresses a whole member before it validates the checksum - so a
+member declaring 1 KiB and holding a gigabyte of zeros was fully expanded in
+memory first. A 1 MB download could force roughly 2 GB of allocation while passing
+the member, total, count and depth caps. Members are streamed and stopped at the
+cap now.
+
+**A source table that is not a regular file is refused.** `exists()` is true for a
+FIFO, and the reader then waited for a writer that never came: no output, no CPU,
+no return - indistinguishable from a hang.
+
+**One oversized field no longer ends a preparation with a traceback.** A field past
+csv's 128 KiB limit raised an error that none of the preparation handlers caught,
+and these files come from public repositories.
+
+**Two runs cannot share one output directory.** The harmonized table is written
+seconds into a run and the database tens of seconds later, so two runs pointed at
+the same `--output-dir` could interleave and leave one run's contrast table beside
+the other's gene scores. Both exited 0, both artifact sets verified against their
+own sidecars, and the sidecars were byte-identical because they record only the
+command - so nothing downstream could tell the halves came from different runs.
+The default output directory is a fixed path, so no flag was needed to hit it. A
+run now holds its output directory and a second one is told to wait or use its own.
+
+**A contrast missing a group size is no longer weighted as if it had one.** The
+Stouffer weight tested only that the two group sizes summed above zero, so a
+contrast with no controls at all drew the weight of a study of its treatment group
+- `(0, 5)` earned `sqrt(5)` - and a negative count passed through. Both group sizes
+must now be present and positive. The CLI already rejected these values, so this
+changes results only for callers using the Python API directly.
+
+**Species are not pooled silently.** The Search workflow keeps Human and Mouse
+apart, but scoring matches on gene symbol and is not species-specific: a
+hand-written config naming one human and one mouse source produced a pooled
+ranking in which those two satisfied the `min_studies` replication rule between
+them, with nothing said. Both `validate` and `run` now warn, and the interpretation
+boundary above states the real scope.
+
+**`.xls` files open on an ordinary install, and an unreadable one says why.** The
+reader pandas needs for legacy Excel shipped only in the development extra, so a
+plain install advertised a format it could not read - and reported a perfectly
+valid workbook as damaged. A missing engine, a damaged OLE2 file, a renamed text
+file and a ZIP that is not a workbook are four different messages now. CI installs
+the built wheel with no development extra and runs a real `.xls` through
+`validate` and `run`, because the unit tests ran with the extra installed and hid
+this for two releases.
+
+**The heterogeneity note no longer claims a bias direction.** `heterogeneity_i2`
+was documented as positively biased. Q is not chi-square distributed here and its
+scale is arbitrary, so raw `(Q-df)/Q` is frequently negative and clamped to 0,
+which makes the reported index effectively bimodal rather than biased in either
+direction.
+
+**Three formulas now say what the code does.** The per-contrast Stouffer weight is
+published in the score metadata for the first time, including that an unstated
+group size scores below a two-sample contrast rather than neutrally. The
+direction-confidence tie branch, which credits each source unit one half and
+returns 0.5 rather than the 0.25 its formula alone gives, is stated. So is the fact
+that the zero-replicate quality branch is unreachable from the CLI, and that an
+HKSJ interval at k=2 is built on a t critical value of 12.71 and is uninformative
+in practice rather than merely "unstable".
+
+**`peak_mean` says what it is the peak of.** It keeps the strongest half of a
+source unit's contrasts by `|signed_z|`, and `signed_z` comes from the p-value, so
+a time point with a large fold change but a weak p-value is not the peak. That was
+true but undocumented; it is now stated in the score metadata, the catalog help,
+the config template, the workbook dictionary and the interpretation boundaries
+above, and pinned by a test.
 
 ### 0.4.11
 

@@ -148,23 +148,35 @@ def _contained_local_path(candidate: dict[str, Any], bundle_root: Path) -> Path:
     return path
 
 
+def _without_list_delimiter(value: str) -> str:
+    """Strip the semicolon DEGORA joins identifier lists with.
+
+    A DOI may legitimately contain one, and it would then reach the catalog as a
+    source_unit_id that makes every semicolon-joined provenance list ambiguous.
+    """
+
+    return value.replace(";", "_")
+
+
 def _paper_source_unit(study: dict[str, Any]) -> str:
     explicit = str(study.get("source_unit_id") or "").strip()
     if explicit:
-        return _text(explicit, field="source_unit_id", required=True, maximum=160)
+        return _without_list_delimiter(
+            _text(explicit, field="source_unit_id", required=True, maximum=160)
+        )
     pmids = [
         str(value).strip()
         for value in [*study.get("source_unit_pubmed_ids", []), *study.get("pubmed_ids", [])]
         if str(value).strip()
     ]
     if pmids:
-        return f"PMID:{pmids[0]}"
+        return _without_list_delimiter(f"PMID:{pmids[0]}")
     doi = _doi_unit(_first_text(study.get("doi"), study.get("dois"), study.get("publication_doi")))
     if doi:
-        return doi
+        return _without_list_delimiter(doi)
     provider_accession = _provider_accession_unit(study)
     if provider_accession:
-        return provider_accession
+        return _without_list_delimiter(provider_accession)
     raise DiscoveryError("prepared study is missing a stable publication or data identifier")
 
 

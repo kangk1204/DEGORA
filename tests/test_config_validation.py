@@ -752,14 +752,154 @@ def test_an_unreadable_source_table_is_described_not_quoted(tmp_path) -> None:
     assert "io.excel" not in message
 
 
-def test_the_unreadable_workbook_message_matches_the_extension(tmp_path) -> None:
-    """Only .xlsx is a ZIP container; a legacy .xls is an OLE2 compound file."""
+def test_an_unreadable_workbook_names_the_actual_cause(tmp_path) -> None:
+    """A missing reader and a damaged file need different fixes.
+
+    Reporting the first as the second sent readers looking for a corrupt download
+    when a perfectly valid workbook simply had no engine installed to open it. Only
+    .xlsx is a ZIP container; a legacy .xls is an OLE2 compound file.
+    """
 
     from degora.slice_runner import _readable_read_failure
 
-    modern = _readable_read_failure(tmp_path / "renamed.xlsx", ValueError("engine"))
-    legacy = _readable_read_failure(tmp_path / "renamed.xls", ValueError("engine"))
+    missing_engine = _readable_read_failure(
+        tmp_path / "book.xls", ImportError("Install xlrd >= 2.0.1 for xls Excel support")
+    )
+    assert "needs the xlrd reader" in missing_engine
+    assert "says nothing about whether it is valid" in missing_engine
 
+    damaged = tmp_path / "damaged.xls"
+    damaged.write_bytes(b"\xd0\xcf\x11\xe0" + b"\x00" * 64)
+    assert "is a legacy Excel workbook" in _readable_read_failure(damaged, ValueError("corrupt"))
+
+    renamed = tmp_path / "renamed.xls"
+    renamed.write_text("gene,lfc\nA,1\n", encoding="utf-8")
+    renamed_message = _readable_read_failure(renamed, ValueError("engine"))
+    assert "does not start with the OLE2 signature" in renamed_message
+    assert "ZIP" not in renamed_message
+
+    modern = _readable_read_failure(tmp_path / "renamed.xlsx", ValueError("engine"))
     assert "not a ZIP archive" in modern
-    assert "ZIP" not in legacy
-    assert "not a workbook container" in legacy
+
+
+def test_an_identifier_holding_the_list_delimiter_is_rejected(tmp_path) -> None:
+    """The semicolon that joins provenance lists cannot also live inside an identifier.
+
+    contributing_study_ids, source_units and contributing_source_paths are all
+    semicolon-joined. A study_id of 'A;B' made those lists ambiguous and inflated
+    n_contrasts_observed - three contrasts were published as four - while the
+    scores, which count with nunique rather than by splitting, stayed right.
+    """
+
+    source = tmp_path / "deg.csv"
+    pd.DataFrame(
+        {"gene": ["G1", "G2"], "log2FoldChange": [2.0, -1.5], "pvalue": [0.001, 0.002]}
+    ).to_csv(source, index=False)
+    catalog = tmp_path / "catalog.csv"
+    pd.DataFrame(
+        [
+            {
+                "study_id": "A;B",
+                "source_unit_id": "U1",
+                "source_path": source.name,
+                "gene_column": "gene",
+                "lfc_column": "log2FoldChange",
+                "p_column": "pvalue",
+            },
+            {
+                "study_id": "C",
+                "source_unit_id": "U;2",
+                "source_path": source.name,
+                "gene_column": "gene",
+                "lfc_column": "log2FoldChange",
+                "p_column": "pvalue",
+            },
+        ]
+    ).to_csv(catalog, index=False)
+
+    with pytest.raises(DegoraConfigError) as excinfo:
+        validate_catalog_inputs(catalog)
+
+    message = str(excinfo.value)
+    assert "identifier contains the list delimiter" in message
+    assert "study_id='A;B'" in message
+    assert "'U;2'" in message
+
+
+def test_a_source_path_that_is_not_a_regular_file_is_refused(tmp_path) -> None:
+    """exists() is true for a FIFO, and the reader then waits for a writer forever.
+
+    The command produced no output, used no CPU and never returned, which a reader
+    cannot tell apart from a hang.
+    """
+
+    import os
+
+    fifo = tmp_path / "pipe.csv"
+    os.mkfifo(fifo)
+    catalog = tmp_path / "catalog.csv"
+    pd.DataFrame(
+        [
+            {
+                "study_id": "S1",
+                "paper_id": "P1",
+                "source_path": fifo.name,
+                "gene_column": "gene",
+                "lfc_column": "lfc",
+                "p_column": "pvalue",
+            }
+        ]
+    ).to_csv(catalog, index=False)
+
+    with pytest.raises(DegoraConfigError) as excinfo:
+        validate_catalog_inputs(catalog)
+
+    assert "not a readable file" in str(excinfo.value)
+    assert "pipe, socket or device" in str(excinfo.value)
+
+
+def test_one_run_mixing_two_species_says_so(tmp_path) -> None:
+    """Scoring is not species-specific, and nothing used to announce that.
+
+    The Search workflow keeps Human and Mouse apart, but a hand-written config
+    naming one of each satisfies min_studies=2 between them and produces a pooled
+    ranking. The mixing was recorded on every evidence row and never surfaced.
+    """
+
+    sources = []
+    for name in ("human", "mouse"):
+        path = tmp_path / f"{name}.csv"
+        pd.DataFrame(
+            {"gene": ["G1", "G2"], "lfc": [2.0, -1.5], "pvalue": [0.001, 0.002]}
+        ).to_csv(path, index=False)
+        sources.append(path.name)
+    catalog = tmp_path / "catalog.csv"
+    pd.DataFrame(
+        [
+            {
+                "study_id": "S_HUMAN",
+                "source_unit_id": "U_HUMAN",
+                "source_path": sources[0],
+                "species": "Homo sapiens",
+                "gene_column": "gene",
+                "lfc_column": "lfc",
+                "p_column": "pvalue",
+            },
+            {
+                "study_id": "S_MOUSE",
+                "source_unit_id": "U_MOUSE",
+                "source_path": sources[1],
+                "species": "Mus musculus",
+                "gene_column": "gene",
+                "lfc_column": "lfc",
+                "p_column": "pvalue",
+            },
+        ]
+    ).to_csv(catalog, index=False)
+
+    warnings = validate_catalog_inputs(catalog)["warnings"]
+
+    mixed = [text for text in warnings if "mixes" in text]
+    assert mixed, warnings
+    assert "'Homo sapiens'" in mixed[0] and "'Mus musculus'" in mixed[0]
+    assert "not species-specific" in mixed[0]

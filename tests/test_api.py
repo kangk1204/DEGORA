@@ -1286,3 +1286,26 @@ def test_dashboard_warns_before_counting_one_submission_as_replication() -> None
     assert "These may not be independent studies." in html
     assert "would treat correlated data as replication" in html
     assert "May be one submission with" in html
+
+
+def test_changing_the_analysis_context_clears_the_gene_filters() -> None:
+    """A filter left over from one run must not silently apply to the next.
+
+    Switching context reset the rows, the page and the detail pane but not the
+    gene search box, so an analysis of 11,886 genes opened showing the nine that
+    matched a `TP53` filter typed against the previous run - which reads as an
+    analysis that found nine genes.
+    """
+
+    from degora.api import INDEX_HTML
+
+    start = INDEX_HTML.index("async function ensureAtlasContext()")
+    end = INDEX_HTML.index("$(\"genes\").innerHTML = \"\";", start)
+    reset = INDEX_HTML[start:end]
+
+    assert '$("query").value = "";' in reset
+    assert '$("minUnits").value = "1";' in reset
+    assert '$("direction").value = "";' in reset
+    # The reset values have to be the control's own defaults.
+    assert '<option value="">All directions</option>' in INDEX_HTML
+    assert 'id="minUnits" type="number" min="1" max="10000" step="1" value="1"' in INDEX_HTML

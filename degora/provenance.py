@@ -10,11 +10,13 @@ import re
 import shlex
 import shutil
 import tempfile
+import threading
 import time
 import zipfile
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Iterator
 
 # WSL drvfs (/mnt/<drive>) intermittently raises EINVAL/EIO when opening a small
 # sidecar file for writing right after a large write to the same directory (a known
@@ -32,6 +34,78 @@ _SECRET_METADATA_KEY_RE = re.compile(
 )
 _SENSITIVE_RELATIVE_PATH_RE = re.compile(r"(?i)(?:^|/)(?:users|home)/[^/]+(?:/|$)")
 EXTERNAL_PATH_PREFIX = "external-redacted://"
+
+
+class OutputDirectoryBusyError(RuntimeError):
+    """Raised when another DEGORA run already owns an output directory."""
+
+
+_OUTPUT_LOCK_GUARD = threading.Lock()
+_OUTPUT_LOCKS_HELD: dict[str, int] = {}
+
+
+@contextmanager
+def output_directory_lock(output_dir: str | Path) -> Iterator[None]:
+    """Hold an exclusive claim on one output directory for the whole run.
+
+    Two runs sharing an ``--output-dir`` interleave: the harmonized table is
+    written seconds in and the database tens of seconds later, so one run's
+    contrast table can end up beside the other's gene scores. Both runs exit 0,
+    both artifact sets verify against their own sidecars, and the sidecars are
+    byte-identical because they record only the command - so nothing downstream
+    can tell the halves came from different runs. The default output directory is
+    a fixed path, so this needs no flag to happen.
+
+    Re-entrant within a process: the CLI takes the lock for the whole pipeline
+    while ``run_slice`` and ``write_score_database`` also take it when they are
+    the entry point, and flock on a second descriptor would otherwise deadlock
+    against the first.
+    """
+
+    resolved = Path(output_dir).resolve()
+    resolved.mkdir(parents=True, exist_ok=True)
+    key = str(resolved)
+    with _OUTPUT_LOCK_GUARD:
+        depth = _OUTPUT_LOCKS_HELD.get(key, 0)
+        if depth:
+            _OUTPUT_LOCKS_HELD[key] = depth + 1
+    if depth:
+        try:
+            yield
+        finally:
+            with _OUTPUT_LOCK_GUARD:
+                _OUTPUT_LOCKS_HELD[key] -= 1
+                if not _OUTPUT_LOCKS_HELD[key]:
+                    del _OUTPUT_LOCKS_HELD[key]
+        return
+
+    handle = (resolved / ".degora-run.lock").open("a+b")
+    try:
+        import fcntl
+
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as exc:
+            raise OutputDirectoryBusyError(
+                f"another DEGORA run is using this output directory: {resolved}. "
+                "Wait for it to finish, or give this run its own --output-dir."
+            ) from exc
+    except ImportError:  # pragma: no cover - no file locking available
+        pass
+    with _OUTPUT_LOCK_GUARD:
+        _OUTPUT_LOCKS_HELD[key] = 1
+    try:
+        yield
+    finally:
+        with _OUTPUT_LOCK_GUARD:
+            _OUTPUT_LOCKS_HELD.pop(key, None)
+        try:
+            import fcntl
+
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        except (ImportError, OSError):
+            pass
+        handle.close()
 
 
 def reproducible_generated_at() -> str:

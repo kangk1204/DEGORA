@@ -14,6 +14,7 @@ DEGORA_template.xlsx
 degora-demo/
 .smoke-demo/
 results/
+.degora-run.lock
 search-human/
 search-mouse/
 analysis-human/

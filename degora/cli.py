@@ -382,13 +382,10 @@ def _zero_gene_diagnostic(harmonized_path: Path, min_studies: int) -> str:
 
 
 def _run_from_config(args: argparse.Namespace, *, serve_after: bool = False) -> int:
-    from .api import serve as serve_db
-    from .excel_export import DEFAULT_WORKBOOK_NAME, export_run_workbook
-    from .provenance import shell_command
-    from .score_db import write_score_database
-    from .slice_runner import run_slice, validate_catalog_inputs
+    """Resolve the run's paths and settings, then hold the output directory for it."""
 
-    version_info = runtime_version_info()
+    from .provenance import output_directory_lock
+
     config = Path(args.config)
     config_base = config.resolve().parent
     settings = read_excel_settings(config)
@@ -409,6 +406,30 @@ def _run_from_config(args: argparse.Namespace, *, serve_after: bool = False) -> 
     )
     db_path = Path(args.db) if args.db else _path_setting(settings.get("score_db"), output_dir / "degora_scores.db", base=config_base)
 
+    # One claim for the whole pipeline. Harmonization and the database are written
+    # tens of seconds apart, so two runs sharing an output directory could each
+    # succeed and leave one run's contrast table beside the other's gene scores.
+    with output_directory_lock(output_dir):
+        return _run_pipeline(args, serve_after, config, settings, min_studies, output_dir, harmonized_dir, db_path)
+
+
+def _run_pipeline(
+    args: argparse.Namespace,
+    serve_after: bool,
+    config: Path,
+    settings: dict[str, str],
+    min_studies: int,
+    output_dir: Path,
+    harmonized_dir: Path,
+    db_path: Path,
+) -> int:
+    from .api import serve as serve_db
+    from .excel_export import DEFAULT_WORKBOOK_NAME, export_run_workbook
+    from .provenance import shell_command
+    from .score_db import write_score_database
+    from .slice_runner import run_slice, validate_catalog_inputs
+
+    version_info = runtime_version_info()
     progress = _RunProgress(enabled=not getattr(args, "quiet", False))
     progress.start("Validating the catalog and source tables")
     validation = validate_catalog_inputs(config)
@@ -822,6 +843,7 @@ def main(argv: list[str] | None = None) -> int:
         if isinstance(exc, CliUsageError) or exc.__class__.__name__ in {
             "DiscoveryUnavailableError",
             "DiscoveryWorkspaceInUseError",
+            "OutputDirectoryBusyError",
         } or (
             exc.__class__.__module__.endswith((".discovery", ".discovery_run", ".reanalysis"))
             and isinstance(exc, ValueError)

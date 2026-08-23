@@ -822,3 +822,17 @@ def test_discovery_analysis_refuses_a_run_that_scored_no_genes(tmp_path: Path) -
     assert "scored zero genes" in str(excinfo.value)
     # The enclosing transaction must not leave the partial run behind.
     assert not output.exists() or not any(output.iterdir())
+
+
+def test_a_generated_source_unit_id_never_carries_the_list_delimiter() -> None:
+    """A DOI may legitimately contain a semicolon; a source_unit_id may not.
+
+    The preflight rejects a hand-written identifier holding the delimiter, but the
+    discovery path builds identifiers itself, so it has to be unable to produce one.
+    """
+
+    from degora.discovery_run import _paper_source_unit
+
+    assert _paper_source_unit({"doi": "10.1234/abc;def"}) == "DOI:10.1234/abc_def"
+    assert _paper_source_unit({"source_unit_id": "U;1"}) == "U_1"
+    assert _paper_source_unit({"pubmed_ids": ["12345"]}) == "PMID:12345"

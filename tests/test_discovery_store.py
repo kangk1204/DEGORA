@@ -227,6 +227,6 @@ def test_a_cancelled_worker_stops_instead_of_writing_after_shutdown(tmp_path) ->
             break
         time.sleep(0.05)
 
-    assert outcome == ["DiscoveryJobCancelled"], outcome
+    assert outcome == [DiscoveryJobCancelled.__name__], outcome
     assert not side_effect.exists(), "a cancelled worker still wrote to the workspace"
     assert store.get_job(job["job_id"])["status"] == "interrupted"

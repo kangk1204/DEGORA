@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from degora.aggregate import (
     collapse_gene_source_units,
@@ -267,3 +268,52 @@ def test_source_unit_collapse_supports_predeclared_time_course_modes() -> None:
     assert np.isclose(late.iloc[0]["signed_z"], 5.0)
     assert np.isclose(peak.iloc[0]["signed_z"], 4.0)
     assert peak.iloc[0]["n_contrast_rows"] == 2
+
+
+def test_peak_mean_selects_on_statistical_strength_not_effect_size() -> None:
+    """Pin what "peak" means, because the two readings disagree.
+
+    peak_mean keeps the strongest half of a source unit's contrasts by |signed_z|,
+    and signed_z comes from the p-value. A reader of a time course is at least as
+    likely to mean the largest fold change, so the selection rule is documented in
+    the collapse rule, the catalog help, the template and the workbook dictionary -
+    and asserted here so it cannot drift away from all four.
+    """
+
+    from scipy.stats import norm
+
+    from degora.aggregate import SOURCE_UNIT_COLLAPSE_RULE, collapse_gene_source_units
+
+    def row(study_id: str, lfc: float, pvalue: float, duration: str) -> dict:
+        return {
+            "study_id": study_id,
+            "paper_id": "U1",
+            "source_unit_id": "U1",
+            "gene_symbol": "G1",
+            "lfc": lfc,
+            "signed_z": float(np.sign(lfc) * norm.isf(pvalue / 2.0)),
+            "normalized_rank": 0.01,
+            "n_genes_in_study": 1000,
+            "n_ctrl": 3,
+            "n_treat": 3,
+            "duration_h": duration,
+            "time_course_mode": "peak_mean",
+        }
+
+    # The largest fold change and the strongest p-value are deliberately different rows.
+    harmonized = pd.DataFrame(
+        [
+            row("U1_02h", 0.5, 0.05, "2"),
+            row("U1_08h", 1.0, 1e-12, "8"),
+            row("U1_24h", 4.0, 0.04, "24"),
+        ]
+    )
+
+    collapsed = collapse_gene_source_units(harmonized)
+
+    assert len(collapsed) == 1
+    # Two of three kept: the p=1e-12 row and the stronger of the remaining two.
+    assert int(collapsed["n_contrast_rows"].iloc[0]) == 2
+    # Effect-size selection would have pooled 4.0 alone; strength selection pools 1.0 and 4.0.
+    assert collapsed["lfc"].iloc[0] == pytest.approx(2.5)
+    assert "rather than effect size" in SOURCE_UNIT_COLLAPSE_RULE

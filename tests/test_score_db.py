@@ -349,7 +349,12 @@ def test_degora_score_prioritizes_repeated_directional_source_unit_support() -> 
     assert "heterogeneity_flag_rule" in metadata
     assert "loo_stability_rule" in metadata
     assert "source_quality_diagnostics" in metadata
-    assert "not comparable to a calibrated Higgins' I2" in metadata["heterogeneity_rule"]
+    rule = metadata["heterogeneity_rule"]
+    assert "not a calibrated Higgins' I2" in rule
+    # The rule must not claim a bias direction: Q is not chi-square distributed
+    # here, raw (Q-df)/Q is frequently negative, and it is clamped to 0.
+    assert "no calibrated bias direction" in rule
+    assert "positively biased" not in rule
     assert "missing or non-numeric" in metadata["source_quality_weight_rules"]["replicate_multiplier"]
 
 

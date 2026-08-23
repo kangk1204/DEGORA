@@ -302,3 +302,138 @@ def test_recall_at_k_requires_gene_symbol_column() -> None:
     with pytest.raises(ValueError, match="gene_symbol"):
         recall_at_k(pd.DataFrame({"other": [1, 2]}), ["A"], 10)
 
+
+
+def test_an_archive_member_cannot_expand_past_its_cap(tmp_path) -> None:
+    """The size caps read a number the archive's author chose.
+
+    ZipFile.read decompresses a whole member before it validates the CRC, so a
+    member declaring 1 KiB and holding a gigabyte of zeros was fully expanded in
+    memory first - roughly 2 GB of resident set for a 1 MB download, inside every
+    member, total, count and depth cap.
+    """
+
+    import io
+    import struct
+    import zipfile
+
+    from degora.discovery_sources import (
+        DiscoveryUnsafeArchiveError,
+        read_archive_member,
+    )
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("bomb.csv", b"\0" * (8 << 20))
+    raw = bytearray(buffer.getvalue())
+    # Forge the declared uncompressed size in both the central directory and the
+    # local header, which is what the caps are computed from.
+    for marker, offset in ((b"PK\x01\x02", 24), (b"PK\x03\x04", 22)):
+        struct.pack_into("<I", raw, raw.find(marker) + offset, 1024)
+
+    with zipfile.ZipFile(io.BytesIO(bytes(raw))) as archive:
+        info = archive.infolist()[0]
+        assert info.file_size == 1024
+        with pytest.raises(DiscoveryUnsafeArchiveError):
+            read_archive_member(archive, info, max_bytes=64 * 1024)
+
+
+def test_a_field_over_the_csv_limit_is_not_a_traceback() -> None:
+    """These files come from public repositories, so this path must degrade.
+
+    csv refuses a field past 128 KiB with _csv.Error, which is neither a
+    DiscoveryError nor caught by the preparation handlers, so one oversized field
+    in one candidate ended a whole preparation with a raw traceback.
+    """
+
+    from degora.discovery import _delimited_rows
+
+    text = "gene\tvalue\n" + "X" * 200_000 + "\tv\n"
+
+    assert _delimited_rows(text) == []
+
+
+def test_two_runs_cannot_share_one_output_directory(tmp_path) -> None:
+    """Interleaved runs produced two halves of two different analyses.
+
+    The harmonized table lands seconds into a run and the database tens of seconds
+    later, so one run's contrast table could end up beside the other's gene scores.
+    Both runs exited 0, both artifact sets verified against their own sidecars, and
+    the sidecars were byte-identical because they record only the command - so
+    nothing downstream could tell the halves apart. The default output directory is
+    a fixed path, so no flag was needed to hit it.
+    """
+
+    import threading
+
+    from degora.provenance import output_directory_lock
+
+    output = tmp_path / "results"
+    held = threading.Event()
+    release = threading.Event()
+    failures: list[BaseException] = []
+
+    def hold() -> None:
+        try:
+            with output_directory_lock(output):
+                held.set()
+                release.wait(timeout=5)
+        except BaseException as exc:  # noqa: BLE001 - surfaced through `failures`
+            failures.append(exc)
+
+    holder = threading.Thread(target=hold)
+    holder.start()
+    try:
+        assert held.wait(timeout=5)
+        # Same process, same directory, nested: must not deadlock against itself,
+        # because the CLI holds it for the pipeline while run_slice takes it too.
+        with output_directory_lock(output):
+            with output_directory_lock(output):
+                pass
+    finally:
+        release.set()
+        holder.join(timeout=5)
+    assert not failures, failures
+
+    # And it is released, so the next run can take it.
+    with output_directory_lock(output):
+        pass
+
+
+def test_a_second_process_is_refused_the_output_directory(tmp_path) -> None:
+    """The cross-process exclusion is the one that matters; threads share the lock."""
+
+    import subprocess
+    import sys
+    import textwrap
+
+    output = tmp_path / "results"
+    holder = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            textwrap.dedent(
+                f"""
+                import time
+                from degora.provenance import output_directory_lock
+                with output_directory_lock({str(output)!r}):
+                    print("held", flush=True)
+                    time.sleep(10)
+                """
+            ),
+        ],
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        assert holder.stdout is not None
+        assert holder.stdout.readline().strip() == "held"
+        from degora.provenance import OutputDirectoryBusyError, output_directory_lock
+
+        with pytest.raises(OutputDirectoryBusyError) as excinfo:
+            with output_directory_lock(output):
+                pass
+        assert "another DEGORA run is using this output directory" in str(excinfo.value)
+    finally:
+        holder.kill()
+        holder.wait(timeout=5)

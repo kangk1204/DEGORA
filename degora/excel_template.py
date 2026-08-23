@@ -340,7 +340,11 @@ def _guide_rows() -> pd.DataFrame:
                 "column": "time_course_mode",
                 "required": "no",
                 "checked_where": "validated setting if filled",
-                "meaning": "mean, early, late, or peak_mean for rows sharing one source_unit_id.",
+                "meaning": (
+                    "How rows sharing one source_unit_id are preselected: mean keeps all; early/late keep "
+                    "the smallest/largest duration_h; peak_mean keeps the strongest half by p-value-derived "
+                    "|signed_z|, not by fold change."
+                ),
             },
             {
                 "column": "sep",

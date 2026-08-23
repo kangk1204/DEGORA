@@ -17,6 +17,8 @@
 #   --update        git pull an existing checkout before installing.
 #   --no-browser    Do not try to open a browser (headless or remote shells).
 #   --no-demo       Skip demo creation; serve an existing database.
+#   --demo-dir NAME Demo workspace folder (default: degora-demo). An existing one
+#                   is reused, never deleted.
 #   -h, --help      Show this help.
 # ---------------------------------------------------------------------------
 set -euo pipefail
@@ -28,6 +30,7 @@ CONFIG_PATH=""
 DO_UPDATE=0
 OPEN_BROWSER=1
 BUILD_DEMO=1
+DEMO_DIR="degora-demo"
 REPO_URL="https://github.com/kangk1204/DEGORA.git"
 
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
@@ -44,6 +47,7 @@ while [ "$#" -gt 0 ]; do
     --update) DO_UPDATE=1; shift ;;
     --no-browser) OPEN_BROWSER=0; shift ;;
     --no-demo) BUILD_DEMO=0; shift ;;
+    --demo-dir) [ "$#" -ge 2 ] || die "--demo-dir needs a value"; DEMO_DIR="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) die "unknown option: $1 (try --help)" ;;
   esac
@@ -184,13 +188,21 @@ if [ -n "$CONFIG_PATH" ]; then
     die "Could not locate the score database for $CONFIG_PATH. Run 'degora serve <output_dir>/degora_scores.db' directly."
   fi
 elif [ "$BUILD_DEMO" -eq 1 ]; then
-  note "Building the demo workspace"
-  rm -rf degora-demo
-  degora demo degora-demo >/dev/null
-  degora run degora-demo/degora_demo_config.xlsx
-  DB_PATH="$REPO_ROOT/degora-demo/results/degora_scores.db"
+  # Re-running must not destroy work. This used to delete the whole demo folder
+  # before rebuilding it, taking any config the reader had edited and any results
+  # they had kept with it, while the README called the script safe to re-run.
+  if [ -d "$DEMO_DIR" ]; then
+    [ -f "$DEMO_DIR/degora_demo_config.xlsx" ] || die \
+      "$DEMO_DIR already exists but has no degora_demo_config.xlsx. Pass --demo-dir NAME for a fresh workspace, or remove that folder yourself."
+    note "Reusing the existing demo workspace: $DEMO_DIR (your edits there are kept)"
+  else
+    note "Building the demo workspace: $DEMO_DIR"
+    degora demo "$DEMO_DIR" >/dev/null
+  fi
+  degora run "$DEMO_DIR/degora_demo_config.xlsx"
+  DB_PATH="$REPO_ROOT/$DEMO_DIR/results/degora_scores.db"
 else
-  DB_PATH="$REPO_ROOT/degora-demo/results/degora_scores.db"
+  DB_PATH="$REPO_ROOT/$DEMO_DIR/results/degora_scores.db"
   [ -f "$DB_PATH" ] || die "No database at $DB_PATH. Re-run without --no-demo."
 fi
 

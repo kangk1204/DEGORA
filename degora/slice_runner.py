@@ -16,7 +16,7 @@ from .aggregate import _source_unit_series, slice_consensus, validate_min_studie
 from .excel_io import read_config_sheet
 from .harmonize import TableMapping, resolve_column_name, harmonize_frame, normalize_table_scope, read_deg_table
 from .metrics import recall_at_k
-from .provenance import portable_path, shell_command, write_source_sidecar
+from .provenance import output_directory_lock, portable_path, shell_command, write_source_sidecar
 
 
 CATALOG_COLUMNS = [
@@ -120,7 +120,11 @@ CATALOG_COLUMN_HELP = {
     "platform": "microarray platform such as GPL570, sequencing platform, or blank if not needed",
     "normalization": "normalization used by the source, e.g. RMA/log2, quantile/log2, DESeq2, or edgeR",
     "probe_collapse": "for microarray sources, how probes were collapsed to gene symbols",
-    "time_course_mode": "mean, early, late, or peak_mean for same-source time-course contrasts",
+    "time_course_mode": (
+        "how same-source time-course contrasts are preselected: mean keeps all, early/late keep the "
+        "smallest/largest duration_h, peak_mean keeps the strongest half by p-value-derived |signed_z| "
+        "(not by fold change)"
+    ),
     "include_in_analysis": "yes/no flag; blank means yes",
 }
 
@@ -299,16 +303,42 @@ def _readable_read_failure(path: Path, exc: Exception) -> str:
     available in the traceback the error chains from.
     """
 
-    if path.suffix.lower() in {".xlsx", ".xls"}:
+    suffix = path.suffix.lower()
+    if suffix in {".xlsx", ".xls"}:
+        # A missing reader and a damaged file are different problems with different
+        # fixes, and reporting the first as the second sent readers looking for a
+        # corrupt download when a valid workbook simply had no engine to open it.
+        message = str(exc).lower()
+        if "xlrd" in message or "openpyxl" in message or "install" in message:
+            engine = "xlrd" if suffix == ".xls" else "openpyxl"
+            return (
+                f"{path.name} needs the {engine} reader, which is not installed in this environment. "
+                f"Reinstall DEGORA (pip install -e . or pip install degora), or install {engine} directly. "
+                "The file itself was not read, so this says nothing about whether it is valid."
+            )
+        if suffix == ".xls":
+            # Legacy .xls is an OLE2 compound file, not a ZIP.
+            header = b""
+            try:
+                with path.open("rb") as handle:
+                    header = handle.read(8)
+            except OSError:
+                pass
+            if header.startswith(b"\xd0\xcf\x11\xe0"):
+                return (
+                    f"{path.name} is a legacy Excel workbook, but its contents could not be read: {exc}. "
+                    "Open it in a spreadsheet tool and save it as .xlsx, or export the sheet as CSV."
+                )
+            return (
+                f"{path.name} is not a legacy Excel workbook: it does not start with the OLE2 signature "
+                "such a file has. It may be a CSV or TSV that was renamed, or a partial download."
+            )
         try:
             with zipfile.ZipFile(path) as archive:
                 names = set(archive.namelist())
         except (OSError, zipfile.BadZipFile):
-            # Only .xlsx is a ZIP container; a legacy .xls is an OLE2 compound file,
-            # so the ZIP wording would be wrong for the very extension it names.
-            container = "a ZIP archive" if path.suffix.lower() == ".xlsx" else "a workbook container"
             return (
-                f"{path.name} is not a readable Excel workbook: it is not {container}. "
+                f"{path.name} is not a readable Excel workbook: it is not a ZIP archive. "
                 "It may be a CSV or TSV that was renamed, or a partial download."
             )
         if "[Content_Types].xml" not in names:
@@ -632,6 +662,67 @@ def _reject_duplicate_active_study_ids(catalog: pd.DataFrame, include_mask: pd.S
         )
 
 
+# Exported provenance columns - contributing_study_ids, source_units,
+# contributing_source_paths - are semicolon-joined lists. An identifier holding the
+# delimiter makes those lists unparseable and inflates every count derived by
+# splitting them.
+IDENTIFIER_LIST_DELIMITER = ";"
+
+
+def _reject_delimiter_in_identifiers(catalog: pd.DataFrame, include_mask: pd.Series, path: Path) -> None:
+    """Keep the list delimiter out of the identifiers those lists are built from."""
+
+    problems: list[str] = []
+    active = catalog.loc[include_mask]
+    for column in ("study_id", "paper_id", "source_unit_id"):
+        if column not in active.columns:
+            continue
+        for index, value in active[column].items():
+            text = _nonempty(value)
+            if text and IDENTIFIER_LIST_DELIMITER in text:
+                problems.append(
+                    f"Row {_user_row_number(index)} has {_display_catalog_column(column)}={text!r}, "
+                    f"which contains {IDENTIFIER_LIST_DELIMITER!r}."
+                )
+    if not problems:
+        return
+    raise DegoraConfigError(
+        "identifier contains the list delimiter",
+        context=f"config file: {path}",
+        problems=problems,
+        fixes=[
+            f"Remove {IDENTIFIER_LIST_DELIMITER!r} from study_id, paper_id and source_unit_id.",
+            "DEGORA joins contributing study IDs and source units into semicolon-separated lists in "
+            "the score table, the evidence table and the workbook; an identifier holding that "
+            "character makes those lists ambiguous and the counts derived from them wrong.",
+        ],
+    )
+
+
+def _mixed_species_warnings(catalog: pd.DataFrame) -> list[str]:
+    """Say when one run mixes species, because scoring will not notice.
+
+    The Search workflow keeps Human and Mouse in separate workspaces, but the
+    scoring path is not species-specific: a hand-written config naming one human
+    and one mouse source satisfies min_studies=2 and produces a pooled ranking.
+    The species is recorded on every evidence row, so the mixing is visible after
+    the fact - it was only never announced.
+    """
+
+    if "species" not in catalog.columns:
+        return []
+    labels = sorted({text for text in (_nonempty(value) for value in catalog["species"]) if text})
+    if len(labels) < 2:
+        return []
+    return [
+        "this run mixes "
+        + ", ".join(repr(label) for label in labels)
+        + " in one ranking. DEGORA scoring matches on gene symbol and is not species-specific, so "
+        "these sources are pooled and can satisfy the min_studies replication rule between them. "
+        "Run one species at a time unless cross-species pooling is what you intend."
+    ]
+
+
 def _microarray_warnings(catalog: pd.DataFrame) -> list[str]:
     """Return non-fatal warnings for active microarray metadata."""
 
@@ -833,6 +924,39 @@ NON_NUMERIC_REJECT_SHARE = 0.10
 NON_NUMERIC_REJECT_MINIMUM = 3
 
 
+def _require_readable_source_file(source_path: Path, row: dict[str, Any]) -> None:
+    """Refuse anything that is not a regular file before a reader blocks on it.
+
+    ``exists()`` is true for a FIFO, a device and a socket, and pandas then waits
+    for a writer that never comes: the command produced no output, used no CPU and
+    never returned, which is indistinguishable from a hang.
+    """
+
+    if source_path.is_file():
+        return
+    if not source_path.exists():
+        raise DegoraConfigError(
+            "source DEG table file was not found",
+            problems=[
+                f"{row['study_id']}: source_path points to {source_path}, but that file does not exist.",
+            ],
+            fixes=[
+                "Check the file path in the Contrasts sheet.",
+                "Relative paths are resolved from the Excel/CSV config folder, then the current folder.",
+                "If the file was moved, update source_path rather than editing analysis outputs by hand.",
+            ],
+        )
+    kind = "directory" if source_path.is_dir() else "not a regular file (for example a pipe, socket or device)"
+    raise DegoraConfigError(
+        "source DEG table path is not a readable file",
+        problems=[f"{row['study_id']}: source_path points to {source_path}, which is {kind}."],
+        fixes=[
+            "Point source_path at a CSV, TSV, TXT, XLS or XLSX file on disk.",
+            "DEGORA reads each source table more than once, so a stream or pipe cannot be used.",
+        ],
+    )
+
+
 def _validate_numeric_source_columns(frame: pd.DataFrame, mapping: TableMapping, row: dict[str, Any]) -> None:
     """Reject an effect or p-value column that does not hold numbers.
 
@@ -995,6 +1119,7 @@ def validate_catalog_inputs(catalog_path: Path) -> dict[str, Any]:
     _validate_optional_scope_values(full_catalog, include_mask, catalog_path)
     _validate_optional_replicate_counts(full_catalog, include_mask, catalog_path)
     _reject_duplicate_active_study_ids(full_catalog, include_mask, catalog_path)
+    _reject_delimiter_in_identifiers(full_catalog, include_mask, catalog_path)
     catalog = full_catalog.loc[include_mask].copy()
     if catalog.empty:
         raise DegoraConfigError(
@@ -1007,18 +1132,7 @@ def validate_catalog_inputs(catalog_path: Path) -> dict[str, Any]:
     checked_sources: list[str] = []
     for row in catalog.to_dict(orient="records"):
         source_path = _resolve_source_path(row["source_path"], catalog_path)
-        if not source_path.exists():
-            raise DegoraConfigError(
-                "source DEG table file was not found",
-                problems=[
-                    f"{row['study_id']}: source_path points to {source_path}, but that file does not exist.",
-                ],
-                fixes=[
-                    "Check the file path in the Contrasts sheet.",
-                    "Relative paths are resolved from the Excel/CSV config folder, then the current folder.",
-                    "If the file was moved, update source_path rather than editing analysis outputs by hand.",
-                ],
-            )
+        _require_readable_source_file(source_path, row)
 
         mapping = TableMapping(
             gene_column=row["gene_column"],
@@ -1094,11 +1208,13 @@ def validate_catalog_inputs(catalog_path: Path) -> dict[str, Any]:
         "optional_source_table_mappings": _format_source_mapping_contract(OPTIONAL_SOURCE_TABLE_MAPPINGS),
         # Surface the same non-fatal microarray advisories that run_slice emits, so the
         # `degora validate` preflight flags them before a full run rather than after.
-        "warnings": _microarray_warnings(catalog),
+        "warnings": [*_microarray_warnings(catalog), *_mixed_species_warnings(catalog)],
     }
 
 
 def run_slice(catalog_path: Path, output_dir: Path, harmonized_dir: Path, min_studies: int) -> dict[str, Any]:
+    """Harmonize the catalog and write the slice outputs, holding the output directory."""
+
     try:
         min_studies = validate_min_studies(min_studies)
     except ValueError as exc:
@@ -1110,6 +1226,8 @@ def run_slice(catalog_path: Path, output_dir: Path, harmonized_dir: Path, min_st
             problems=[f"Got min_studies={min_studies!r}."],
             fixes=["Use 1 to score single-source genes, or 2+ to require independent replication."],
         ) from exc
+    # Both of these run before the lock: taking it creates the output directory, and
+    # a rejected argument or an unusable path must not leave one behind.
     for label, directory in (("output", output_dir), ("harmonized", harmonized_dir)):
         try:
             directory.mkdir(parents=True, exist_ok=True)
@@ -1124,6 +1242,11 @@ def run_slice(catalog_path: Path, output_dir: Path, harmonized_dir: Path, min_st
                 ],
             ) from exc
 
+    with output_directory_lock(output_dir):
+        return _run_slice_locked(catalog_path, output_dir, harmonized_dir, min_studies)
+
+
+def _run_slice_locked(catalog_path: Path, output_dir: Path, harmonized_dir: Path, min_studies: int) -> dict[str, Any]:
     catalog_path = catalog_path.resolve()
     full_catalog = read_catalog(catalog_path)
     include_mask = catalog_include_mask(full_catalog)
@@ -1131,6 +1254,7 @@ def run_slice(catalog_path: Path, output_dir: Path, harmonized_dir: Path, min_st
     _validate_optional_scope_values(full_catalog, include_mask, catalog_path)
     _validate_optional_replicate_counts(full_catalog, include_mask, catalog_path)
     _reject_duplicate_active_study_ids(full_catalog, include_mask, catalog_path)
+    _reject_delimiter_in_identifiers(full_catalog, include_mask, catalog_path)
     catalog = full_catalog.loc[include_mask].copy()
     excluded_catalog = full_catalog.loc[~include_mask].copy()
     if catalog.empty:
@@ -1144,23 +1268,12 @@ def run_slice(catalog_path: Path, output_dir: Path, harmonized_dir: Path, min_st
 
     harmonized_tables = []
     source_inputs: list[Path] = []
-    input_warnings: list[str] = _microarray_warnings(catalog)
+    input_warnings: list[str] = [*_microarray_warnings(catalog), *_mixed_species_warnings(catalog)]
     filter_summaries: dict[str, dict[str, Any]] = {}
 
     for row in catalog.to_dict(orient="records"):
         source_path = _resolve_source_path(row["source_path"], catalog_path)
-        if not source_path.exists():
-            raise DegoraConfigError(
-                "source DEG table file was not found",
-                problems=[
-                    f"{row['study_id']}: source_path points to {source_path}, but that file does not exist.",
-                ],
-                fixes=[
-                    "Check the file path in the Contrasts sheet.",
-                    "Relative paths are resolved from the Excel/CSV config folder, then the current folder.",
-                    "If the file was moved, update source_path rather than editing analysis outputs by hand.",
-                ],
-            )
+        _require_readable_source_file(source_path, row)
         source_inputs.append(source_path)
 
         mapping = TableMapping(

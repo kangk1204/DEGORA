@@ -34,6 +34,7 @@ from .discovery_sources import (
     MAX_ARCHIVE_DEPTH,
     MAX_ARCHIVE_EXPANDED_BYTES,
     MAX_ARCHIVE_MEMBER_BYTES,
+    read_archive_member,
     MAX_ARCHIVE_MEMBERS,
     describe_unexpected_payload,
     download_public_candidate,
@@ -440,7 +441,9 @@ def _materialize_archive_tables(
                         continue
                     if len(files) >= max_files:
                         continue
-                    raw_member = archive.read(info)
+                    raw_member = read_archive_member(
+                        archive, info, max_bytes=MAX_ARCHIVE_MEMBER_BYTES
+                    )
                     if is_nested_archive:
                         visit(raw_member, f"{member_name}!/", depth + 1)
                         continue

@@ -50,3 +50,22 @@ def test_readme_and_installed_package_metadata_are_consistent() -> None:
     assert sys.version_info[: len(required_python)] >= required_python
     assert f"Python {python_match.group(1)} or newer" in readme
     assert "automated release tests cover Python 3.10-3.13" in readme
+
+
+def test_xls_support_ships_with_the_package() -> None:
+    """read_deg_table accepts .xls, so the reader pandas needs for it must install.
+
+    xlrd sat in the dev extra, so an ordinary `pip install degora` advertised a
+    format it could not open: a valid legacy .xls failed with an ImportError
+    telling the user to install a package the project already depended on.
+    """
+
+    import importlib.util
+
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    dependencies = pyproject.split("[project.optional-dependencies]", 1)[0]
+    assert '"xlrd>=2.0.1,<3"' in dependencies
+
+    from degora.harmonize import read_deg_table  # noqa: F401 - the .xls branch lives here
+
+    assert importlib.util.find_spec("xlrd") is not None

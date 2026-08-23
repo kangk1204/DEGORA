@@ -254,3 +254,26 @@ def test_ref_reports_an_unknown_name_instead_of_serving_the_wrong_code(tmp_path:
     assert result.returncode != 0
     assert "could not fetch" in result.stderr
     assert _git(repo, "rev-parse", "HEAD").stdout.strip() == base
+
+
+def test_quickstart_reuses_an_existing_demo_workspace_instead_of_deleting_it() -> None:
+    """"Safe to re-run" has to mean it does not delete the reader's work.
+
+    The script used to `rm -rf degora-demo` before rebuilding, so a config the
+    reader had edited there, or results they had kept, went with it - while the
+    README called re-running safe.
+    """
+
+    script = (Path(__file__).resolve().parents[1] / "scripts" / "degora_quickstart.sh").read_text(encoding="utf-8")
+
+    assert "rm -rf degora-demo" not in script
+    assert "rm -rf $DEMO_DIR" not in script
+    assert 'rm -rf "$DEMO_DIR"' not in script
+    # An existing workspace is reused, and a separate one can be asked for by name.
+    assert 'if [ -d "$DEMO_DIR" ]; then' in script
+    assert "Reusing the existing demo workspace" in script
+    assert "--demo-dir" in script
+
+    readme = (Path(__file__).resolve().parents[1] / "README.md").read_text(encoding="utf-8")
+    assert "reused, never\ndeleted" in readme
+    assert "--demo-dir NAME" in readme
