@@ -663,39 +663,45 @@ def test_a_short_title_is_never_treated_as_a_submission_key() -> None:
     assert not any(record.get("shared_submission_units") for record in records)
 
 
-def test_a_literature_only_record_is_not_reported_as_a_checked_species() -> None:
-    """Only a provider reporting per-record organisms can supply a species check.
+def test_species_labels_survive_the_pipeline_that_produces_them() -> None:
+    """Drive _prepare_record, not a hand-built evidence dict.
 
-    A record found through the literature search carries one species label by
-    construction -- the organism filter that produced the search -- so two labels
-    can never appear on it and mixed-species quarantine is unreachable. Reporting
-    it as `target_species_likely` read as a per-record check that never happened.
+    The first version of this test passed a single-item evidence list straight to
+    _species_decision. The real pipeline never produces that: _prepare_record
+    writes record["species"] from the evidence it just normalized, and
+    re-normalizing folded that copy back in as a second, independent-looking
+    signal - enough to send every literature-only record back to
+    target_species_likely while the unit test stayed green. Live searches
+    returned query_constrained for 0 of 200 records.
     """
 
-    from degora.discovery_federated import _species_decision, normalize_species
+    from degora.discovery_federated import _prepare_record, _species_evidence, normalize_species
 
     human = normalize_species("human")
 
-    literature_only = {
-        "species_evidence": [{"species": "Homo sapiens", "basis": "PubMed organism-constrained query"}]
-    }
-    repository_taxa = {
-        "species_evidence": [{"species": "Homo sapiens", "basis": "GEO SOFT sample taxonomy"}]
-    }
-    two_organisms = {
-        "species_evidence": [
-            {"species": "Homo sapiens", "basis": "GEO SOFT sample taxonomy"},
-            {"species": "Mus musculus", "basis": "GEO SOFT sample taxonomy"},
-        ]
-    }
-    other_organism = {
-        "species_evidence": [{"species": "Mus musculus", "basis": "PubMed organism-constrained query"}]
-    }
+    def decide(basis: str, second: str | None = None) -> dict:
+        evidence = [{"species": "Homo sapiens", "basis": basis}]
+        if second:
+            evidence.append({"species": second, "basis": basis})
+        return _prepare_record(
+            {"provider": "probe", "pmid": "1", "species_evidence": evidence},
+            human,
+        )
 
-    assert _species_decision(literature_only, human) == "query_constrained"
-    assert _species_decision(repository_taxa, human) == "target_species_likely"
-    assert _species_decision(two_organisms, human) == "mixed_quarantined"
-    assert _species_decision(other_organism, human) == "non_target"
+    literature_only = decide("PubMed organism-constrained query")
+    repository_query = decide("GEO organism-constrained query")
+    repository_taxa = decide("GEO SOFT observed taxa")
+    two_organisms = decide("GEO SOFT observed taxa", second="Mus musculus")
+
+    assert literature_only["species_decision"] == "query_constrained"
+    # Every provider that only echoes the organism filter, not just PubMed.
+    assert repository_query["species_decision"] == "query_constrained"
+    assert repository_taxa["species_decision"] == "target_species_likely"
+    assert two_organisms["species_decision"] == "mixed_quarantined"
+
+    # Normalizing an already-normalized record must not invent a second signal.
+    for row in (literature_only, repository_query, repository_taxa):
+        assert _species_evidence(row) == row["species_evidence"]
 
 
 def test_a_query_constrained_record_stays_preparable() -> None:
@@ -705,13 +711,18 @@ def test_a_query_constrained_record_stays_preparable() -> None:
     filter that produced the search. Only the honesty of the label changes.
     """
 
-    from degora.discovery import normalize_species
-    from degora.discovery_federated import _species_decision
+    from degora.discovery_federated import _prepare_record, normalize_species
     from degora.discovery_prepare import _species_exclusion_reason
 
     human = normalize_species("human")
-    record = {"species_evidence": [{"species": "Homo sapiens", "basis": "PubMed organism-constrained query"}]}
-    record["species_decision"] = _species_decision(record, human)
+    record = _prepare_record(
+        {
+            "provider": "probe",
+            "pmid": "1",
+            "species_evidence": [{"species": "Homo sapiens", "basis": "PubMed organism-constrained query"}],
+        },
+        human,
+    )
 
     assert record["species_decision"] == "query_constrained"
     assert _species_exclusion_reason(record, human) == ""

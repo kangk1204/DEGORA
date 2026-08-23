@@ -1031,7 +1031,7 @@ def validate_catalog_inputs(catalog_path: Path) -> dict[str, Any]:
             raise DegoraConfigError(
                 "source DEG table could not be read",
                 context=f"{row['study_id']}: {source_path}",
-                problems=[str(exc)],
+                problems=[_readable_read_failure(source_path, exc)],
                 fixes=[
                     "Check that the file is a supported CSV/TSV/TXT/XLS/XLSX table.",
                     "For Excel sources, set sheet_name to the exact sheet containing the DEG table.",
@@ -1174,7 +1174,7 @@ def run_slice(catalog_path: Path, output_dir: Path, harmonized_dir: Path, min_st
             raise DegoraConfigError(
                 "source DEG table could not be read",
                 context=f"{row['study_id']}: {source_path}",
-                problems=[str(exc)],
+                problems=[_readable_read_failure(source_path, exc)],
                 fixes=[
                     "Check that the file is a supported CSV/TSV/TXT/XLS/XLSX table.",
                     "For Excel sources, set sheet_name to the exact sheet containing the DEG table.",

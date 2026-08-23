@@ -627,17 +627,29 @@ def _merged_readiness(ordered: list[dict[str, Any]], merged: dict[str, Any], tar
 # A record whose only species signal is the organism filter that produced the
 # search carries no evidence about itself. Naming that separately keeps
 # "target_species_likely" meaning what it says: a label came back with the record.
-QUERY_CONSTRAINED_SPECIES_BASES = ("pubmed organism-constrained query",)
+# Matched on the shared suffix rather than one provider's spelling: PubMed and GEO
+# both echo the filter, and a provider added later would otherwise slip through.
+QUERY_CONSTRAINED_SPECIES_BASIS = "organism-constrained query"
+# Bases produced by re-normalizing a record that already carries normalized
+# evidence. They describe where a label was copied to, not where it came from, so
+# they must not count as independent evidence about the record.
+DERIVED_SPECIES_BASES = frozenset({"species", "organism", "taxon_id"})
 
 
 def _only_query_constrained(evidence: list[dict[str, str]]) -> bool:
-    if not evidence:
+    """Report whether every real signal is just the search's own organism filter."""
+
+    considered = [
+        item
+        for item in evidence
+        if _clean_text(item.get("basis")).lower() not in DERIVED_SPECIES_BASES
+    ]
+    if not considered:
         return False
-    for item in evidence:
-        basis = _clean_text(item.get("basis")).lower()
-        if not any(marker in basis for marker in QUERY_CONSTRAINED_SPECIES_BASES):
-            return False
-    return True
+    return all(
+        QUERY_CONSTRAINED_SPECIES_BASIS in _clean_text(item.get("basis")).lower()
+        for item in considered
+    )
 
 
 def _species_decision(record: dict[str, Any], target: SpeciesSpec) -> str:
@@ -700,11 +712,17 @@ def _species_evidence(record: dict[str, Any]) -> list[dict[str, str]]:
             label = _species_label(value)
             if label:
                 evidence.append({"species": label, "basis": basis})
-    for key in ("species", "organism", "taxon_id"):
-        for value in _as_list(record.get(key)):
-            label = _species_label(value)
-            if label:
-                evidence.append({"species": label, "basis": key})
+    # Only fall back to the top-level display fields when the record carries no
+    # evidence of its own. _prepare_record writes record["species"] from the
+    # evidence it just normalized, so re-normalizing the same record used to fold
+    # that copy back in as a second, independent-looking signal - which is enough
+    # to stop a literature-only record from being recognized as one.
+    if not evidence:
+        for key in ("species", "organism", "taxon_id"):
+            for value in _as_list(record.get(key)):
+                label = _species_label(value)
+                if label:
+                    evidence.append({"species": label, "basis": key})
     seen: set[tuple[str, str]] = set()
     unique: list[dict[str, str]] = []
     for item in evidence:

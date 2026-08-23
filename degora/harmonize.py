@@ -640,6 +640,7 @@ def _non_numeric_examples(raw: pd.Series, numeric: pd.Series, limit: int = 5) ->
 def _unusable_row_warning(
     study_id: str,
     n_input_rows: int,
+    n_dropped: int,
     reasons: dict[str, int],
     examples: dict[str, list[str]],
 ) -> str:
@@ -651,7 +652,11 @@ def _unusable_row_warning(
     two counts needed to notice it were in different fields of the metrics file.
     """
 
-    dropped = sum(reasons.values())
+    # The per-reason counts overlap: one row can be missing its effect and its
+    # p-value, and summing them reported more dropped rows than the table had.
+    # The denominator is the count of distinct rows the validity mask removed;
+    # the reasons stay as a non-exclusive breakdown of why.
+    dropped = int(n_dropped)
     if not dropped or not n_input_rows:
         return ""
     share = dropped / n_input_rows
@@ -659,14 +664,15 @@ def _unusable_row_warning(
         return ""
     parts = []
     for column, count in reasons.items():
-        detail = f"{count:,} with no usable {column}"
+        detail = f"{count:,} missing a {column}"
         sample = examples.get(column) or []
         if sample:
             detail += f" (e.g. {', '.join(repr(text) for text in sample[:3])})"
         parts.append(detail)
     return (
         f"{study_id}: {dropped:,} of {n_input_rows:,} rows ({share:.1%}) were dropped before ranking "
-        f"- {'; '.join(parts)}. A gene symbol, a numeric log2 fold change and a numeric p-value are all "
+        f"- {'; '.join(parts)} (a row can be missing more than one). A gene symbol, a numeric log2 fold "
+        f"change and a numeric p-value are all "
         "required. Check that the mapped columns are the intended ones and that the effect and p-value "
         "columns hold numbers rather than text such as 'NA', 'UP' or a spreadsheet error value."
     )
@@ -739,6 +745,10 @@ def harmonize_frame(frame: pd.DataFrame, mapping: TableMapping, study_meta: dict
         "p-value": _non_numeric_examples(frame[resolve_column_name(frame, mapping.p_column)], pvalue),
     }
     valid = out["gene_symbol"].notna() & out["lfc"].notna() & out["pvalue"].notna()
+    # Settle this here. Taking it from the final row count instead counted the
+    # rows that duplicate collapse merged -- ordinary probe-level rows that were
+    # used, not lost -- as though their source could not supply them.
+    n_rows_dropped_unusable = int(n_input_rows - int(valid.sum()))
     out = out.loc[valid].copy()
     out["pvalue_was_clipped"] = out["pvalue"] < P_MIN
     out["pvalue"] = out["pvalue"].clip(lower=P_MIN, upper=1.0)
@@ -782,10 +792,12 @@ def harmonize_frame(frame: pd.DataFrame, mapping: TableMapping, study_meta: dict
     out["rank_universe_size_used"] = int(rank_universe_used)
     out["rank_universe_warning"] = rank_warning
     out["n_input_rows"] = n_input_rows
-    out["n_rows_dropped_unusable"] = int(n_input_rows - len(out))
+    out["n_rows_dropped_unusable"] = n_rows_dropped_unusable
+    out["n_rows_merged_by_gene_collapse"] = int(n_input_rows - n_rows_dropped_unusable - len(out))
     out["unusable_row_warning"] = _unusable_row_warning(
         str(study_meta.get("study_id", "unknown_study")),
         n_input_rows,
+        n_rows_dropped_unusable,
         unusable_reasons,
         unusable_examples,
     )

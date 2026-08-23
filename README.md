@@ -344,6 +344,43 @@ make smoke
 
 ## Release notes
 
+### Unreleased
+
+The score contract is unchanged. `SCORE_VERSION` remains
+`degora_score_v1_2_source_unit_mean`, and a run over unchanged inputs produces the
+same gene scores and evidence as v0.4.9. This release makes two things v0.4.9
+announced actually reach the data.
+
+**The `query_constrained` species label now survives the pipeline that produces
+it.** v0.4.9 added the label and a test that passed, but a live search returned it
+for none of 200 records. Normalizing a record's species evidence was not
+idempotent: preparation writes the record's display species from the evidence it
+has just normalized, and normalizing the same record again folded that copy back
+in as a second, independent-looking signal - enough to send every literature-only
+record back to `target_species_likely`. Normalization now leaves an
+already-normalized record alone, and a record whose only signal is the organism
+filter is recognized whichever provider echoed it, not only PubMed. The tests
+drive the preparation path rather than a hand-built evidence list, which is why
+the gap was invisible.
+
+**Row-loss warnings count rows, not reasons.** The per-reason counts overlap - one
+row can be missing its effect and its p-value - and they were summed, so a warning
+could report more rows dropped than the table held (one corpus produced "127.4%"),
+and a table losing 4% of its rows could be pushed over the 10% threshold and warn
+as 12%. The warning now counts the distinct rows the validity mask removed and
+keeps the reasons as an explicitly non-exclusive breakdown.
+
+**Duplicate collapse is no longer counted as unusable rows.** The dropped-row count
+was taken after duplicate gene symbols were collapsed, so an ordinary probe-level
+table appeared to have lost rows its source had in fact supplied. It is settled
+from the validity mask before collapse, and rows merged by collapse are reported
+separately as `n_rows_merged_by_gene_collapse`.
+
+**An unreadable source table is described, not quoted.** v0.4.9 replaced the
+internal pandas message for the config file but not for the DEG tables the config
+points at - a renamed CSV or a truncated supplementary download being the commoner
+mistake of the two.
+
 ### 0.4.9
 
 The score contract is unchanged. `SCORE_VERSION` remains

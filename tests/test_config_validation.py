@@ -716,3 +716,37 @@ def test_validate_tolerates_a_few_unparsable_cells(tmp_path) -> None:
     result = validate_catalog_inputs(catalog)
 
     assert result["active_contrasts"] == 1
+
+
+def test_an_unreadable_source_table_is_described_not_quoted(tmp_path) -> None:
+    """The readable message covered the config file but not the tables it points at.
+
+    A renamed CSV or a truncated supplementary download is a commoner mistake than
+    a broken config, and it still answered with an internal pandas option key.
+    """
+
+    import zipfile
+
+    source = tmp_path / "supplementary.xlsx"
+    with zipfile.ZipFile(source, "w") as archive:
+        archive.writestr("readme.txt", "not a workbook")
+    catalog = tmp_path / "catalog.csv"
+    pd.DataFrame(
+        [
+            {
+                "study_id": "S1",
+                "paper_id": "P1",
+                "source_path": source.name,
+                "gene_column": "gene",
+                "lfc_column": "log2FoldChange",
+                "p_column": "pvalue",
+            }
+        ]
+    ).to_csv(catalog, index=False)
+
+    with pytest.raises(DegoraConfigError) as excinfo:
+        validate_catalog_inputs(catalog)
+
+    message = str(excinfo.value)
+    assert "is a ZIP archive but not an Excel workbook" in message
+    assert "io.excel" not in message

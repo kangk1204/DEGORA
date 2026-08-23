@@ -425,3 +425,80 @@ def test_ordinary_missingness_does_not_raise_a_row_loss_warning() -> None:
 
     assert int(out["n_rows_dropped_unusable"].iloc[0]) == 1
     assert str(out["unusable_row_warning"].iloc[0]) == ""
+
+
+def test_row_loss_counts_distinct_rows_not_overlapping_reasons() -> None:
+    """A row missing three things is one lost row, not three.
+
+    Summing the per-reason counts reported more rows dropped than the table held
+    - one real corpus produced "73,774 of 57,905 rows (127.4%)" - and pushed
+    tables under the threshold over it, so a 4% loss warned as 12%.
+    """
+
+    size = 1000
+    genes: list = [f"G{index}" for index in range(size)]
+    effects: list = [1.0] * size
+    pvalues: list = [0.01] * size
+    for index in range(400):
+        genes[index] = None
+        effects[index] = None
+        pvalues[index] = None
+
+    out = harmonize_frame(
+        pd.DataFrame({"gene": genes, "log2FoldChange": effects, "pvalue": pvalues}),
+        TableMapping("gene", "log2FoldChange", "pvalue"),
+        {"study_id": "OVERLAP"},
+    )
+
+    assert int(out["n_rows_dropped_unusable"].iloc[0]) == 400
+    warning = str(out["unusable_row_warning"].iloc[0])
+    assert "400 of 1,000 rows (40.0%)" in warning
+    # The reasons stay as a breakdown, and say they may overlap.
+    assert "a row can be missing more than one" in warning
+
+
+def test_a_loss_under_the_threshold_stays_quiet() -> None:
+    """Four rows in a hundred used to warn as twelve percent."""
+
+    size = 100
+    genes: list = [f"H{index}" for index in range(size)]
+    effects: list = [1.0] * size
+    pvalues: list = [0.01] * size
+    for index in range(4):
+        genes[index] = None
+        effects[index] = None
+        pvalues[index] = None
+
+    out = harmonize_frame(
+        pd.DataFrame({"gene": genes, "log2FoldChange": effects, "pvalue": pvalues}),
+        TableMapping("gene", "log2FoldChange", "pvalue"),
+        {"study_id": "UNDER"},
+    )
+
+    assert int(out["n_rows_dropped_unusable"].iloc[0]) == 4
+    assert str(out["unusable_row_warning"].iloc[0]) == ""
+
+
+def test_duplicate_collapse_is_not_reported_as_unusable_rows() -> None:
+    """Probe rows merged into a gene were used, not lost.
+
+    The count was taken from the final row count, after duplicate collapse, so an
+    ordinary probe-level table looked as though its source could not supply rows
+    it had supplied.
+    """
+
+    out = harmonize_frame(
+        pd.DataFrame(
+            {
+                "gene": ["A", "A", "B"],
+                "log2FoldChange": [1.0, 2.0, 3.0],
+                "pvalue": [0.01, 0.02, 0.03],
+            }
+        ),
+        TableMapping("gene", "log2FoldChange", "pvalue"),
+        {"study_id": "DUPES"},
+    )
+
+    assert int(out["n_rows_dropped_unusable"].iloc[0]) == 0
+    assert int(out["n_rows_merged_by_gene_collapse"].iloc[0]) == 1
+    assert str(out["unusable_row_warning"].iloc[0]) == ""
