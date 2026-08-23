@@ -41,6 +41,24 @@ jobs:
       - run: .venv/bin/python -m pip install -e .
       - run: make PYTHON=.venv/bin/python smoke
 
+  # The dependency pins are a range, and only its floor was exercised. A pandas or
+  # numpy release inside the allowed range could break a run for anyone installing
+  # today, and nothing here would have said so.
+  upper-bounds-ubuntu:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e ".[dev]"
+      - run: python -m pip install --upgrade "pandas<3.1" "numpy<3" "scipy<1.18" "pyarrow<25" "openpyxl<4"
+      - run: python -m pip list
+      - run: make check
+      - run: make smoke
+
   lower-bounds-ubuntu:
     runs-on: ubuntu-latest
     steps:

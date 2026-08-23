@@ -376,3 +376,52 @@ def test_catalog_include_mask_defaults_empty_values_to_active() -> None:
     mask = catalog_include_mask(catalog)
 
     assert mask.tolist() == [True, False, True, True]
+
+
+def test_rows_dropped_for_missing_values_are_counted_and_explained() -> None:
+    """Losing rows outright has to warn the way collapsing them already does.
+
+    A table whose effect column exported as text, or whose gene column is half
+    empty, lost those rows between the file and the ranking with nothing said on
+    the console and nothing in any warning array. The only way to notice was to
+    subtract two numbers held in different fields of the metrics file, and even
+    then it could not say which column was responsible.
+    """
+
+    frame = pd.DataFrame(
+        {
+            "gene": ["A", "B", None, "D", "E", "F", "G", "H"],
+            "log2FoldChange": ["UP", 1.0, 2.0, "#DIV/0!", -1.5, 0.5, 1.2, -0.8],
+            "pvalue": [0.01, 0.02, 0.03, 0.04, None, 0.06, 0.07, 0.08],
+        }
+    )
+
+    out = harmonize_frame(frame, TableMapping("gene", "log2FoldChange", "pvalue"), {"study_id": "LOSSY"})
+
+    assert int(out["n_input_rows"].iloc[0]) == 8
+    assert int(out["n_rows_dropped_unusable"].iloc[0]) == 8 - len(out)
+    warning = str(out["unusable_row_warning"].iloc[0])
+    assert "LOSSY" in warning
+    assert "were dropped before ranking" in warning
+    # The reason has to name the column, and show what was actually in the cells.
+    assert "log2 fold change" in warning
+    assert "'UP'" in warning and "'#DIV/0!'" in warning
+    assert "gene identifier" in warning
+    assert "p-value" in warning
+
+
+def test_ordinary_missingness_does_not_raise_a_row_loss_warning() -> None:
+    """One unusable row in a full table is normal and must stay quiet."""
+
+    frame = pd.DataFrame(
+        {
+            "gene": [f"G{index}" for index in range(40)],
+            "log2FoldChange": [1.0] * 39 + [None],
+            "pvalue": [0.01] * 40,
+        }
+    )
+
+    out = harmonize_frame(frame, TableMapping("gene", "log2FoldChange", "pvalue"), {"study_id": "TIDY"})
+
+    assert int(out["n_rows_dropped_unusable"].iloc[0]) == 1
+    assert str(out["unusable_row_warning"].iloc[0]) == ""

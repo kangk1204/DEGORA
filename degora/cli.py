@@ -747,7 +747,19 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 prepared_count = result.get("returned_records", result.get("returned_studies", len(selected)))
                 exports = result.get("exports", {})
+                # "Prepared 8 record(s)" alone reads as success even when every one
+                # of them resolved to an upstream matrix or no usable table, and the
+                # draft catalog is a header with no rows under it.
+                ready = sum(
+                    int(study.get("ready_for_review_count", 0) or 0)
+                    for study in result.get("studies", [])
+                    if isinstance(study, dict)
+                )
                 print(f"Prepared {prepared_count} {args.species} publication/source-unit record(s): {output}")
+                print(
+                    f"Ready for review: {ready} table(s) across those records"
+                    + ("" if ready else " - nothing can be activated yet; see discovery_audit.json for the per-file reason")
+                )
                 if exports.get("draft_catalog_csv"):
                     print(f"Draft catalog (inactive): {exports['draft_catalog_csv']}")
                 print(

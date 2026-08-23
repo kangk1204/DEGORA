@@ -185,3 +185,29 @@ def test_workbook_bytes_are_identical_for_identical_inputs(tmp_path) -> None:
     # The workbook must still be a readable OOXML file with its data intact.
     workbook = load_workbook(first["output"], read_only=True, data_only=True)
     assert workbook["Gene_scores"].max_row == 2
+
+
+def test_demo_and_template_workbooks_are_reproducible(tmp_path) -> None:
+    """The inputs a reader starts from have to be reproducible like the outputs.
+
+    v0.4.7 pinned the timestamps in the generated workbook. The config workbooks
+    `degora demo` and `degora template` write were still stamped with the clock,
+    so two demo runs produced inputs with different checksums -- and every
+    provenance sidecar recording an input hash differed with them.
+    """
+
+    from degora.demo import write_demo_workspace
+    from degora.excel_template import write_template
+
+    first_template = write_template(tmp_path / "a" / "DEGORA_template.xlsx")
+    second_template = write_template(tmp_path / "b" / "DEGORA_template.xlsx")
+    assert Path(first_template).read_bytes() == Path(second_template).read_bytes()
+
+    first_demo = write_demo_workspace(tmp_path / "demo-a")
+    second_demo = write_demo_workspace(tmp_path / "demo-b")
+    first_config = Path(first_demo["demo_dir"]) / "degora_demo_config.xlsx"
+    second_config = Path(second_demo["demo_dir"]) / "degora_demo_config.xlsx"
+    assert first_config.read_bytes() == second_config.read_bytes()
+
+    with ZipFile(first_config) as archive:
+        assert {info.date_time for info in archive.infolist()} == {(2000, 1, 1, 0, 0, 0)}

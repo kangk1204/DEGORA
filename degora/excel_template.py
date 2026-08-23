@@ -10,6 +10,8 @@ from openpyxl import load_workbook
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 
+from .provenance import normalize_ooxml_zip, set_reproducible_workbook_properties
+
 from . import SCORE_VERSION
 
 
@@ -391,7 +393,14 @@ def _autosize_workbook(path: Path) -> None:
             values: list[Any] = [cell.value for cell in column_cells]
             width = min(max(len(str(value)) if value is not None else 0 for value in values) + 2, 60)
             worksheet.column_dimensions[get_column_letter(column_cells[0].column)].width = max(width, 12)
+    # The run outputs are byte-reproducible; the config workbooks a reader starts
+    # from were not, because openpyxl stamps the save time into the workbook and
+    # into every archive member. Two `degora demo` runs therefore produced inputs
+    # with different checksums, and every provenance sidecar that records an input
+    # hash differed with them.
+    set_reproducible_workbook_properties(workbook)
     workbook.save(path)
+    normalize_ooxml_zip(path)
 
 
 def write_note_sheet(writer: pd.ExcelWriter, sheet_name: str, frame: pd.DataFrame) -> None:

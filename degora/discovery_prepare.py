@@ -604,7 +604,18 @@ def _species_exclusion_reason(record: dict[str, Any], spec: Any) -> str:
         )
         if record.get("target_species_verified") is not True or not evidence:
             return "mixed_rescued record lacks target_species_verified=true with textual evidence"
-    if decision in {"target_species_verified", "target_species_likely", "likely_ready", "verified_ready", ""}:
+    # query_constrained is not weaker evidence for the requested species -- it is
+    # the organism filter that produced the search. It stays preparable for the
+    # same reason target_species_likely does; the label only stops it from being
+    # read as a per-record species check that never happened.
+    if decision in {
+        "target_species_verified",
+        "target_species_likely",
+        "query_constrained",
+        "likely_ready",
+        "verified_ready",
+        "",
+    }:
         return ""
     target = spec.scientific_name.lower()
     evidence = json.dumps(record.get("species_evidence", ""), ensure_ascii=False).lower()

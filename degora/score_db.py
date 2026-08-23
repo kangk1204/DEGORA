@@ -405,6 +405,7 @@ GENE_EVIDENCE_COLUMNS = [
     "species",
     "cell_system",
     "hypoxia_modality",
+    "condition",
     "duration_h",
     "time_course_mode",
     "temporal_mode",
@@ -673,6 +674,11 @@ def _metadata_for_study_gene_units(frame: pd.DataFrame) -> pd.DataFrame:
         ("species", "species"),
         ("cell_system", "cell_system"),
         ("hypoxia_modality", "hypoxia_modality"),
+        # The catalog's generic `condition` column is stored under a topic-specific
+        # name that predates the tool being topic-neutral. Emit both so the API,
+        # the database schema and the shipped workbook can carry the neutral name
+        # without breaking a reader that already depends on the old one.
+        ("condition", "hypoxia_modality"),
         ("table_scope", "table_scope"),
         ("sign_convention", "sign_convention"),
         ("source_path", "source_path"),
@@ -2055,6 +2061,7 @@ STUDY_TABLE_COLUMNS = [
     "species",
     "cell_system",
     "hypoxia_modality",
+    "condition",
     "duration_h",
     "n_ctrl",
     "n_treat",
@@ -2076,6 +2083,8 @@ def _active_study_table(catalog_path: Path | None, harmonized: pd.DataFrame) -> 
         catalog = read_catalog(catalog_path)
         active = catalog.loc[catalog_include_mask(catalog)].copy()
         active["source_unit_id"] = _source_unit_series(active)
+        if "condition" not in active.columns and "hypoxia_modality" in active.columns:
+            active["condition"] = active["hypoxia_modality"]
         return (
             active[[column for column in STUDY_TABLE_COLUMNS if column in active.columns]]
             .sort_values("study_id")
@@ -2092,6 +2101,8 @@ def _active_study_table(catalog_path: Path | None, harmonized: pd.DataFrame) -> 
     if frame.empty:
         return pd.DataFrame(columns=STUDY_TABLE_COLUMNS)
     frame["source_unit_id"] = _source_unit_series(frame)
+    if "condition" not in frame.columns and "hypoxia_modality" in frame.columns:
+        frame["condition"] = frame["hypoxia_modality"]
     for column in STUDY_TABLE_COLUMNS:
         if column not in frame.columns:
             frame[column] = ""

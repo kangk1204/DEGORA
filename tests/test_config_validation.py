@@ -647,3 +647,72 @@ def test_run_slice_prefers_config_directory_for_relative_source_paths(
     harmonized = pd.read_csv(tmp_path / "out" / "slice_harmonized.csv")
     assert harmonized["gene_symbol"].tolist() == ["RIGHT_SOURCE"]
     assert harmonized["source_path"].tolist() == ["same_name.csv"]
+
+
+def _numeric_column_config(tmp_path, lfc_values, p_values=None):
+    source = tmp_path / "deg.csv"
+    pd.DataFrame(
+        {
+            "gene": [f"G{index}" for index in range(len(lfc_values))],
+            "log2FoldChange": lfc_values,
+            "pvalue": p_values if p_values is not None else [0.01] * len(lfc_values),
+        }
+    ).to_csv(source, index=False)
+    catalog = tmp_path / "catalog.csv"
+    pd.DataFrame(
+        [
+            {
+                "study_id": "S1",
+                "paper_id": "P1",
+                "source_path": source.name,
+                "gene_column": "gene",
+                "lfc_column": "log2FoldChange",
+                "p_column": "pvalue",
+            }
+        ]
+    ).to_csv(catalog, index=False)
+    return catalog
+
+
+def test_validate_rejects_a_non_numeric_effect_column(tmp_path) -> None:
+    """The p-value column was range-checked; the effect column was not checked at all.
+
+    A log2 fold change column holding 'UP' or a spreadsheet error value passed
+    validate cleanly and then lost its rows during the run, so the mistake that
+    costs the most rows was the one the preflight could not see.
+    """
+
+    catalog = _numeric_column_config(tmp_path, ["UP", 1.0, "#DIV/0!", -1.2, "DOWN", 0.5, "UP", 2.0])
+
+    with pytest.raises(DegoraConfigError) as excinfo:
+        validate_catalog_inputs(catalog)
+
+    message = str(excinfo.value)
+    assert "effect or p-value column is not numeric" in message
+    assert "lfc_column='log2FoldChange'" in message
+    assert "'UP'" in message
+
+
+def test_validate_rejects_a_non_numeric_pvalue_column(tmp_path) -> None:
+    """A p-value column of text coerces to NaN, which the range check never sees."""
+
+    catalog = _numeric_column_config(
+        tmp_path,
+        [1.0, -1.2, 2.0, 0.5, 1.1, -0.7],
+        p_values=["ns", "***", "n.s.", 0.01, 0.02, 0.03],
+    )
+
+    with pytest.raises(DegoraConfigError) as excinfo:
+        validate_catalog_inputs(catalog)
+
+    assert "p_column='pvalue'" in str(excinfo.value)
+
+
+def test_validate_tolerates_a_few_unparsable_cells(tmp_path) -> None:
+    """A published table with one odd cell must still validate."""
+
+    catalog = _numeric_column_config(tmp_path, [1.0, -1.2, 2.0, 0.5, 1.1, -0.7, 0.3, 0.9, 1.4, "n/d"])
+
+    result = validate_catalog_inputs(catalog)
+
+    assert result["active_contrasts"] == 1

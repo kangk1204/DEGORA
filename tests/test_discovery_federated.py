@@ -661,3 +661,57 @@ def test_a_short_title_is_never_treated_as_a_submission_key() -> None:
     )
 
     assert not any(record.get("shared_submission_units") for record in records)
+
+
+def test_a_literature_only_record_is_not_reported_as_a_checked_species() -> None:
+    """Only a provider reporting per-record organisms can supply a species check.
+
+    A record found through the literature search carries one species label by
+    construction -- the organism filter that produced the search -- so two labels
+    can never appear on it and mixed-species quarantine is unreachable. Reporting
+    it as `target_species_likely` read as a per-record check that never happened.
+    """
+
+    from degora.discovery_federated import _species_decision, normalize_species
+
+    human = normalize_species("human")
+
+    literature_only = {
+        "species_evidence": [{"species": "Homo sapiens", "basis": "PubMed organism-constrained query"}]
+    }
+    repository_taxa = {
+        "species_evidence": [{"species": "Homo sapiens", "basis": "GEO SOFT sample taxonomy"}]
+    }
+    two_organisms = {
+        "species_evidence": [
+            {"species": "Homo sapiens", "basis": "GEO SOFT sample taxonomy"},
+            {"species": "Mus musculus", "basis": "GEO SOFT sample taxonomy"},
+        ]
+    }
+    other_organism = {
+        "species_evidence": [{"species": "Mus musculus", "basis": "PubMed organism-constrained query"}]
+    }
+
+    assert _species_decision(literature_only, human) == "query_constrained"
+    assert _species_decision(repository_taxa, human) == "target_species_likely"
+    assert _species_decision(two_organisms, human) == "mixed_quarantined"
+    assert _species_decision(other_organism, human) == "non_target"
+
+
+def test_a_query_constrained_record_stays_preparable() -> None:
+    """The new label must not quietly remove three quarters of every search.
+
+    query_constrained is not weaker evidence for the requested species; it is the
+    filter that produced the search. Only the honesty of the label changes.
+    """
+
+    from degora.discovery import normalize_species
+    from degora.discovery_federated import _species_decision
+    from degora.discovery_prepare import _species_exclusion_reason
+
+    human = normalize_species("human")
+    record = {"species_evidence": [{"species": "Homo sapiens", "basis": "PubMed organism-constrained query"}]}
+    record["species_decision"] = _species_decision(record, human)
+
+    assert record["species_decision"] == "query_constrained"
+    assert _species_exclusion_reason(record, human) == ""

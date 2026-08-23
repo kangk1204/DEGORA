@@ -210,6 +210,11 @@ COLUMN_DEFINITIONS: dict[str, tuple[str, str, str]] = {
     "probe_collapse": ("Probe-to-gene collapse method for microarray sources.", "text", "blank means not applicable or unavailable"),
     "species": ("Species represented by the source data.", "text", "blank means unavailable"),
     "cell_system": ("Cell type, tissue, or experimental system.", "text", "blank means unavailable"),
+    "condition": (
+        "Condition or perturbation descriptor retained from the source catalog.",
+        "text",
+        "Blank when the catalog did not record one.",
+    ),
     "hypoxia_modality": ("Condition or perturbation descriptor retained from the source catalog.", "text", "blank means unavailable"),
     "duration_h": ("Treatment or exposure duration in hours when available.", "number or text", "blank means unavailable"),
     "time_course_mode": ("How related time-course rows were collapsed.", "text label", "blank means not a time-course source"),

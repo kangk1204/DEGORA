@@ -616,6 +616,62 @@ def _reject_invalid_unit_interval(
     )
 
 
+# A source that loses this share of its rows is reporting a mapping or export
+# problem, not ordinary missingness, and the run should say so.
+ROW_LOSS_WARNING_SHARE = 0.10
+
+
+def _non_numeric_examples(raw: pd.Series, numeric: pd.Series, limit: int = 5) -> list[str]:
+    """Return the original text of values that would not parse as numbers."""
+
+    unparsed = numeric.isna() & raw.notna()
+    if not bool(unparsed.any()):
+        return []
+    seen: list[str] = []
+    for value in raw.loc[unparsed]:
+        text = str(value).strip()
+        if text and text not in seen:
+            seen.append(text)
+        if len(seen) >= limit:
+            break
+    return seen
+
+
+def _unusable_row_warning(
+    study_id: str,
+    n_input_rows: int,
+    reasons: dict[str, int],
+    examples: dict[str, list[str]],
+) -> str:
+    """Describe rows dropped for missing gene/effect/p-value, by reason.
+
+    Duplicate collapse already warns. Losing rows outright did not, so a table
+    whose effect column exported as text, or whose gene column is half empty,
+    lost half its rows between the file and the ranking with nothing said. The
+    two counts needed to notice it were in different fields of the metrics file.
+    """
+
+    dropped = sum(reasons.values())
+    if not dropped or not n_input_rows:
+        return ""
+    share = dropped / n_input_rows
+    if share < ROW_LOSS_WARNING_SHARE:
+        return ""
+    parts = []
+    for column, count in reasons.items():
+        detail = f"{count:,} with no usable {column}"
+        sample = examples.get(column) or []
+        if sample:
+            detail += f" (e.g. {', '.join(repr(text) for text in sample[:3])})"
+        parts.append(detail)
+    return (
+        f"{study_id}: {dropped:,} of {n_input_rows:,} rows ({share:.1%}) were dropped before ranking "
+        f"- {'; '.join(parts)}. A gene symbol, a numeric log2 fold change and a numeric p-value are all "
+        "required. Check that the mapped columns are the intended ones and that the effect and p-value "
+        "columns hold numbers rather than text such as 'NA', 'UP' or a spreadsheet error value."
+    )
+
+
 def harmonize_frame(frame: pd.DataFrame, mapping: TableMapping, study_meta: dict[str, Any]) -> pd.DataFrame:
     """Return canonical per-gene DEG rows for one study/contrast."""
 
@@ -671,6 +727,17 @@ def harmonize_frame(frame: pd.DataFrame, mapping: TableMapping, study_meta: dict
     for column in SOURCE_METADATA_COLUMNS:
         out[column] = study_meta.get(column, "")
 
+    n_input_rows = int(len(out))
+    unusable_reasons = {
+        "gene identifier": int(out["gene_symbol"].isna().sum()),
+        "log2 fold change": int(out["lfc"].isna().sum()),
+        "p-value": int(out["pvalue"].isna().sum()),
+    }
+    unusable_reasons = {column: count for column, count in unusable_reasons.items() if count}
+    unusable_examples = {
+        "log2 fold change": _non_numeric_examples(frame[resolve_column_name(frame, mapping.lfc_column)], lfc),
+        "p-value": _non_numeric_examples(frame[resolve_column_name(frame, mapping.p_column)], pvalue),
+    }
     valid = out["gene_symbol"].notna() & out["lfc"].notna() & out["pvalue"].notna()
     out = out.loc[valid].copy()
     out["pvalue_was_clipped"] = out["pvalue"] < P_MIN
@@ -714,6 +781,14 @@ def harmonize_frame(frame: pd.DataFrame, mapping: TableMapping, study_meta: dict
     out["rank_universe_size_declared"] = rank_universe_declared if rank_universe_declared is not None else np.nan
     out["rank_universe_size_used"] = int(rank_universe_used)
     out["rank_universe_warning"] = rank_warning
+    out["n_input_rows"] = n_input_rows
+    out["n_rows_dropped_unusable"] = int(n_input_rows - len(out))
+    out["unusable_row_warning"] = _unusable_row_warning(
+        str(study_meta.get("study_id", "unknown_study")),
+        n_input_rows,
+        unusable_reasons,
+        unusable_examples,
+    )
     return out.sort_values(["study_id", "within_study_rank", "gene_symbol"]).reset_index(drop=True)
 
 

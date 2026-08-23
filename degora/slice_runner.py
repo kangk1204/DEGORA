@@ -6,6 +6,7 @@ import argparse
 import difflib
 import json
 import re
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -289,6 +290,34 @@ def _count_labels(series: pd.Series, *, unknown_label: str = "unknown") -> dict[
     return {str(label): int(count) for label, count in labels.value_counts(dropna=False).items()}
 
 
+def _readable_read_failure(path: Path, exc: Exception) -> str:
+    """Describe why a config file could not be opened, in the reader's terms.
+
+    A file that is a valid ZIP but not a workbook reaches pandas as an unknown
+    spreadsheet engine, and the only line describing the problem was an internal
+    option key. Name the shape of the file instead; the original message is still
+    available in the traceback the error chains from.
+    """
+
+    if path.suffix.lower() in {".xlsx", ".xls"}:
+        try:
+            with zipfile.ZipFile(path) as archive:
+                names = set(archive.namelist())
+        except (OSError, zipfile.BadZipFile):
+            return (
+                f"{path.name} is not a readable Excel workbook. Excel files are ZIP archives, "
+                "and this file is not one - it may be a CSV or TSV that was renamed, or a partial download."
+            )
+        if "[Content_Types].xml" not in names:
+            sample = ", ".join(sorted(names)[:3]) or "(empty archive)"
+            return (
+                f"{path.name} is a ZIP archive but not an Excel workbook: it has no [Content_Types].xml "
+                f"(it contains {sample}). Save the config from Excel or a spreadsheet tool as .xlsx, "
+                "or use a CSV config instead."
+            )
+    return str(exc)
+
+
 def _read_catalog_frame(path: Path) -> pd.DataFrame:
     if not path.exists():
         raise DegoraConfigError(
@@ -328,7 +357,7 @@ def _read_catalog_frame(path: Path) -> pd.DataFrame:
         raise DegoraConfigError(
             "config file could not be read",
             context=f"config file: {path}",
-            problems=[str(exc)],
+            problems=[_readable_read_failure(path, exc)],
             fixes=[
                 "Make sure the file is a valid CSV or Excel (.xlsx) workbook.",
                 "For Excel configs, keep the DEG rows on a sheet named 'Contrasts'.",
@@ -793,6 +822,63 @@ def _validate_source_columns(frame: pd.DataFrame, mapping: TableMapping, row: di
         )
 
 
+# A handful of unparsable cells is ordinary in a published table; a column that is
+# largely text is a mapping mistake, and validate is where it should surface. Both
+# conditions are needed: the share alone rejects a ten-row table over one odd cell,
+# and the count alone rejects a twenty-thousand-row table over three.
+NON_NUMERIC_REJECT_SHARE = 0.10
+NON_NUMERIC_REJECT_MINIMUM = 3
+
+
+def _validate_numeric_source_columns(frame: pd.DataFrame, mapping: TableMapping, row: dict[str, Any]) -> None:
+    """Reject an effect or p-value column that does not hold numbers.
+
+    The p-value column was already checked for being inside [0, 1], which is a
+    range check on values that parsed. A column of 'UP'/'n/a'/'#DIV/0!' parses to
+    nothing at all, passed validate, and then lost its rows silently during the
+    run - so the mistake that costs the most rows was the one validate could not
+    see.
+    """
+
+    problems: list[str] = []
+    for catalog_column, meaning in (("lfc_column", "log2 fold change"), ("p_column", "p-value")):
+        source_column = getattr(mapping, catalog_column)
+        resolved = resolve_column_name(frame, source_column)
+        if resolved not in frame.columns:
+            continue
+        raw = frame[resolved]
+        numeric = pd.to_numeric(raw, errors="coerce")
+        unparsed = numeric.isna() & raw.notna()
+        n_unparsed = int(unparsed.sum())
+        n_present = int(raw.notna().sum())
+        if not n_unparsed or not n_present:
+            continue
+        share = n_unparsed / n_present
+        examples = ", ".join(
+            repr(text)
+            for text in dict.fromkeys(str(value).strip() for value in raw.loc[unparsed] if str(value).strip())
+            if text
+        )
+        if n_unparsed >= NON_NUMERIC_REJECT_MINIMUM and share >= NON_NUMERIC_REJECT_SHARE:
+            problems.append(
+                f"{row['study_id']}: {catalog_column}={source_column!r} should hold numeric {meaning}, but "
+                f"{n_unparsed:,} of {n_present:,} non-empty values ({share:.1%}) are not numbers "
+                f"(examples: {examples[:160]})."
+            )
+    if not problems:
+        return
+    raise DegoraConfigError(
+        "source table effect or p-value column is not numeric",
+        context=f"source file: {row.get('source_path', '')}",
+        problems=problems,
+        fixes=[
+            "Point lfc_column and p_column at the numeric columns of the DEG table.",
+            "Replace placeholder text such as 'UP', 'NA' or a spreadsheet error value with an empty cell.",
+            "Rows without a numeric effect and p-value cannot be ranked and are dropped during the run.",
+        ],
+    )
+
+
 def _resolve_source_path(raw_source_path: Any, catalog_path: Path) -> Path:
     source_path = Path(str(raw_source_path))
     if source_path.is_absolute():
@@ -953,6 +1039,7 @@ def validate_catalog_inputs(catalog_path: Path) -> dict[str, Any]:
                 ],
             ) from exc
         _validate_source_columns(raw_frame, mapping, row)
+        _validate_numeric_source_columns(raw_frame, mapping, row)
         filtered_frame, _ = apply_gene_type_filter(
             raw_frame,
             _nonempty(row.get("gene_type_column")),
@@ -1095,6 +1182,7 @@ def run_slice(catalog_path: Path, output_dir: Path, harmonized_dir: Path, min_st
                 ],
             ) from exc
         _validate_source_columns(raw_frame, mapping, row)
+        _validate_numeric_source_columns(raw_frame, mapping, row)
         filtered_frame, filter_summary = apply_gene_type_filter(
             raw_frame,
             _nonempty(row.get("gene_type_column")),
@@ -1152,7 +1240,15 @@ def run_slice(catalog_path: Path, output_dir: Path, harmonized_dir: Path, min_st
             if str(value).strip()
         }
     )
+    unusable_row_warnings = sorted(
+        {
+            str(value)
+            for value in all_harmonized.get("unusable_row_warning", pd.Series(dtype=str)).dropna().unique()
+            if str(value).strip()
+        }
+    )
     input_warnings.extend(gene_symbol_collapse_warnings)
+    input_warnings.extend(unusable_row_warnings)
 
     gold_panel = _read_locked_gold_panel(catalog_path)
     if gold_panel["status"] == "locked":
@@ -1161,11 +1257,11 @@ def run_slice(catalog_path: Path, output_dir: Path, harmonized_dir: Path, min_st
     else:
         recall50 = {
             "status": "not_applicable",
-            "reason": "no locked topic-specific GoldPanel was provided; do not interpret hypoxia-specific recall for this run",
+            "reason": "no locked topic-specific GoldPanel was provided; this run has no benchmark recall to interpret",
         }
         recall100 = {
             "status": "not_applicable",
-            "reason": "no locked topic-specific GoldPanel was provided; do not interpret hypoxia-specific recall for this run",
+            "reason": "no locked topic-specific GoldPanel was provided; this run has no benchmark recall to interpret",
         }
 
     source_inputs_sorted = [Path(value) for value in sorted({str(path) for path in source_inputs})]
@@ -1197,6 +1293,18 @@ def run_slice(catalog_path: Path, output_dir: Path, harmonized_dir: Path, min_st
         "identifier_space_warnings": _identifier_space_warnings(all_harmonized),
         "rank_universe_warnings": rank_universe_warnings,
         "gene_symbol_collapse_warnings": gene_symbol_collapse_warnings,
+        "unusable_row_warnings": unusable_row_warnings,
+        # rows_before minus the harmonized count used to be the only way to see
+        # this, and it could not say which column was responsible.
+        "unusable_row_counts": {
+            str(study_id): int(count)
+            for study_id, count in all_harmonized.groupby("study_id")["n_rows_dropped_unusable"]
+            .max()
+            .items()
+            if int(count)
+        }
+        if "n_rows_dropped_unusable" in all_harmonized.columns
+        else {},
         "pipeline_counts": _count_labels(catalog["pipeline"]),
         "assay_type_counts": _count_labels(catalog["assay_type"]) if "assay_type" in catalog.columns else {},
         "source_input_type_counts": _count_labels(catalog["source_input_type"])

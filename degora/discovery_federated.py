@@ -624,7 +624,33 @@ def _merged_readiness(ordered: list[dict[str, Any]], merged: dict[str, Any], tar
     return best
 
 
+# A record whose only species signal is the organism filter that produced the
+# search carries no evidence about itself. Naming that separately keeps
+# "target_species_likely" meaning what it says: a label came back with the record.
+QUERY_CONSTRAINED_SPECIES_BASES = ("pubmed organism-constrained query",)
+
+
+def _only_query_constrained(evidence: list[dict[str, str]]) -> bool:
+    if not evidence:
+        return False
+    for item in evidence:
+        basis = _clean_text(item.get("basis")).lower()
+        if not any(marker in basis for marker in QUERY_CONSTRAINED_SPECIES_BASES):
+            return False
+    return True
+
+
 def _species_decision(record: dict[str, Any], target: SpeciesSpec) -> str:
+    """Classify a record's species evidence against the requested species.
+
+    Mixed-species quarantine needs two or more species labels on one record, and
+    only a provider that reports per-record organisms (GEO SOFT taxa) can supply
+    them. A record found solely through PubMed's organism-constrained query has
+    exactly one label by construction, so quarantine is unreachable for it -- that
+    is a limit of the evidence, and it is reported as `query_constrained` rather
+    than as a species that was checked.
+    """
+
     evidence = _species_evidence(record)
     labels = set(_species_labels(evidence))
     if _truthy(record.get("mixed_blocked")):
@@ -645,6 +671,8 @@ def _species_decision(record: dict[str, Any], target: SpeciesSpec) -> str:
     if not labels:
         return "unknown"
     if target.label in labels and len(labels) == 1:
+        if _only_query_constrained(evidence):
+            return "query_constrained"
         return "target_species_likely"
     if target.label in labels:
         return "mixed_quarantined"

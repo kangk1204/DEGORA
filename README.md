@@ -269,6 +269,15 @@ The search collects at most 1,000 exact, unique records before sorting and displ
 
 Search exports include JSON, CSV, and Excel snapshots with identifiers, title, authors, journal, year, species evidence, source-unit information, readiness, and provider diagnostics.
 
+Species evidence is only as specific as the provider that supplied it. A record
+found through a repository that reports per-sample organisms carries a checked
+species label, and a record whose samples span two organisms is quarantined out
+of a species-specific preparation. A record found only through the literature
+search carries the organism filter that produced the search and nothing more, so
+it is labeled `query_constrained` rather than checked, and mixed-species
+quarantine cannot apply to it. Confirm the species of a `query_constrained`
+record yourself before activating it.
+
 You can also use the local browser:
 
 ```bash
@@ -334,6 +343,51 @@ make smoke
 ```
 
 ## Release notes
+
+### Unreleased
+
+The score contract is unchanged. `SCORE_VERSION` remains
+`degora_score_v1_2_source_unit_mean`, and a run over unchanged inputs produces the
+same gene scores and evidence as v0.4.8.
+
+**A source that loses rows now says so.** Duplicate gene symbols have always been
+reported when they were collapsed. Rows dropped outright -- no gene symbol, no
+numeric effect, no numeric p-value -- were not, so a table whose effect column
+exported as text lost half its rows between the file and the ranking in silence.
+Losses above a tenth of the input now raise a warning that names the responsible
+column and shows the values it could not read, and `slice_metrics.json` records
+the per-source count.
+
+**`validate` checks that the effect and p-value columns hold numbers.** The
+p-value column was checked for being inside [0, 1], which only sees values that
+parsed at all. A column of `UP`, `n/a` or a spreadsheet error value passed the
+preflight and lost its rows during the run instead.
+
+**Species evidence says what was actually checked.** Mixed-species quarantine
+needs two organism labels on one record, and only a provider reporting per-record
+organisms can supply them. A record found solely through the literature search
+carries the organism filter that produced the search and nothing more, so it is
+now labeled `query_constrained` instead of `target_species_likely`. It remains
+preparable; only the claim changes. The README says which providers can support a
+quarantine decision.
+
+**The config workbooks are reproducible too.** `degora demo` and `degora template`
+stamped the clock into the workbooks they write, so two demo runs produced inputs
+with different checksums and every provenance sidecar recording an input hash
+differed with them. Both now carry the same pinned timestamps the generated
+workbook already used.
+
+**`condition` is published alongside `hypoxia_modality`.** The catalog's generic
+condition column reaches the SQLite schema, the API and the workbook headers under
+a name from one research topic. Both names are now emitted with the same value, so
+a reader can move to the neutral one before the old one is ever removed.
+
+Smaller fixes: the preparation summary reports how many tables are ready for
+review, not only how many records were prepared; a `.xlsx` that is a valid ZIP but
+not a workbook is described as such instead of by an internal pandas option key;
+the no-benchmark note in `slice_metrics.json` no longer names one research topic
+for every corpus; and CI exercises the top of the dependency ranges as well as the
+floor.
 
 ### 0.4.8
 

@@ -1331,3 +1331,44 @@ def test_studies_table_keeps_every_contrast_without_a_catalog(tmp_path) -> None:
     assert int(total) == 3
     # The catalog and no-catalog branches must stay schema-compatible.
     assert list(studies.columns) == STUDY_TABLE_COLUMNS
+
+
+def test_the_condition_field_is_published_under_a_topic_neutral_name(tmp_path) -> None:
+    """A general-purpose field must not reach the API under one topic's name.
+
+    The catalog's generic `condition` column is stored as `hypoxia_modality`, and
+    that name is pinned into the SQLite schema, two API responses, and the shipped
+    workbook headers. Both names are emitted so a reader can move to the neutral
+    one before the old one is ever removed.
+    """
+
+    def contrast(study_id: str, unit: str) -> pd.DataFrame:
+        frame = pd.DataFrame({"gene": ["G1", "G2"], "lfc": [2.0, -1.5], "pvalue": [0.001, 0.002]})
+        return harmonize_frame(
+            frame,
+            TableMapping("gene", "lfc", "pvalue"),
+            {
+                "study_id": study_id,
+                "paper_id": unit,
+                "source_unit_id": unit,
+                "n_ctrl": 3,
+                "n_treat": 3,
+                "hypoxia_modality": "Alzheimer disease vs control",
+            },
+        )
+
+    harmonized = pd.concat([contrast("s1", "u1"), contrast("s2", "u2")], ignore_index=True)
+    harmonized_path = tmp_path / "harmonized.csv"
+    harmonized.to_csv(harmonized_path, index=False)
+
+    summary = write_score_database(harmonized_path, tmp_path / "out", min_studies=2)
+
+    with sqlite3.connect(summary["db_path"]) as connection:
+        for table in ("studies", "gene_evidence"):
+            columns = {row[1] for row in connection.execute(f"PRAGMA table_info({table})")}
+            assert "hypoxia_modality" in columns, table
+            assert "condition" in columns, table
+        rows = pd.read_sql_query("SELECT hypoxia_modality, condition FROM studies", connection)
+
+    assert (rows["hypoxia_modality"] == rows["condition"]).all()
+    assert rows["condition"].iloc[0] == "Alzheimer disease vs control"
