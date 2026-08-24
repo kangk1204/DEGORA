@@ -204,6 +204,50 @@ def test_deg_header_prefers_hugo_symbol_over_generic_gene_identifier() -> None:
     assert result["mapping"]["gene_column"] == "hugo"
 
 
+@pytest.mark.parametrize(
+    "identifier",
+    ["id", "sample_id", "subject_id", "patient_id", "donor_id", "run_id", "file_id", "series_id"],
+)
+def test_generic_or_sample_identifiers_are_not_gene_headers(identifier: str) -> None:
+    payload = (
+        f"{identifier},log2FoldChange,pvalue\n"
+        "S1,1.2,0.01\n"
+        "S2,-0.4,0.02\n"
+    ).encode()
+
+    result = inspect_candidate_bytes("looks_like_deg.csv", payload)
+
+    assert result["mapping"]["gene_column"] == ""
+    assert result["status"] == "not_deg_table"
+
+
+@pytest.mark.parametrize("identifier", ["gene_id", "entrez_id", "ensembl_gene_id", "probe_id", "transcript_id", "ID_REF"])
+def test_known_gene_identifier_headers_are_preserved(identifier: str) -> None:
+    result = inspect_candidate_bytes(
+        "known_ids.tsv",
+        f"{identifier}\tlog2FoldChange\tpvalue\nG1\t1.2\t0.01\nG2\t-0.4\t0.02\n".encode(),
+    )
+
+    assert result["mapping"]["gene_column"] == identifier
+
+
+def test_hyphenated_stat_headers_are_recognised_without_role_collision() -> None:
+    result = inspect_candidate_bytes(
+        "hyphenated_headers.csv",
+        b"Gene Symbol,fold-change,p-value,q-value\n"
+        b"TP53,1.2,0.01,0.03\n"
+        b"BRCA1,-0.4,0.02,0.04\n",
+    )
+
+    assert result["status"] == "requires_lfc_confirmation"
+    assert result["mapping"] == {
+        "gene_column": "Gene Symbol",
+        "lfc_column": "fold-change",
+        "p_column": "p-value",
+        "padj_column": "q-value",
+    }
+
+
 def test_large_gzip_deg_table_uses_bounded_header_prefix_instead_of_false_rejection() -> None:
     rows = b"gene\tlog2FoldChange\tpvalue\tpadj\nA\t1.2\t0.01\t0.03\nB\t-2.0\t0.02\t0.04\n"
     payload = gzip.compress(rows + (b"C\t0.1\t0.5\t0.8\n" * 400_000))
@@ -240,6 +284,18 @@ def test_upstream_inspection_prefers_gene_symbol_over_identifier_and_excludes_co
     )
     result = inspect_upstream_bytes("processed.tsv", payload, declared_role="count_matrix")
     assert result["gene_column"] == "Gene Symbol"
+    assert result["sample_columns"] == ["ctrl_1", "ctrl_2", "treat_1", "treat_2"]
+
+
+def test_upstream_inspection_recognises_ensembl_gene_id_version_header() -> None:
+    payload = (
+        b"ensembl_gene_id_version\tctrl_1\tctrl_2\ttreat_1\ttreat_2\n"
+        b"ENSG00000141510.18\t4\t7\t9\t11\nENSG00000012048.24\t2\t3\t8\t6\n"
+    )
+    result = inspect_upstream_bytes("matrix.tsv", payload, declared_role="count_matrix")
+
+    assert result["status"] == "upstream_matrix_ready_for_contrast"
+    assert result["gene_column"] == "ensembl_gene_id_version"
     assert result["sample_columns"] == ["ctrl_1", "ctrl_2", "treat_1", "treat_2"]
 
 
@@ -290,6 +346,25 @@ def test_search_geo_keeps_version_provenance_when_git_revision_is_unavailable(mo
 
     assert result["degora_version"] == "0.4.0"
     assert "degora_code_revision" not in result
+
+
+def test_search_geo_preserves_dirty_revision_provenance(monkeypatch) -> None:
+    import degora.discovery as discovery
+
+    monkeypatch.setattr(
+        discovery,
+        "runtime_version_info",
+        lambda: {
+            "degora_version": "0.4.14",
+            "degora_code_revision": "abc1234-dirty",
+            "degora_code_dirty": "true",
+        },
+    )
+
+    result = search_geo("hypoxia", "human", page=1, page_size=20, client=FakeGeoClient())
+
+    assert result["degora_code_revision"] == "abc1234-dirty"
+    assert result["degora_code_dirty"] == "true"
 
 
 def test_search_assessment_ranks_likely_deg_inputs_and_preserves_ncbi_order() -> None:
@@ -346,6 +421,8 @@ def test_search_assessment_ranks_likely_deg_inputs_and_preserves_ncbi_order() ->
     assert "ready_for_review" not in serialized
     assert "confirmed deg" not in serialized
     assert result["search_assessment"]["default_sort"] == "deg_input_priority_desc"
+    assert result["search_assessment"]["assessment_version"] == 2
+    assert "v2" in result["search_assessment"]["basis"]
 
 
 def test_global_search_ranks_before_pagination_caps_at_1000_and_reuses_cache(monkeypatch) -> None:
@@ -695,6 +772,73 @@ def test_prepare_selected_study_materializes_candidates_but_keeps_catalog_inacti
     assert audit["analysis_policy"]["cross_species_pooling"] is False
 
 
+def test_prepare_geo_before_publish_runs_once_immediately_before_publish(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    events: list[str] = []
+    import degora.discovery as discovery_module
+
+    real_publish = discovery_module._publish_prepared_bundle
+
+    def wrapped_publish(staging: Path, target: Path, *, force: bool) -> None:
+        events.append("publish")
+        real_publish(staging, target, force=force)
+
+    monkeypatch.setattr(discovery_module, "_publish_prepared_bundle", wrapped_publish)
+
+    prepare_geo_studies(
+        ["GSE100001"],
+        "human",
+        materialize_dir=tmp_path / "prepared",
+        client=FakeGeoClient(),
+        before_publish=lambda: events.append("before"),
+    )
+
+    assert events == ["before", "publish"]
+
+
+def test_prepare_geo_before_publish_not_called_without_publish() -> None:
+    events: list[str] = []
+
+    prepare_geo_studies(
+        ["GSE100001"],
+        "human",
+        materialize_dir=None,
+        client=FakeGeoClient(),
+        before_publish=lambda: events.append("before"),
+    )
+
+    assert events == []
+
+
+def test_prepare_geo_before_publish_exception_aborts_publish(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    events: list[str] = []
+    import degora.discovery as discovery_module
+
+    def wrapped_publish(staging: Path, target: Path, *, force: bool) -> None:
+        events.append("publish")
+
+    def fail_before_publish() -> None:
+        events.append("before")
+        raise RuntimeError("commit barrier failed")
+
+    monkeypatch.setattr(discovery_module, "_publish_prepared_bundle", wrapped_publish)
+
+    with pytest.raises(RuntimeError, match="commit barrier failed"):
+        prepare_geo_studies(
+            ["GSE100001"],
+            "human",
+            materialize_dir=tmp_path / "prepared",
+            client=FakeGeoClient(),
+            before_publish=fail_before_publish,
+        )
+
+    assert events == ["before"]
+    assert not (tmp_path / "prepared").exists()
+
+
 def test_failed_materialized_preparation_publishes_no_partial_bundle(tmp_path: Path) -> None:
     class FailingSecondClient(FakeGeoClient):
         def accession_summaries(self, accessions, species):
@@ -1020,12 +1164,23 @@ def test_workbook_candidates_are_inspectable_not_unsupported() -> None:
 
     from degora.discovery import classify_filename
 
-    for name in ("deg.xlsx", "deg.xls", "deg.xlsx.gz", "deg.xls.gz"):
+    for name in ("deg.xlsx", "deg.xls", "deg.xlsx.gz", "deg.xls.gz", "supplementary_tables.zip"):
         assessment = classify_filename(name)
         assert assessment["inspectable"] is True, name
         assert assessment["tier"] != "unsupported", name
 
     assert classify_filename("paper.pdf")["inspectable"] is False
+
+
+def test_hyphenated_deg_headers_are_classified() -> None:
+    from degora.discovery import classify_header
+
+    header = classify_header(["Gene Symbol", "fold-change", "p-value", "q-value"])
+
+    assert header["mapping"]["gene_column"] == "Gene Symbol"
+    assert header["mapping"]["lfc_column"] == "fold-change"
+    assert header["mapping"]["p_column"] == "p-value"
+    assert header["mapping"]["padj_column"] == "q-value"
 
 
 def test_a_workbook_candidate_is_classified_from_its_contents(tmp_path) -> None:

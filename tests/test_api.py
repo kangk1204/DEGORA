@@ -95,10 +95,19 @@ def _get_json(url: str) -> dict:
         return json.loads(response.read().decode("utf-8"))
 
 
-def test_local_api_serves_health_gene_list_and_detail(tmp_path) -> None:
+def test_local_api_serves_health_gene_list_and_detail(tmp_path, monkeypatch) -> None:
     harmonized_path = tmp_path / "harmonized.csv"
     _harmonized().to_csv(harmonized_path, index=False)
     write_score_database(harmonized_path, tmp_path, db_path=tmp_path / "degora_scores.db")
+    monkeypatch.setattr(
+        api,
+        "runtime_version_info",
+        lambda: {
+            "degora_version": __version__,
+            "degora_code_revision": "abc1234-dirty",
+            "degora_code_dirty": "true",
+        },
+    )
 
     server = create_server(tmp_path / "degora_scores.db", port=0, quiet=True)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -242,6 +251,8 @@ def test_local_api_serves_health_gene_list_and_detail(tmp_path) -> None:
     assert "downloadCsv(`degora_${context.species}_${runLabel}_ranking.csv`" in html
     assert health["status"] == "ok"
     assert health["degora_version"] == __version__
+    assert health["degora_code_revision"] == "abc1234-dirty"
+    assert health["degora_code_dirty"] == "true"
     assert health["database_degora_version"] == __version__
     assert health["gene_count"] == 2
     # Health must not leak the absolute on-disk db path; only the filename is exposed.
@@ -561,19 +572,47 @@ def test_network_api_redacts_source_paths_in_studies_and_gene_evidence(tmp_path)
 
 
 def test_meta_redaction_catches_posix_paths_on_windows() -> None:
-    from degora.api import _redact_meta_for_network
+    from degora.api import _formula_neutral, _redact_meta_for_network, _redact_record_paths_for_network
 
     meta = _redact_meta_for_network(
         {
             "db_path": "/mnt/c/Projects/DEGORA/outputs/degora_scores.db",
             "output_dir": "C:\\Projects\\DEGORA\\outputs",
             "source_url": "https://example.test/data",
+            "notes": "created from /Users/researcher/private/source.tsv before upload",
+            "file_url": "see file:///Users/researcher/private/source.tsv",
+            "windows_note": "source C:\\Users\\researcher\\private\\source.tsv",
+            "unc_note": "source \\\\server\\share\\source.tsv",
         }
     )
 
     assert meta["db_path"] == "[redacted: local path]"
     assert meta["output_dir"] == "[redacted: local path]"
     assert meta["source_url"] == "https://example.test/data"
+    assert meta["notes"] == "[redacted: local path]"
+    assert meta["file_url"] == "[redacted: local path]"
+    assert meta["windows_note"] == "[redacted: local path]"
+    assert meta["unc_note"] == "[redacted: local path]"
+    record = _redact_record_paths_for_network(
+        {
+            "source_path": "/Users/researcher/private/cohort_2019_patients.csv",
+            "output_dir": "C:\\Projects\\DEGORA\\patient-results",
+            "source_url": "https://example.test/data",
+            "notes": "created from /Users/researcher/private/source.tsv before upload",
+            "windows_note": "source C:\\Users\\researcher\\private\\source.tsv",
+            "unc_note": "source \\\\server\\share\\source.tsv",
+        }
+    )
+    assert record["source_url"] == "https://example.test/data"
+    assert record["source_path"] == "[redacted: local path]"
+    assert record["output_dir"] == "[redacted: local path]"
+    assert record["notes"] == "[redacted: local path]"
+    assert record["windows_note"] == "[redacted: local path]"
+    assert record["unc_note"] == "[redacted: local path]"
+    assert _formula_neutral("  =SUM(A1:A2)") == "'  =SUM(A1:A2)"
+    assert _formula_neutral("\t+cmd") == "'\t+cmd"
+    assert _formula_neutral("#VALUE!") == "'#VALUE!"
+    assert _formula_neutral(" \t#REF!") == "' \t#REF!"
 
 
 def test_genes_pagination_offset_count_and_no_overlap(tmp_path) -> None:
@@ -1551,6 +1590,22 @@ def test_a_cancelled_job_ends_both_poll_loops() -> None:
         failure_at = INDEX_HTML.index(failure)
         cancelled_at = INDEX_HTML.rindex('job.status === "cancelled"', 0, failure_at)
         assert failure_at - cancelled_at < 400
+
+
+def test_a_too_late_cancel_adopts_the_completed_browser_result() -> None:
+    from degora.api import INDEX_HTML
+
+    false_branch = INDEX_HTML.index("outcome && outcome.cancelled === false")
+    retire_branch = INDEX_HTML.index("Retire the in-flight work client-side too")
+    false_body = INDEX_HTML[false_branch:retire_branch]
+    assert false_branch < retire_branch
+    assert "await refreshSearchPage(species, adoptRequest);" in INDEX_HTML
+    assert "Search completed, but the saved result could not be loaded" in INDEX_HTML
+    assert "state.prepared = job.result;" in INDEX_HTML
+    assert "state.notice = notice;" in false_body
+    assert "return;" in false_body
+    assert "state.jobCancelled = true;" not in false_body
+    assert "state.prepareCancelled = true;" not in false_body
 
 
 def test_a_stopped_search_is_not_reported_as_an_empty_one() -> None:

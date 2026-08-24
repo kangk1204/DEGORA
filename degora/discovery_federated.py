@@ -12,6 +12,7 @@ import re
 from typing import Any, Callable, Iterable
 
 from .discovery import (
+    classify_filename,
     DiscoveryError,
     DiscoveryUnavailableError,
     SpeciesSpec,
@@ -871,9 +872,11 @@ def _normalize_candidates(record: dict[str, Any]) -> list[dict[str, Any]]:
 
 def _has_file_candidate(record: dict[str, Any]) -> bool:
     for candidate in _normalize_candidates(record):
-        if _clean_text(candidate.get("source_url") or candidate.get("url")):
+        source_url = _clean_text(candidate.get("source_url") or candidate.get("url"))
+        name = _clean_text(candidate.get("name") or candidate.get("filename"))
+        if name and classify_filename(name).get("inspectable"):
             return True
-        if _clean_text(candidate.get("name") or candidate.get("filename")) and _clean_text(candidate.get("role")):
+        if source_url and classify_filename(source_url).get("inspectable"):
             return True
     return False
 
@@ -935,8 +938,23 @@ def _first_text(values: Iterable[Any]) -> str:
     return ""
 
 
+ASSAY_TITLE_SUFFIX_RE = re.compile(
+    r"\s*[\[(]\s*(?:"
+    r"rna[-\s]?seq|sc[-\s]?rna[-\s]?seq|sn[-\s]?rna[-\s]?seq|"
+    r"atac[-\s]?seq|cut\s*(?:&|and|\+)\s*tag|cut\s*(?:&|and|\+)\s*run|"
+    r"chip[-\s]?seq|ribo[-\s]?seq|methyl[-\s]?seq"
+    r")\s*[\])]$",
+    re.I,
+)
+
+
 def _submission_title_key(record: dict[str, Any]) -> str:
     text = _clean_text(record.get("paper_title") or record.get("title"))
+    while True:
+        normalized = ASSAY_TITLE_SUFFIX_RE.sub("", text).strip()
+        if normalized == text:
+            break
+        text = normalized
     key = re.sub(r"[^a-z0-9]+", "", text.lower())
     # Short titles collide by accident; a submission title does not.
     return key if len(key) >= 24 else ""

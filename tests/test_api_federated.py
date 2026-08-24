@@ -236,8 +236,14 @@ def test_federated_prepare_uses_persisted_canonical_selection_and_persists_bundl
     captured: dict = {}
     prepare_module = types.ModuleType("degora.discovery_prepare")
 
-    def fake_prepare(records, species, *, query, materialize_dir):
-        captured.update(records=records, species=species, query=query, materialize_dir=str(materialize_dir))
+    def fake_prepare(records, species, *, query, materialize_dir, before_publish):
+        captured.update(
+            records=records,
+            species=species,
+            query=query,
+            materialize_dir=str(materialize_dir),
+            before_publish=before_publish,
+        )
         return {
             "species": {"key": species},
             "query": query,
@@ -269,6 +275,7 @@ def test_federated_prepare_uses_persisted_canonical_selection_and_persists_bundl
     assert status == 201
     assert captured["records"][0]["publication_id"] == "human-000"
     assert captured["species"] == "human"
+    assert captured["before_publish"] is None
     assert prepared["search_id"] == created["search_id"]
 
     restarted, restarted_thread, _base = _start_server(tmp_path)
@@ -545,21 +552,38 @@ def test_prepare_job_route_reports_progress_and_returns_the_bundle(tmp_path: Pat
 
     prepare_module = types.ModuleType("degora.discovery_prepare")
 
-    def prepare_publication_records(records, species, *, query, materialize_dir, progress=None, **kwargs):
+    def prepare_publication_records(records, species, *, query, materialize_dir, progress=None, before_publish):
         for fraction, message in ((0.2, "Downloading 1 of 3"), (0.8, "Downloading 3 of 3")):
             if progress is not None:
                 progress(fraction, message)
                 stages.append((fraction, message))
             time.sleep(0.05)
         Path(materialize_dir).mkdir(parents=True, exist_ok=True)
+        before_publish()
         return {"bundle_id": "abc", "studies": [{"accession": "GSE1"}], "excluded_studies": []}
 
     prepare_module.prepare_publication_records = prepare_publication_records
     monkeypatch.setitem(sys.modules, "degora.discovery_prepare", prepare_module)
 
     server, thread, base = _start_server(tmp_path)
+    events: list[tuple[str, str]] = []
+    original_commit = server.discovery_job_manager.commit
+
+    def commit_with_event(job_id):
+        events.append(("commit", job_id))
+        return original_commit(job_id)
+
+    server.discovery_job_manager.commit = commit_with_event
+    original_save_artifact = server.discovery_search_store.save_artifact
+
+    def save_artifact_with_event(kind, artifact_id, payload):
+        events.append(("save_artifact", artifact_id))
+        return original_save_artifact(kind, artifact_id, payload)
+
+    server.discovery_search_store.save_artifact = save_artifact_with_event
     try:
         created = _create_search(base, "human")
+        events.clear()
         _, records_page = _request_json(f"{base}/api/discovery/searches/{created['search_id']}/records?page=1&page_size=20")
         record_ids = [row["publication_id"] for row in records_page["records"][:2]]
 
@@ -598,8 +622,325 @@ def test_prepare_job_route_reports_progress_and_returns_the_bundle(tmp_path: Pat
         assert stages, "the progress callback was not forwarded to prepare_publication_records"
         assert observed == sorted(observed), f"prepare progress must never decrease: {observed}"
         assert observed[-1] == 1.0
+        assert events[0] == ("commit", started["job_id"])
+        assert events[1][0] == "save_artifact"
     finally:
         _stop_server(server, thread)
+
+
+def test_prepare_job_fails_closed_when_implementation_skips_commit_barrier(tmp_path: Path) -> None:
+    from degora.api import DegoraRequestHandler
+    from degora.discovery_store import DiscoveryJobManager, DiscoveryStateStore
+
+    store = DiscoveryStateStore(tmp_path / "discovery")
+    manager = DiscoveryJobManager(store, max_workers=1)
+    handler = object.__new__(DegoraRequestHandler)
+    handler.server = type("Server", (), {"discovery_job_manager": manager})()
+    handler._discovery_prepare = lambda payload, progress, before_publish: {"bundle_id": "unsafe"}
+
+    started = handler._discovery_prepare_job({"species": "human"})
+    manager.shutdown(wait=True)
+
+    job = store.get_job(started["job_id"])
+    assert job is not None
+    assert job["status"] == "failed"
+    assert job["result"] is None
+    assert "without reaching its commit barrier" in job["error"]["message"]
+
+
+def test_non_loopback_job_result_redacts_local_paths_without_mutating_store(tmp_path: Path) -> None:
+    from degora.api import DegoraRequestHandler
+    from degora.discovery_store import DiscoveryStateStore
+
+    store = DiscoveryStateStore(tmp_path / "discovery")
+    handler = object.__new__(DegoraRequestHandler)
+    handler.server = type(
+        "Server",
+        (),
+        {
+            "discovery_search_store": store,
+            "server_address": ("0.0.0.0", 0),
+        },
+    )()
+    job = store.create_job("publication_prepare", {"species": "human"})
+    local_dir = tmp_path / "discovery" / "human" / "bundles" / "abc"
+    local_file = local_dir / "source.csv"
+    result = {
+        "bundle_id": "abc",
+        "materialize_dir": str(local_dir),
+        "exports": {"csv": str(local_file)},
+        "studies": [{"files": [{"source_path": str(local_file), "source_url": "https://example.org/GSE1"}]}],
+    }
+    store.update_job(job["job_id"], status="running", progress=0.5)
+    store.update_job(job["job_id"], status="completed", result=result)
+
+    response = handler._discovery_job(job["job_id"])
+    stored = store.get_job(job["job_id"])
+
+    assert response["result"]["materialize_dir"] == "[redacted: local path]"
+    assert response["result"]["exports"]["csv"] == "[redacted: local path]"
+    assert response["result"]["studies"][0]["files"][0]["source_path"] == "[redacted: local path]"
+    assert response["result"]["studies"][0]["files"][0]["source_url"] == "https://example.org/GSE1"
+    assert stored is not None
+    assert stored["result"] == result
+
+
+def test_prepare_implementation_that_ignores_callback_publishes_no_bundle(tmp_path: Path, monkeypatch) -> None:
+    _install_federated_module(monkeypatch, calls=[])
+    prepare_module = types.ModuleType("degora.discovery_prepare")
+
+    def prepare_publication_records(
+        records,
+        species,
+        *,
+        query,
+        materialize_dir,
+        progress=None,
+        before_publish,
+    ):
+        target = Path(materialize_dir)
+        target.mkdir(parents=True, exist_ok=True)
+        (target / "unsafe.txt").write_text("published without commit", encoding="utf-8")
+        return {"studies": [{"accession": "GSE1"}], "excluded_studies": []}
+
+    prepare_module.prepare_publication_records = prepare_publication_records
+    monkeypatch.setitem(sys.modules, "degora.discovery_prepare", prepare_module)
+
+    server, thread, base = _start_server(tmp_path)
+    saved_artifacts: list[str] = []
+    original_save_artifact = server.discovery_search_store.save_artifact
+
+    def tracking_save_artifact(kind, artifact_id, payload):
+        saved_artifacts.append(artifact_id)
+        return original_save_artifact(kind, artifact_id, payload)
+
+    server.discovery_search_store.save_artifact = tracking_save_artifact
+    try:
+        created = _create_search(base, "human")
+        _, records_page = _request_json(
+            f"{base}/api/discovery/searches/{created['search_id']}/records?page=1&page_size=20"
+        )
+        status, started = _request_json(
+            f"{base}/api/discovery/prepare-jobs",
+            payload={
+                "species": "human",
+                "query": "hypoxia",
+                "search_id": created["search_id"],
+                "record_ids": [records_page["records"][0]["publication_id"]],
+            },
+            action=True,
+        )
+        assert status == 202
+
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            _, payload = _request_json(f"{base}/api/discovery/jobs/{started['job_id']}")
+            job = payload["job"]
+            if job["status"] == "failed":
+                break
+            time.sleep(0.02)
+        else:
+            raise AssertionError("unsafe prepare implementation did not fail")
+
+        assert "skipped its required commit barrier" in job["error"]
+        assert server.discovery_bundles == {}
+        assert saved_artifacts == []
+        bundle_root = tmp_path / "discovery" / "human" / "bundles"
+        assert not bundle_root.exists() or not list(bundle_root.iterdir())
+    finally:
+        _stop_server(server, thread)
+
+
+def test_search_cancel_after_commit_keeps_the_snapshot_and_completes(tmp_path: Path, monkeypatch) -> None:
+    calls: list[dict] = []
+    _install_federated_module(monkeypatch, calls=calls)
+    server, thread, base = _start_server(tmp_path)
+    saving = threading.Event()
+    release_save = threading.Event()
+    original_save_search = server.discovery_search_store.save_search
+
+    def blocking_save_search(search_id, payload):
+        if isinstance(payload, dict) and payload.get("status") == "complete":
+            saving.set()
+            assert release_save.wait(timeout=5)
+        return original_save_search(search_id, payload)
+
+    server.discovery_search_store.save_search = blocking_save_search
+    try:
+        status, created = _request_json(
+            f"{base}/api/discovery/searches",
+            payload={"query": "hypoxia", "species": "human", "limit": 120},
+            action=True,
+        )
+        assert status == 202
+        assert saving.wait(timeout=5), "search worker did not reach the committed save"
+
+        status, outcome = _request_json(
+            f"{base}/api/discovery/jobs/{created['job_id']}/cancel",
+            payload={},
+            action=True,
+        )
+        assert status == 200
+        assert outcome["cancelled"] is False
+        assert "saving" in outcome["reason"]
+
+        release_save.set()
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            _, payload = _request_json(f"{base}/api/discovery/jobs/{created['job_id']}")
+            if payload["job"]["status"] == "complete":
+                break
+            time.sleep(0.02)
+        else:
+            raise AssertionError("committed search did not complete")
+
+        _, search = _request_json(f"{base}/api/discovery/searches/{created['search_id']}")
+        assert search["search"]["status"] == "complete"
+    finally:
+        release_save.set()
+        _stop_server(server, thread)
+
+
+def test_prepare_cancel_after_commit_keeps_the_bundle_and_completes(tmp_path: Path, monkeypatch) -> None:
+    calls: list[dict] = []
+    _install_federated_module(monkeypatch, calls=calls)
+    committed = threading.Event()
+    release_publish = threading.Event()
+    prepare_module = types.ModuleType("degora.discovery_prepare")
+
+    def prepare_publication_records(records, species, *, query, materialize_dir, progress=None, before_publish):
+        before_publish()
+        committed.set()
+        assert release_publish.wait(timeout=5)
+        Path(materialize_dir).mkdir(parents=True, exist_ok=True)
+        return {"studies": [{"accession": "GSE1"}], "excluded_studies": []}
+
+    prepare_module.prepare_publication_records = prepare_publication_records
+    monkeypatch.setitem(sys.modules, "degora.discovery_prepare", prepare_module)
+    server, thread, base = _start_server(tmp_path)
+    try:
+        created = _create_search(base, "human")
+        _, records_page = _request_json(
+            f"{base}/api/discovery/searches/{created['search_id']}/records?page=1&page_size=20"
+        )
+        record_ids = [row["publication_id"] for row in records_page["records"][:2]]
+        status, started = _request_json(
+            f"{base}/api/discovery/prepare-jobs",
+            payload={
+                "species": "human",
+                "query": "hypoxia",
+                "search_id": created["search_id"],
+                "record_ids": record_ids,
+            },
+            action=True,
+        )
+        assert status == 202
+        assert committed.wait(timeout=5), "preparation did not reach the commit barrier"
+
+        _, outcome = _request_json(
+            f"{base}/api/discovery/jobs/{started['job_id']}/cancel",
+            payload={},
+            action=True,
+        )
+        assert outcome["cancelled"] is False
+        assert "saving" in outcome["reason"]
+
+        release_publish.set()
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            _, payload = _request_json(f"{base}/api/discovery/jobs/{started['job_id']}")
+            if payload["job"]["status"] == "complete":
+                result = payload["job"]["result"]
+                break
+            time.sleep(0.02)
+        else:
+            raise AssertionError("committed preparation did not complete")
+
+        assert result["bundle_id"]
+        assert server.discovery_search_store.get_artifact("bundle", result["bundle_id"])["studies"]
+    finally:
+        release_publish.set()
+        _stop_server(server, thread)
+
+
+def test_complete_search_snapshot_does_not_override_authoritative_cancelled_job(tmp_path: Path) -> None:
+    """A side-table snapshot must not rewrite a terminal job state during projection."""
+
+    from degora.api import DegoraRequestHandler
+
+    search_id = "a" * 16
+    job_id = "b" * 16
+
+    class Store:
+        def get_job(self, wanted):
+            assert wanted == job_id
+            return {
+                "job_id": job_id,
+                "kind": "publication_search",
+                "status": "cancelled",
+                "progress": 0.97,
+                "message": "Job was cancelled by the reader.",
+                "payload": {"search_id": search_id},
+                "result": None,
+                "error": None,
+                "created_at": "now",
+                "updated_at": "now",
+            }
+
+        def get_search(self, wanted):
+            assert wanted == search_id
+            return {
+                "id": search_id,
+                "query": "hypoxia",
+                "species": "human",
+                "limit": 20,
+                "status": "complete",
+                "error": "",
+                "snapshot": {"records": [{"publication_id": "p1"}], "total": 1},
+                "total": 1,
+                "created_at": "now",
+                "updated_at": "now",
+            }
+
+        def save_search(self, *_args, **_kwargs):
+            raise AssertionError("a complete search must not be rewritten as cancelled")
+
+    handler = object.__new__(DegoraRequestHandler)
+    handler.server = type("Server", (), {"discovery_search_store": Store(), "discovery_job_manager": None})()
+
+    job = handler._discovery_job(job_id)
+
+    assert job["status"] == "cancelled"
+    assert job["result"] is None
+
+
+def test_duplicate_cancel_reports_already_cancelled_not_finished(tmp_path: Path) -> None:
+    from degora.api import DegoraRequestHandler
+    from degora.discovery_store import DiscoveryJobManager, DiscoveryStateStore
+
+    store = DiscoveryStateStore(tmp_path / "discovery")
+    manager = DiscoveryJobManager(store, max_workers=1)
+    handler = object.__new__(DegoraRequestHandler)
+    handler.server = type(
+        "Server",
+        (),
+        {
+            "discovery_search_store": store,
+            "discovery_job_manager": manager,
+            "server_address": ("127.0.0.1", 0),
+        },
+    )()
+    job = store.create_job("publication_search", {"search_id": "a" * 16})
+
+    first = handler._discovery_cancel_job(job["job_id"])
+    second = handler._discovery_cancel_job(job["job_id"])
+
+    assert first["cancelled"] is True
+    assert second["cancelled"] is False
+    assert second["job"]["status"] == "cancelled"
+    assert "already cancelled" in second["reason"]
+    assert "finished" not in second["reason"]
+    manager.shutdown(wait=True)
 
 
 def test_job_result_is_withheld_until_the_job_completes(tmp_path: Path, monkeypatch) -> None:

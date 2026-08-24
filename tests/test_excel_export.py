@@ -9,11 +9,13 @@ import pandas as pd
 from openpyxl import load_workbook
 
 from degora.excel_export import (
+    COLUMN_DEFINITIONS,
     _cap_evidence_for_sheet,
     _evidence_row_cap,
     _force_formula_like_text,
     export_run_workbook,
 )
+from degora.score_db import HETEROGENEITY_RULE, RANDOM_EFFECTS_STOUFFER_RULE
 
 
 def test_evidence_sheet_cap_keeps_top_ranked_genes_and_flags() -> None:
@@ -121,7 +123,7 @@ def test_export_caps_large_evidence_in_sql_but_reports_uncapped_total(tmp_path, 
 
 def test_formula_like_strings_are_written_as_literal_xlsx_text(tmp_path) -> None:
     output = tmp_path / "formula_safe.xlsx"
-    values = ["=2+2", "+cmd", "-2+3", "@SUM(A1:A2)"]
+    values = ["=2+2", "+cmd", "-2+3", "@SUM(A1:A2)", " \t=2+2", "#N/A", "#REF!", "#GETTING_DATA"]
 
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         pd.DataFrame({"gene_symbol": values}).to_excel(writer, sheet_name="Gene_scores", index=False)
@@ -136,6 +138,60 @@ def test_formula_like_strings_are_written_as_literal_xlsx_text(tmp_path) -> None
     assert b"<f" not in sheet_xml
 
 
+def test_workbook_metadata_uses_canonical_heterogeneity_rule_text(tmp_path) -> None:
+    result_dir = _minimal_result_dir(tmp_path)
+    exported = export_run_workbook(result_dir, command="pytest workbook metadata")
+
+    workbook = load_workbook(exported["output"], read_only=False, data_only=False)
+    all_cell_text = [
+        str(cell.value)
+        for worksheet in workbook.worksheets
+        for row in worksheet.iter_rows()
+        for cell in row
+        if cell.value is not None
+    ]
+    all_comment_text = [
+        str(cell.comment.text)
+        for worksheet in workbook.worksheets
+        for row in worksheet.iter_rows()
+        for cell in row
+        if cell.comment is not None
+    ]
+    workbook_text = "\n".join([*all_cell_text, *all_comment_text])
+
+    assert COLUMN_DEFINITIONS["heterogeneity_i2"][0] == HETEROGENEITY_RULE
+    assert RANDOM_EFFECTS_STOUFFER_RULE in COLUMN_DEFINITIONS["re_stouffer_padj"][0]
+    assert "no calibrated bias direction" in workbook_text
+    assert "positively biased" not in workbook_text
+    assert "small-k-biased" not in workbook_text
+    assert "small-k positive bias" not in workbook_text
+
+
+def test_workbook_summary_preserves_dirty_revision_provenance(tmp_path, monkeypatch) -> None:
+    import degora.excel_export as excel_export
+
+    monkeypatch.setattr(
+        excel_export,
+        "runtime_version_info",
+        lambda: {
+            "degora_version": "0.4.14",
+            "degora_code_revision": "abc1234-dirty",
+            "degora_code_dirty": "true",
+        },
+    )
+    result_dir = _minimal_result_dir(tmp_path)
+
+    exported = export_run_workbook(result_dir, command="pytest dirty revision provenance")
+
+    workbook = load_workbook(exported["output"], read_only=True, data_only=True)
+    summary = {
+        row[0]: row[1]
+        for row in workbook["Run_summary"].iter_rows(min_row=2, values_only=True)
+        if row[0]
+    }
+    assert summary["degora_code_revision"] == "abc1234-dirty"
+
+
 def _minimal_result_dir(root, gene_symbol: str = "TOP"):
     result_dir = root / "results"
     result_dir.mkdir(parents=True)
@@ -146,6 +202,11 @@ def _minimal_result_dir(root, gene_symbol: str = "TOP"):
                 "gene_symbol": [gene_symbol],
                 "quality_weighted_degora_rank": [1],
                 "quality_weighted_degora_score": [0.9],
+                "heterogeneity_i2": [0.0],
+                "re_stouffer_z": [1.2],
+                "re_stouffer_p": [0.23],
+                "re_stouffer_padj": [0.23],
+                "re_stouffer_shrinkage_factor": [1.0],
             }
         ).to_sql("genes", connection, index=False)
         pd.DataFrame({"gene_symbol": [gene_symbol], "study_id": ["S0"]}).to_sql(

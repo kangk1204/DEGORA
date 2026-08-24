@@ -107,6 +107,52 @@ def test_read_catalog_explains_missing_required_columns(tmp_path) -> None:
     assert "Contrasts sheet" in message
 
 
+def test_requirements_txt_mirrors_xls_runtime_reader_dependency() -> None:
+    pyproject = Path("pyproject.toml").read_text(encoding="utf-8")
+    requirements = Path("requirements.txt").read_text(encoding="utf-8")
+
+    assert '"xlrd>=2.0.1,<3"' in pyproject
+    assert "xlrd>=2.0.1,<3" in requirements
+
+
+def test_validate_catalog_reports_each_active_row_to_progress_callback(tmp_path) -> None:
+    source = tmp_path / "deg.csv"
+    pd.DataFrame(
+        {
+            "gene": ["GENEA", "GENEB"],
+            "log2FoldChange": [1.0, -1.0],
+            "pvalue": [0.01, 0.02],
+        }
+    ).to_csv(source, index=False)
+    config = tmp_path / "config.csv"
+    pd.DataFrame(
+        [
+            {
+                "study_id": "S1",
+                "paper_id": "P1",
+                "source_path": source.name,
+                "gene_column": "gene",
+                "lfc_column": "log2FoldChange",
+                "p_column": "pvalue",
+            },
+            {
+                "study_id": "S2",
+                "paper_id": "P2",
+                "source_path": source.name,
+                "gene_column": "gene",
+                "lfc_column": "log2FoldChange",
+                "p_column": "pvalue",
+            },
+        ]
+    ).to_csv(config, index=False)
+    updates: list[tuple[int, int, str]] = []
+
+    result = validate_catalog_inputs(config, progress=lambda done, total, study: updates.append((done, total, study)))
+
+    assert result["active_contrasts"] == 2
+    assert updates == [(0, 2, ""), (1, 2, "S1"), (2, 2, "S2")]
+
+
 def test_excel_without_contrasts_sheet_gets_actionable_error(tmp_path) -> None:
     config_path = tmp_path / "bad_config.xlsx"
     pd.DataFrame({"field": ["project_name"], "value": ["IFN"]}).to_excel(
@@ -165,6 +211,161 @@ def test_run_slice_explains_bad_table_scope(tmp_path) -> None:
     assert "table-scope settings are not valid" in message
     assert "full_results" in message
     assert "deg_only" in message
+
+
+def test_external_absolute_source_mapping_error_hides_available_headers(tmp_path) -> None:
+    config_dir = tmp_path / "config"
+    external_dir = tmp_path / "outside"
+    config_dir.mkdir()
+    external_dir.mkdir()
+    source_path = external_dir / "external_deg.csv"
+    secret_header = "SENTINEL_PRIVATE_ASSAY_HEADER"
+    pd.DataFrame(
+        {
+            secret_header: ["GENEA", "GENEB"],
+            "log2FoldChange": [1.0, -1.0],
+            "pvalue": [0.01, 0.02],
+        }
+    ).to_csv(source_path, index=False)
+    config_path = config_dir / "config.csv"
+    pd.DataFrame(
+        {
+            "study_id": ["S1"],
+            "paper_id": ["P1"],
+            "source_path": [str(source_path)],
+            "gene_column": ["gene"],
+            "lfc_column": ["log2FoldChange"],
+            "p_column": ["pvalue"],
+        }
+    ).to_csv(config_path, index=False)
+
+    with pytest.raises(DegoraConfigError) as exc_info:
+        validate_catalog_inputs(config_path)
+
+    message = str(exc_info.value)
+    assert "path and available columns hidden" in message
+    assert secret_header not in message
+    assert str(source_path) not in message
+
+
+def test_external_absolute_source_missing_error_hides_full_path(tmp_path) -> None:
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    source_path = tmp_path / "outside" / "private_missing.csv"
+    config_path = config_dir / "config.csv"
+    pd.DataFrame(
+        {
+            "study_id": ["S1"],
+            "paper_id": ["P1"],
+            "source_path": [str(source_path)],
+            "gene_column": ["gene"],
+            "lfc_column": ["log2FoldChange"],
+            "p_column": ["pvalue"],
+        }
+    ).to_csv(config_path, index=False)
+
+    with pytest.raises(DegoraConfigError) as exc_info:
+        validate_catalog_inputs(config_path)
+
+    message = str(exc_info.value)
+    assert "private_missing.csv" in message
+    assert str(source_path) not in message
+    assert "outside" not in message
+
+
+def test_external_absolute_source_non_regular_error_hides_full_path(tmp_path) -> None:
+    import os
+
+    config_dir = tmp_path / "config"
+    external_dir = tmp_path / "outside"
+    config_dir.mkdir()
+    external_dir.mkdir()
+    source_path = external_dir / "private_pipe.csv"
+    os.mkfifo(source_path)
+    config_path = config_dir / "config.csv"
+    pd.DataFrame(
+        {
+            "study_id": ["S1"],
+            "paper_id": ["P1"],
+            "source_path": [str(source_path)],
+            "gene_column": ["gene"],
+            "lfc_column": ["log2FoldChange"],
+            "p_column": ["pvalue"],
+        }
+    ).to_csv(config_path, index=False)
+
+    with pytest.raises(DegoraConfigError) as exc_info:
+        validate_catalog_inputs(config_path)
+
+    message = str(exc_info.value)
+    assert "private_pipe.csv" in message
+    assert str(source_path) not in message
+    assert "outside" not in message
+
+
+def test_external_absolute_source_read_error_hides_full_path(tmp_path) -> None:
+    import zipfile
+
+    config_dir = tmp_path / "config"
+    external_dir = tmp_path / "outside"
+    config_dir.mkdir()
+    external_dir.mkdir()
+    source_path = external_dir / "private_supplement.xlsx"
+    with zipfile.ZipFile(source_path, "w") as archive:
+        archive.writestr("readme.txt", "not a workbook")
+    config_path = config_dir / "config.csv"
+    pd.DataFrame(
+        {
+            "study_id": ["S1"],
+            "paper_id": ["P1"],
+            "source_path": [str(source_path)],
+            "gene_column": ["gene"],
+            "lfc_column": ["log2FoldChange"],
+            "p_column": ["pvalue"],
+        }
+    ).to_csv(config_path, index=False)
+
+    with pytest.raises(DegoraConfigError) as exc_info:
+        validate_catalog_inputs(config_path)
+
+    message = str(exc_info.value)
+    assert "private_supplement.xlsx" in message
+    assert str(source_path) not in message
+    assert "outside" not in message
+
+
+def test_external_absolute_source_parse_error_hides_full_path(tmp_path) -> None:
+    config_dir = tmp_path / "config"
+    external_dir = tmp_path / "outside"
+    config_dir.mkdir()
+    external_dir.mkdir()
+    source_path = external_dir / "private_bad_stats.csv"
+    pd.DataFrame(
+        {
+            "gene": ["GENEA", "GENEB"],
+            "log2FoldChange": [1.0, -1.0],
+            "pvalue": [1.2, 0.02],
+        }
+    ).to_csv(source_path, index=False)
+    config_path = config_dir / "config.csv"
+    pd.DataFrame(
+        {
+            "study_id": ["S1"],
+            "paper_id": ["P1"],
+            "source_path": [str(source_path)],
+            "gene_column": ["gene"],
+            "lfc_column": ["log2FoldChange"],
+            "p_column": ["pvalue"],
+        }
+    ).to_csv(config_path, index=False)
+
+    with pytest.raises(DegoraConfigError) as exc_info:
+        validate_catalog_inputs(config_path)
+
+    message = str(exc_info.value)
+    assert "private_bad_stats.csv" in message
+    assert str(source_path) not in message
+    assert str(external_dir) not in message
 
 
 def test_run_slice_treats_whitespace_required_value_as_empty(tmp_path) -> None:
@@ -674,6 +875,68 @@ def _numeric_column_config(tmp_path, lfc_values, p_values=None):
     return catalog
 
 
+def test_validate_rejects_reusing_pvalue_as_log_fold_change(tmp_path) -> None:
+    source = tmp_path / "deg.csv"
+    pd.DataFrame(
+        {
+            "gene": ["VEGFA", "HK2", "ISG15"],
+            "log2FoldChange": [2.0, -1.0, 1.5],
+            "pvalue": [0.01, 0.02, 0.03],
+        }
+    ).to_csv(source, index=False)
+    catalog = tmp_path / "catalog.csv"
+    pd.DataFrame(
+        [
+            {
+                "study_id": "S1",
+                "paper_id": "P1",
+                "source_path": source.name,
+                "gene_column": "gene",
+                "lfc_column": "pvalue",
+                "p_column": "pvalue",
+            }
+        ]
+    ).to_csv(catalog, index=False)
+
+    with pytest.raises(DegoraConfigError) as excinfo:
+        validate_catalog_inputs(catalog)
+
+    message = str(excinfo.value)
+    assert "column mapping reuses incompatible roles" in message
+    assert "lfc_column" in message
+    assert "p_column" in message
+    assert "pvalue" in message
+
+
+def test_validate_allows_same_column_for_pvalue_and_padj(tmp_path) -> None:
+    source = tmp_path / "deg.csv"
+    pd.DataFrame(
+        {
+            "gene": ["VEGFA", "HK2", "ISG15"],
+            "log2FoldChange": [2.0, -1.0, 1.5],
+            "qvalue": [0.01, 0.02, 0.03],
+        }
+    ).to_csv(source, index=False)
+    catalog = tmp_path / "catalog.csv"
+    pd.DataFrame(
+        [
+            {
+                "study_id": "S1",
+                "paper_id": "P1",
+                "source_path": source.name,
+                "gene_column": "gene",
+                "lfc_column": "log2FoldChange",
+                "p_column": "qvalue",
+                "padj_column": "qvalue",
+            }
+        ]
+    ).to_csv(catalog, index=False)
+
+    result = validate_catalog_inputs(catalog)
+
+    assert result["active_contrasts"] == 1
+
+
 def test_validate_rejects_a_non_numeric_effect_column(tmp_path) -> None:
     """The p-value column was range-checked; the effect column was not checked at all.
 
@@ -706,6 +969,22 @@ def test_validate_rejects_a_non_numeric_pvalue_column(tmp_path) -> None:
         validate_catalog_inputs(catalog)
 
     assert "p_column='pvalue'" in str(excinfo.value)
+
+
+def test_validate_rejects_a_binary_significance_flag_mapped_as_pvalue(tmp_path) -> None:
+    catalog = _numeric_column_config(
+        tmp_path,
+        [1.0, -1.2, 2.0, 0.5, 1.1, -0.7],
+        p_values=[0, 1, 0, 1, 1, 0],
+    )
+
+    with pytest.raises(DegoraConfigError) as excinfo:
+        validate_catalog_inputs(catalog)
+
+    message = str(excinfo.value)
+    assert "statistical values are invalid" in message
+    assert "only 0 and/or 1" in message
+    assert "binary significance flag" in message
 
 
 def test_validate_tolerates_a_few_unparsable_cells(tmp_path) -> None:
@@ -903,3 +1182,40 @@ def test_one_run_mixing_two_species_says_so(tmp_path) -> None:
     assert mixed, warnings
     assert "'Homo sapiens'" in mixed[0] and "'Mus musculus'" in mixed[0]
     assert "not species-specific" in mixed[0]
+
+
+def test_min_studies_one_does_not_warn_that_disjoint_units_cannot_score(tmp_path) -> None:
+    for prefix in ("A", "B"):
+        pd.DataFrame(
+            {
+                "gene": [f"{prefix}{index}" for index in range(10)],
+                "log2FoldChange": [1.0] * 10,
+                "pvalue": [0.01] * 10,
+            }
+        ).to_csv(tmp_path / f"{prefix}.csv", index=False)
+    catalog = tmp_path / "catalog.csv"
+    pd.DataFrame(
+        [
+            {
+                "study_id": "S_A",
+                "source_unit_id": "U_A",
+                "source_path": "A.csv",
+                "gene_column": "gene",
+                "lfc_column": "log2FoldChange",
+                "p_column": "pvalue",
+            },
+            {
+                "study_id": "S_B",
+                "source_unit_id": "U_B",
+                "source_path": "B.csv",
+                "gene_column": "gene",
+                "lfc_column": "log2FoldChange",
+                "p_column": "pvalue",
+            },
+        ]
+    ).to_csv(catalog, index=False)
+
+    metrics = run_slice(catalog, tmp_path / "out", tmp_path / "harmonized", min_studies=1)
+
+    assert metrics["n_consensus_genes"] == 20
+    assert metrics["identifier_space_warnings"] == []

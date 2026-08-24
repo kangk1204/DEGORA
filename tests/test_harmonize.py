@@ -38,6 +38,145 @@ def test_harmonize_frame_computes_signed_z_and_ranks() -> None:
     assert out["table_scope"].iloc[0] in {"ambiguous", "full_results"}
 
 
+def test_harmonize_rejects_reusing_pvalue_as_log_fold_change() -> None:
+    frame = pd.DataFrame(
+        {
+            "gene": ["VEGFA", "HK2"],
+            "log2FoldChange": [2.0, -1.0],
+            "pvalue": [0.01, 0.02],
+        }
+    )
+
+    with pytest.raises(ValueError, match="lfc_column .* p_column .* both map to source column 'pvalue'"):
+        harmonize_frame(
+            frame,
+            TableMapping("gene", "pvalue", "pvalue"),
+            {"study_id": "BAD_MAPPING"},
+        )
+
+
+@pytest.mark.parametrize(
+    ("mapping", "left_role", "right_role", "shared_column"),
+    [
+        (TableMapping("gene", "gene", "pvalue", "padj"), "gene_column", "lfc_column", "gene"),
+        (TableMapping("gene", "log2FoldChange", "gene", "padj"), "gene_column", "p_column", "gene"),
+        (TableMapping("gene", "log2FoldChange", "pvalue", "gene"), "gene_column", "padj_column", "gene"),
+        (
+            TableMapping("gene", "log2FoldChange", "pvalue", "log2FoldChange"),
+            "lfc_column",
+            "padj_column",
+            "log2FoldChange",
+        ),
+    ],
+)
+def test_harmonize_rejects_every_other_incompatible_mapping_pair(
+    mapping: TableMapping,
+    left_role: str,
+    right_role: str,
+    shared_column: str,
+) -> None:
+    frame = pd.DataFrame(
+        {
+            "gene": ["VEGFA", "HK2"],
+            "log2FoldChange": [2.0, -1.0],
+            "pvalue": [0.01, 0.02],
+            "padj": [0.02, 0.03],
+        }
+    )
+
+    with pytest.raises(ValueError) as excinfo:
+        harmonize_frame(frame, mapping, {"study_id": "BAD_MAPPING"})
+
+    message = str(excinfo.value)
+    assert left_role in message
+    assert right_role in message
+    assert repr(shared_column) in message
+
+
+def test_mapping_collision_is_detected_after_legacy_row_label_alias_resolution() -> None:
+    frame = pd.DataFrame(
+        {
+            "row_name": ["VEGFA", "HK2"],
+            "log2FoldChange": [2.0, -1.0],
+            "pvalue": [0.01, 0.02],
+        }
+    )
+
+    with pytest.raises(ValueError, match=r"gene_column .* lfc_column .* source column 'row_name'"):
+        harmonize_frame(
+            frame,
+            TableMapping("Unnamed: 0", "row_name", "pvalue"),
+            {"study_id": "ROW_LABEL_ALIAS_COLLISION"},
+        )
+
+
+def test_harmonize_allows_same_column_for_pvalue_and_padj() -> None:
+    frame = pd.DataFrame(
+        {
+            "gene": ["VEGFA", "HK2"],
+            "log2FoldChange": [2.0, -1.0],
+            "qvalue": [0.01, 0.02],
+        }
+    )
+
+    out = harmonize_frame(
+        frame,
+        TableMapping("gene", "log2FoldChange", "qvalue", "qvalue"),
+        {"study_id": "P_EQUALS_PADJ"},
+    )
+
+    assert out["pvalue"].tolist() == out["padj"].tolist()
+
+
+@pytest.mark.parametrize(
+    ("mapping", "column_kind", "significant"),
+    [
+        (TableMapping("gene", "log2FoldChange", "significant"), "p-value", [1, 1, 0]),
+        (
+            TableMapping("gene", "log2FoldChange", "pvalue", "significant"),
+            "adjusted p-value/FDR",
+            [1, 1, 0],
+        ),
+        (TableMapping("gene", "log2FoldChange", "significant"), "p-value", [0, 0, 0]),
+    ],
+)
+def test_harmonize_rejects_binary_significance_flags_as_probability_columns(
+    mapping: TableMapping,
+    column_kind: str,
+    significant: list[int],
+) -> None:
+    frame = pd.DataFrame(
+        {
+            "gene": ["VEGFA", "HK2", "RPL13A"],
+            "log2FoldChange": [2.0, -1.0, 0.1],
+            "pvalue": [0.001, 0.02, 0.4],
+            "significant": significant,
+        }
+    )
+
+    with pytest.raises(ValueError, match=rf"{column_kind} column 'significant'.*only 0 and/or 1"):
+        harmonize_frame(frame, mapping, {"study_id": "BINARY_FLAG"})
+
+
+def test_harmonize_allows_a_legitimate_adjusted_pvalue_column_that_is_all_one() -> None:
+    frame = pd.DataFrame(
+        {
+            "gene": ["VEGFA", "HK2", "RPL13A"],
+            "log2FoldChange": [2.0, -1.0, 0.1],
+            "pvalue": [0.001, 0.02, 0.4],
+            "padj": [1.0, 1.0, 1.0],
+        }
+    )
+
+    out = harmonize_frame(
+        frame,
+        TableMapping("gene", "log2FoldChange", "pvalue", "padj"),
+        {"study_id": "ALL_ONE_PADJ"},
+    )
+
+    assert out["padj"].eq(1.0).all()
+
+
 def test_harmonize_treats_pvalue_one_as_neutral_and_flags_every_floor_clip() -> None:
     frame = pd.DataFrame(
         {

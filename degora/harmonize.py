@@ -5,10 +5,11 @@ from __future__ import annotations
 import gzip
 import io
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -197,6 +198,14 @@ class TableMapping:
     sheet_name: str | int | None = None
 
 
+MAPPING_ROLE_LABELS = {
+    "gene_column": "gene symbols or gene IDs",
+    "lfc_column": "numeric log2 fold change",
+    "p_column": "numeric p-value in [0, 1]",
+    "padj_column": "adjusted p-value/FDR in [0, 1]",
+}
+
+
 def normalize_table_scope(value: Any) -> str:
     """Normalize a user-entered DEG table scope label."""
 
@@ -322,6 +331,46 @@ def resolve_column_name(frame: pd.DataFrame, requested: str) -> str:
     if _PANDAS_PLACEHOLDER.match(str(requested)) and ROW_LABEL_COLUMN in frame.columns:
         return ROW_LABEL_COLUMN
     return requested
+
+
+def validate_table_mapping_roles(frame: pd.DataFrame, mapping: TableMapping, *, study_id: Any = None) -> None:
+    """Reject one source-table column being reused for incompatible statistical roles."""
+
+    requested_roles = {
+        "gene_column": mapping.gene_column,
+        "lfc_column": mapping.lfc_column,
+        "p_column": mapping.p_column,
+    }
+    if mapping.padj_column:
+        requested_roles["padj_column"] = mapping.padj_column
+
+    resolved_roles = {
+        role: resolve_column_name(frame, str(column))
+        for role, column in requested_roles.items()
+        if column is not None and str(column).strip()
+    }
+    conflicts: list[str] = []
+    role_items = list(resolved_roles.items())
+    for left_index, (left_role, left_column) in enumerate(role_items):
+        for right_role, right_column in role_items[left_index + 1 :]:
+            if left_column != right_column:
+                continue
+            if {left_role, right_role} == {"p_column", "padj_column"}:
+                continue
+            conflicts.append(
+                f"{left_role} ({MAPPING_ROLE_LABELS[left_role]}) and "
+                f"{right_role} ({MAPPING_ROLE_LABELS[right_role]}) both map to source column {left_column!r}"
+            )
+    if not conflicts:
+        return
+
+    prefix = f"{study_id}: " if study_id not in (None, "") else ""
+    raise ValueError(
+        prefix
+        + "source-table column mappings reuse one column for incompatible roles: "
+        + "; ".join(conflicts)
+        + ". gene_column, lfc_column and p_column must be distinct; padj_column may equal p_column only when the same unit-interval column is intentionally used as both."
+    )
 
 
 # Catalog authors reach for the word before the escape, so accept both. Without
@@ -641,6 +690,46 @@ def _reject_invalid_unit_interval(
     )
 
 
+def _is_binary_probability_indicator(values: pd.Series, *, column: str) -> bool:
+    """Whether values/header describe a threshold flag rather than probabilities."""
+
+    observed = pd.to_numeric(values, errors="coerce").dropna()
+    if observed.empty or not bool(observed.isin((0.0, 1.0)).all()):
+        return False
+    distinct = {float(value) for value in observed.unique()}
+    flag_like_name = bool(
+        re.search(
+            r"(^|[^a-z0-9])(sig(nificant)?|flag|indicator|pass|threshold(ed)?|is[_. -]?(de|deg))"
+            r"($|[^a-z0-9])|^(de|deg)$",
+            str(column),
+            flags=re.IGNORECASE,
+        )
+    )
+    # A genuine adjusted-p column can legitimately be constant 1 after multiple
+    # testing. Reject a constant 0/1 vector only when its header also declares it
+    # as a flag; seeing both 0 and 1 is itself enough evidence of thresholding.
+    return distinct == {0.0, 1.0} or flag_like_name
+
+
+def _reject_binary_probability_indicator(
+    values: pd.Series,
+    *,
+    column: str,
+    column_kind: str,
+    study_meta: dict[str, Any],
+) -> None:
+    """Reject 0/1 flags that cannot carry gene-level significance evidence."""
+
+    if not _is_binary_probability_indicator(values, column=column):
+        return
+    study_id = str(study_meta.get("study_id", "unknown_study"))
+    raise ValueError(
+        f"{study_id}: {column_kind} column {column!r} contains only 0 and/or 1. "
+        "This looks like a binary significance flag or thresholded/rounded values, not usable "
+        "gene-level probabilities. Map the unrounded p-value or adjusted p-value column instead."
+    )
+
+
 # A source that loses this share of its rows is reporting a mapping or export
 # problem, not ordinary missingness, and the run should say so.
 ROW_LOSS_WARNING_SHARE = 0.10
@@ -706,6 +795,7 @@ def _unusable_row_warning(
 def harmonize_frame(frame: pd.DataFrame, mapping: TableMapping, study_meta: dict[str, Any]) -> pd.DataFrame:
     """Return canonical per-gene DEG rows for one study/contrast."""
 
+    validate_table_mapping_roles(frame, mapping, study_id=study_meta.get("study_id"))
     scope = assess_table_scope(frame, mapping, study_meta.get("table_scope", AUTO_TABLE_SCOPE))
     # Catalogs written before restored row labels got one name refer to that column
     # by whatever pandas happened to call it.
@@ -724,9 +814,21 @@ def harmonize_frame(frame: pd.DataFrame, mapping: TableMapping, study_meta: dict
         column_kind="p-value",
         study_meta=study_meta,
     )
+    _reject_binary_probability_indicator(
+        pvalue,
+        column=mapping.p_column,
+        column_kind="p-value",
+        study_meta=study_meta,
+    )
     if mapping.padj_column:
         padj = _series_as_numeric(frame, mapping.padj_column)
         _reject_invalid_unit_interval(
+            padj,
+            column=mapping.padj_column,
+            column_kind="adjusted p-value/FDR",
+            study_meta=study_meta,
+        )
+        _reject_binary_probability_indicator(
             padj,
             column=mapping.padj_column,
             column_kind="adjusted p-value/FDR",

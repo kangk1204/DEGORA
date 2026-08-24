@@ -130,7 +130,16 @@ def test_federated_select_matches_identifiers_and_calls_prepare_backend(tmp_path
 
     captured = {}
 
-    def fake_prepare_publication_records(records, species, *, query, max_files_per_record, materialize_dir, force):
+    def fake_prepare_publication_records(
+        records,
+        species,
+        *,
+        query,
+        max_files_per_record,
+        materialize_dir,
+        force,
+        before_publish=None,
+    ):
         captured.update(
             records=records,
             species=species,

@@ -93,6 +93,59 @@ def test_no_geo_author_deg_table_materializes_full_bundle(tmp_path: Path) -> Non
     assert audit["studies"][0]["files"][0]["inspection"]["local_path"] == candidate["inspection"]["local_path"]
 
 
+def test_prepare_publication_before_publish_runs_once_immediately_before_publish(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    events: list[str] = []
+    import degora.discovery_prepare as prepare_module
+
+    real_publish = prepare_module._publish_prepared_bundle
+
+    def wrapped_publish(staging: Path, target: Path, *, force: bool) -> None:
+        events.append("publish")
+        real_publish(staging, target, force=force)
+
+    monkeypatch.setattr(prepare_module, "_publish_prepared_bundle", wrapped_publish)
+
+    prepare_publication_records(
+        [_record()],
+        "human",
+        materialize_dir=tmp_path / "prepared",
+        transport=FakeTransport({"https://zenodo.org/files/deg.csv": _deg_table()}),
+        before_publish=lambda: events.append("before"),
+    )
+
+    assert events == ["before", "publish"]
+
+
+def test_prepare_publication_before_publish_exception_aborts_publish(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    events: list[str] = []
+    import degora.discovery_prepare as prepare_module
+
+    def wrapped_publish(staging: Path, target: Path, *, force: bool) -> None:
+        events.append("publish")
+
+    def fail_before_publish() -> None:
+        events.append("before")
+        raise RuntimeError("commit barrier failed")
+
+    monkeypatch.setattr(prepare_module, "_publish_prepared_bundle", wrapped_publish)
+
+    with pytest.raises(RuntimeError, match="commit barrier failed"):
+        prepare_publication_records(
+            [_record()],
+            "human",
+            materialize_dir=tmp_path / "prepared",
+            transport=FakeTransport({"https://zenodo.org/files/deg.csv": _deg_table()}),
+            before_publish=fail_before_publish,
+        )
+
+    assert events == ["before"]
+    assert not (tmp_path / "prepared").exists()
+
+
 def test_upstream_fallback_matrix_is_inspected_as_full_candidate(tmp_path: Path) -> None:
     record = _record(
         canonical_id="doi:10.1/matrix",

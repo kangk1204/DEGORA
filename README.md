@@ -34,7 +34,7 @@ GitHub names those folders `DEGORA-main` and `DEGORA-<version>`, respectively:
 
 ```bash
 cd DEGORA-main       # main-branch ZIP
-# or: cd DEGORA-0.4.14  # v0.4.14 release ZIP
+# or: cd DEGORA-0.4.14  # example tagged-release ZIP
 ```
 
 Confirm that the interpreter you will use is supported:
@@ -155,7 +155,7 @@ Useful options:
 ```
 
 Use `--ref` to review a specific branch or release tag in one command, for
-example `bash degora_quickstart.sh --ref v0.4.14`. It fetches the name from
+example `bash degora_quickstart.sh --ref v0.4.15`. It fetches the name from
 `origin`, fast-forwards a local copy that is behind, and stops rather than
 serving stale code when a local branch of the same name has diverged.
 
@@ -377,7 +377,51 @@ make smoke
 
 ## Release notes
 
+### 0.4.15 (release candidate)
+
+The score contract is unchanged. This release candidate tightens the v0.4.14
+beginner, discovery, cancellation, privacy, and provenance paths that reviewers
+exercised after the cancellation and guided-init features landed.
+
+`degora init` is stricter about what can be treated as a DEG table. Generic
+sample identifiers such as `sample_id` are not accepted as gene columns, binary
+significance flags are not accepted as p-values, p-value columns are not offered
+as effect-size columns, and common supplementary-table headers such as
+`fold-change`, `p-value`, and `q-value` are recognised without role collisions.
+If no table is confirmed, the command exits with a clean beginner-facing error
+instead of a traceback.
+
+Discovery now separates inspectable result-table candidates from mere linked
+data. Search readiness requires a CSV/TSV/Excel/archive-like candidate rather
+than only a repository accession, shared-submission warnings are exported with
+the publication review tables, and strict assay suffixes such as RNA-seq,
+ATAC-seq, CUT&Tag, and ChIP-seq can mark unpublished SuperSeries arms without
+collapsing species or time-point suffixes. Persisted search assessments identify
+this changed interpretation as assessment version 2, and upstream matrices using
+`ensembl_gene_id_version` are recognised.
+
+Cancellation publication and browser status are made consistent: a cancel that
+wins prevents a completed search or prepared bundle from being published, while
+a cancel that loses to an already completed job adopts the completed result
+rather than reporting a false cancellation. Repeated cancel requests now report
+the already-cancelled state, and cancelled job bookkeeping is released after
+terminal cleanup. If cancellation persistence itself is interrupted, the pending
+manager state is cleared and waiting publication work is released rather than
+left blocked.
+
+Network-facing API responses and diagnostics redact local paths and
+formula-like spreadsheet text more defensively. Source checkouts now report a
+dirty code revision, for example `0.4.15 (e2ab3ae-dirty)`, so local patched runs
+are not mistaken for the exact public tag. Installed copies cannot inherit the
+revision or dirty state of an unrelated parent Git repository.
+
 ### 0.4.14
+
+Known issue: the cancellation guarantee described below was not linearizable at
+the final search/bundle publication boundary in the published v0.4.14 tag. A
+narrow race could expose a completed side effect after the job endpoint reported
+`cancelled`. The 0.4.15 release candidate fixes that boundary and adds
+deterministic race and failure-path tests.
 
 The score contract is unchanged, and nothing about an existing config or run
 behaves differently. This release lets you stop a running job, and answers what

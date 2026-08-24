@@ -3,29 +3,49 @@
 from __future__ import annotations
 
 import subprocess
-from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 __all__ = ["SCORE_VERSION", "__version__", "format_version_info", "runtime_version_info"]
 
-__version__ = "0.4.14"
+__version__ = "0.4.15"
 SCORE_VERSION = "degora_score_v1_2_source_unit_mean"
 
 
-def _installed_version() -> str:
+def _is_tracked_by_repo(repo: Path, module_path: Path) -> bool:
     try:
-        return version("degora")
-    except PackageNotFoundError:
-        return __version__
+        relative_module = module_path.relative_to(repo)
+    except ValueError:
+        return False
+    try:
+        subprocess.run(
+            ["git", "-C", str(repo), "ls-files", "--error-unmatch", "--", str(relative_module)],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return True
 
 
 def _git_revision() -> str:
-    for parent in Path(__file__).resolve().parents:
+    module_path = Path(__file__).resolve()
+    for parent in module_path.parents:
         if not (parent / ".git").exists():
             continue
+        if not _is_tracked_by_repo(parent, module_path):
+            continue
         try:
-            completed = subprocess.run(
+            revision_result = subprocess.run(
                 ["git", "-C", str(parent), "rev-parse", "--short", "HEAD"],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            status_result = subprocess.run(
+                ["git", "-C", str(parent), "status", "--porcelain=v1", "--untracked-files=no"],
                 check=True,
                 capture_output=True,
                 text=True,
@@ -33,15 +53,22 @@ def _git_revision() -> str:
             )
         except (OSError, subprocess.SubprocessError):
             return ""
-        return completed.stdout.strip()
+        revision = revision_result.stdout.strip()
+        if not revision:
+            return ""
+        if status_result.stdout.strip():
+            return f"{revision}-dirty"
+        return revision
     return ""
 
 
 def runtime_version_info() -> dict[str, str]:
-    info = {"degora_version": _installed_version()}
+    info = {"degora_version": __version__}
     revision = _git_revision()
     if revision:
         info["degora_code_revision"] = revision
+        if revision.endswith("-dirty"):
+            info["degora_code_dirty"] = "true"
     return info
 
 

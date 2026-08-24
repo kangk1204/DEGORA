@@ -75,12 +75,12 @@ MAX_GLOBAL_RANK_LIMIT = 1_000
 GLOBAL_SEARCH_CACHE_SIZE = 8
 GLOBAL_SEARCH_CACHE_TTL_SECONDS = 15 * 60
 PUBMED_SUMMARY_BATCH_SIZE = 200
-SEARCH_ASSESSMENT_VERSION = 1
+SEARCH_ASSESSMENT_VERSION = 2
 DISCOVERY_BUNDLE_MARKER = ".degora-discovery-bundle.json"
 DISCOVERY_BUNDLE_ARTIFACT_TYPE = "degora_discovery_prepared_bundle"
 DISCOVERY_BUNDLE_FORMAT_VERSION = 1
 SEARCH_ASSESSMENT_BASIS = (
-    "Search-time GEO supplementary filename assessment only; "
+    "Search-time GEO supplementary filename assessment v2 only; "
     "Prepare selection downloads and validates file content."
 )
 DEG_INPUT_PRIORITIES = {
@@ -688,13 +688,18 @@ SUPPORTED_TEXT_RE = re.compile(r"\.(csv|tsv|txt)(\.gz)?$", re.I)
 # and gzipped. The analysis path reads all four shapes, so refusing to inspect
 # them here made DEGORA decline files it could have used.
 SUPPORTED_WORKBOOK_RE = re.compile(r"\.(xlsx|xls)(\.gz)?$", re.I)
+SUPPORTED_ARCHIVE_RE = re.compile(r"\.zip$", re.I)
 
 
 def classify_filename(name_or_url: str) -> dict[str, Any]:
     path = urllib.parse.urlsplit(str(name_or_url)).path
     name = urllib.parse.unquote(Path(path).name or str(name_or_url))
     lower = name.lower()
-    supported = bool(SUPPORTED_TEXT_RE.search(lower) or SUPPORTED_WORKBOOK_RE.search(lower))
+    supported = bool(
+        SUPPORTED_TEXT_RE.search(lower)
+        or SUPPORTED_WORKBOOK_RE.search(lower)
+        or SUPPORTED_ARCHIVE_RE.search(lower)
+    )
     if HARD_REJECT_RE.search(lower):
         return {
             "name": name,
@@ -753,19 +758,29 @@ def classify_filename(name_or_url: str) -> dict[str, Any]:
 
 
 GENE_EXACT_RE = re.compile(
-    r"^(gene|gene[_. ]?id|gene[_. ]?name|gene[_. ]?symbol|symbol|hgnc.*|hugo.*|ensembl.*|geneid)$",
+    r"^(gene|gene[_. ]?id|gene[_. ]?name|gene[_. ]?symbol|symbol|hgnc.*|hugo.*|"
+    r"ensembl(?:[_. ]?(?:gene|id|version))*|geneid|entrez(?:[_. ]?(?:gene|id))*|"
+    r"probe(?:[_. ]?id)?|transcript(?:[_. ]?id)?|id_ref)$",
     re.I,
 )
 # row_name is DEGORA's own name for the identifier column it recovers from an R
 # write.csv export, where the gene names arrive as an unnamed index. Leaving it
 # out meant DEGORA could not recognise a column it had just created itself.
 GENE_LOOSE_RE = re.compile(
-    r"gene|symbol|hgnc|hugo|ensembl|entrez|probe|transcript|^row_name(_\d+)?$|(?:^|_)id$", re.I
+    r"gene|symbol|hgnc|hugo|ensembl|entrez|probe|transcript|^row_name(_\d+)?$|id_ref", re.I
+)
+NON_GENE_IDENTIFIER_RE = re.compile(
+    r"^(?:id|identifier)$|"
+    r"(?:^|[_ .-])(?:sample|subject|patient|donor|run|file|series)(?:[_ .-]?(?:id|name|accession|identifier))?$|"
+    r"^(?:gsm|srr|err|drr)(?:[_ .-]?(?:id|accession|identifier))?$",
+    re.I,
 )
 LFC_HIGH_RE = re.compile(r"log2[\W_]*fold[\W_]*change|log2fc|log[_. ]?fc|log2ratio", re.I)
-LFC_AMBIGUOUS_RE = re.compile(r"fold[_. ]?change|foldchange|(?:^|_)beta$|effect[_. ]?size", re.I)
-PADJ_RE = re.compile(r"padj|adj[_. ]?p|adjusted[_. ]?p|fdr|q[_. ]?value|qvalue|qval", re.I)
-P_RE = re.compile(r"p[_. ]?value|pvalue|pval|p_val|^p$", re.I)
+LFC_AMBIGUOUS_RE = re.compile(
+    r"fold[_. -]?change|foldchange|(?:^|_)beta$|effect[_. -]?size", re.IGNORECASE
+)
+PADJ_RE = re.compile(r"padj|adj[_. -]?p|adjusted[_. -]?p|fdr|q[_. -]?value|qvalue|qval", re.IGNORECASE)
+P_RE = re.compile(r"p[_. -]?value|pvalue|pval|p_val|^p$", re.IGNORECASE)
 NON_SAMPLE_RE = re.compile(
     r"^(?:gene[_. ]?)?(?:start|stop|end|length|strand|chrom(?:osome)?|chr)|"
     r"^(?:description|annotation|biotype|entrez|transcript|feature|base[_. ]?mean|mean|average|avg|"
@@ -795,6 +810,19 @@ def _looks_like_sample_column(name: str) -> bool:
     return bool(SAMPLE_NAME_RE.search(value) or re.search(r"\d", value))
 
 
+def is_gene_identifier_header(name: Any, *, loose: bool = False) -> bool:
+    """Return whether a column name is specifically a gene/probe identifier."""
+
+    value = str(name).strip()
+    if not value:
+        return False
+    if NON_GENE_IDENTIFIER_RE.search(value):
+        return False
+    if GENE_EXACT_RE.search(value):
+        return True
+    return bool(loose and GENE_LOOSE_RE.search(value))
+
+
 def _gene_column_priority(name: str) -> tuple[int, str]:
     value = str(name).strip().lower()
     if re.search(r"symbol|hgnc|hugo|gene[_. ]?name", value):
@@ -810,8 +838,8 @@ def _gene_column_priority(name: str) -> tuple[int, str]:
 
 def classify_header(columns: Iterable[Any]) -> dict[str, Any]:
     names = [str(value).strip() for value in columns if str(value).strip() and str(value).strip().lower() != "nan"]
-    genes = [name for name in names if GENE_EXACT_RE.search(name)]
-    loose_genes = [name for name in names if GENE_LOOSE_RE.search(name)]
+    genes = [name for name in names if is_gene_identifier_header(name)]
+    loose_genes = [name for name in names if is_gene_identifier_header(name, loose=True)]
     lfc_high = [name for name in names if LFC_HIGH_RE.search(name)]
     lfc_ambiguous = [name for name in names if LFC_AMBIGUOUS_RE.search(name) and name not in lfc_high]
     lfc_candidates = [*lfc_high, *lfc_ambiguous]
@@ -1120,7 +1148,7 @@ def _inspect_upstream_rows(rows: list[list[Any]], *, declared_role: str, sheet: 
             numeric_fractions[name] = round(fraction, 3)
             if fraction >= 0.7:
                 numeric_columns.append(name)
-        gene_candidates = [name for name in columns if GENE_EXACT_RE.search(name) or name.upper() == "ID_REF"]
+        gene_candidates = [name for name in columns if is_gene_identifier_header(name)]
         if not gene_candidates:
             continue
         gene_column = sorted(gene_candidates, key=_gene_column_priority)[0]
@@ -1648,12 +1676,15 @@ def search_geo(
             raise DiscoveryError(f"global_limit must be a whole number from 1 to {MAX_GLOBAL_RANK_LIMIT}")
         public_sort, canonical_sort, normalized_order = _normalize_global_search_sort(sort_by, sort_order)
         cache_key = (clean_query.casefold(), spec.key, global_limit, SEARCH_ASSESSMENT_VERSION)
-        builder = lambda: _build_global_search_snapshot(
-            clean_query,
-            spec,
-            geo_client,
-            global_limit=global_limit,
-        )
+
+        def builder() -> dict[str, Any]:
+            return _build_global_search_snapshot(
+                clean_query,
+                spec,
+                geo_client,
+                global_limit=global_limit,
+            )
+
         snapshot_cache = getattr(geo_client, "get_or_build_global_search_snapshot", None)
         if callable(snapshot_cache):
             snapshot, cache_hit = snapshot_cache(cache_key, builder)
@@ -1774,6 +1805,7 @@ def search_geo(
             "basis": SEARCH_ASSESSMENT_BASIS if assess_files else "Not requested.",
             "default_sort": "deg_input_priority_desc" if assess_files else "ncbi_relevance_rank_asc",
             "tier_order": list(DEG_INPUT_PRIORITIES),
+            "assessment_version": SEARCH_ASSESSMENT_VERSION,
             "confirmation_gate": "Only Prepare selection may inspect content and mark a candidate ready for contrast review.",
         },
         "analysis_policy": {
@@ -2141,6 +2173,7 @@ def prepare_geo_studies(
     materialize_dir: str | Path | None = None,
     client: NcbiGeoClient | Any | None = None,
     force: bool = False,
+    before_publish: Callable[[], None] | None = None,
 ) -> dict[str, Any]:
     """Prepare a bundle transactionally, publishing files only after all checks pass."""
 
@@ -2190,6 +2223,8 @@ def prepare_geo_studies(
             staging / DISCOVERY_BUNDLE_MARKER,
             json.dumps(marker_payload, indent=2, sort_keys=True) + "\n",
         )
+        if before_publish is not None:
+            before_publish()
         _publish_prepared_bundle(staging, target, force=force)
         return result
     finally:

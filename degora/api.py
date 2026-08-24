@@ -23,6 +23,7 @@ from typing import Any, Callable
 from urllib.parse import parse_qs, parse_qsl, quote, unquote, urlencode, urlparse, urlsplit, urlunsplit
 
 from . import format_version_info, runtime_version_info
+from .excel_export import EXCEL_ERROR_LITERALS
 from .score_db import (
     PRIMARY_CONCORDANCE_COLUMN,
     PRIMARY_DIRECTION_COLUMN,
@@ -30,8 +31,6 @@ from .score_db import (
     PRIMARY_SCORE_COLUMN,
     PRIMARY_TOP_PERCENT_COLUMN,
 )
-
-
 TOKEN_REDACTION = "[redacted]"
 _TOKEN_ARG_RE = re.compile(r"(?i)(--api-token(?:=|\s+))('[^']*'|\"[^\"]*\"|[^\s]+)")
 _TOKEN_QUERY_KEY_RE = r"(?:t|%74)(?:o|%6f)(?:k|%6b)(?:e|%65)(?:n|%6e)"
@@ -2140,10 +2139,58 @@ INDEX_HTML = """<!doctype html>
         state.cancelling = false;
         state.notice = `Could not stop the job: ${error.message}`;
         state.noticeLevel = "error";
-        if (activeSpecies === species) renderDiscoveryResults();
+        if (activeSpecies === species) {
+          renderDiscoveryResults();
+          renderPreparedState();
+        }
         return;
       }
       state.cancelling = false;
+      if (outcome && outcome.cancelled === false) {
+        const job = outcome.job || {};
+        const notice = outcome.reason || "The job finished before it could be stopped.";
+        if (kind === "search" && job.status === "complete") {
+          state.searchRequest += 1;
+          const adoptRequest = state.searchRequest;
+          if (job.search_id) state.searchId = job.search_id;
+          state.loading = false;
+          state.jobCancelled = false;
+          state.notice = notice;
+          state.noticeLevel = "info";
+          try {
+            await refreshSearchPage(species, adoptRequest);
+          } catch (error) {
+            state.error = error.message;
+            state.notice = `Search completed, but the saved result could not be loaded: ${error.message}`;
+            state.noticeLevel = "error";
+          }
+          if (activeSpecies === species) renderDiscoveryResults();
+          return;
+        }
+        if (kind === "prepare" && job.status === "complete") {
+          state.prepareRequest += 1;
+          state.preparing = false;
+          state.prepareCancelled = false;
+          state.notice = notice;
+          state.noticeLevel = "info";
+          if (job.result) {
+            state.prepared = job.result;
+            state.bundleId = job.result.bundle_id || state.bundleId;
+          }
+          if (activeSpecies === species) {
+            renderDiscoveryResults();
+            renderPreparedState();
+          }
+          return;
+        }
+        state.notice = notice;
+        state.noticeLevel = "info";
+        if (activeSpecies === species) {
+          renderDiscoveryResults();
+          renderPreparedState();
+        }
+        return;
+      }
       // Retire the in-flight work client-side too. The poll loop reads the
       // cancelled status on its next tick, but the reader should not watch a
       // progress bar keep moving for another 650ms after pressing stop.
@@ -2233,6 +2280,10 @@ INDEX_HTML = """<!doctype html>
       if (queryChanged) {
         state.sort = { key: "readiness", order: "desc" };
       }
+      if (resetPage || queryChanged) {
+        state.textFilter = "";
+        state.totalUnfiltered = 0;
+      }
       if (activeSpecies === requestSpecies) {
         activeRunId = "";
         invalidateAtlasContext();
@@ -2282,6 +2333,7 @@ INDEX_HTML = """<!doctype html>
         state.hasNext = false;
         state.verified = false;
         state.error = error.message;
+        if (activeSpecies === requestSpecies) renderDiscoveryResults();
       } finally {
         if (requestId !== state.searchRequest) return;
         state.loading = false;
@@ -2910,6 +2962,7 @@ INDEX_HTML = """<!doctype html>
         state.notice = `Preparation failed: ${error.message}`;
         state.noticeLevel = "error";
         preparationFailed = true;
+        if (activeSpecies === requestSpecies) renderPreparedState();
       } finally {
         if (requestId !== state.prepareRequest) return;
         state.preparing = false;
@@ -4105,6 +4158,15 @@ def _looks_like_local_path(value: Any) -> bool:
 
 
 LOCAL_PATH_REDACTION = "[redacted: local path]"
+_LOCAL_PATH_TOKEN_RE = re.compile(
+    r"(?i)(?:"
+    r"file:///[^\s,;\"')\]]+|"
+    r"file:/[^\s,;\"')\]]+|"
+    r"(?<![A-Za-z0-9+.\-:/])/(?!/)[^\s,;\"')\]]+|"
+    r"(?<![A-Za-z0-9])[A-Z]:[\\/][^\s,;\"')\]]+|"
+    r"\\\\[^\s,;\"')\]]+\\[^\s,;\"')\]]+"
+    r")"
+)
 
 
 def _contains_local_path(value: Any) -> bool:
@@ -4113,7 +4175,9 @@ def _contains_local_path(value: Any) -> bool:
         return False
     if _looks_like_local_path(text):
         return True
-    return any(_looks_like_local_path(part) for part in text.replace("\n", ";").split(";"))
+    if any(_looks_like_local_path(part) for part in text.replace("\n", ";").split(";")):
+        return True
+    return _LOCAL_PATH_TOKEN_RE.search(text) is not None
 
 
 # Redact by VALUE, not by key suffix: free-text fields such as source_url,
@@ -4417,6 +4481,22 @@ def _call_with_optional_progress(func: Any, *args: Any, progress: Any = None, **
     return func(*args, **kwargs)
 
 
+def _call_with_optional_keywords(func: Any, *args: Any, optional_keywords: dict[str, Any], **kwargs: Any) -> Any:
+    for key, value in optional_keywords.items():
+        if key == "before_publish" and _accepts_keyword(func, key):
+            kwargs[key] = value
+        elif value is not None and _accepts_keyword(func, key):
+            kwargs[key] = value
+    return func(*args, **kwargs)
+
+
+def _commit_discovery_job(manager: Any, job_id: str) -> None:
+    commit = getattr(manager, "commit", None)
+    if not callable(commit):
+        raise RuntimeError("the discovery job manager does not provide a commit barrier")
+    commit(job_id)
+
+
 def _call_search_publications(
     query: str,
     species: str,
@@ -4450,7 +4530,8 @@ def _formula_neutral(value: Any) -> Any:
         value = json.dumps(_jsonable(value), sort_keys=True)
     if not isinstance(value, str):
         return value
-    if value.startswith(FORMULA_PREFIXES):
+    stripped = value.lstrip(" \t\r\n")
+    if stripped.startswith(FORMULA_PREFIXES) or stripped.upper() in EXCEL_ERROR_LITERALS:
         return "'" + value
     return value
 
@@ -4958,6 +5039,7 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
                 }
             )
             progress(0.97, "Saving the publication snapshot.")
+            _commit_discovery_job(manager, _job_id)
             store.save_search(search_id, complete)
             progress(1.0, "Publication snapshot persisted.")
             return {"search_id": search_id}
@@ -5016,7 +5098,25 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
             # report "queued" for the rest of the server's life.
             self._mark_search_cancelled(store, cancelled.get("payload") or {})
         job = self._discovery_job(job_id)
+        if cancelled is not None and job["status"] == "complete":
+            return {
+                "cancelled": False,
+                "reason": "The job completed while the stop request was being processed; the completed result was kept.",
+                "job": job,
+            }
         if cancelled is None:
+            if job["status"] == "cancelled":
+                return {
+                    "cancelled": False,
+                    "reason": "The job was already cancelled.",
+                    "job": job,
+                }
+            if job["status"] not in {"complete", "failed", "interrupted", "cancelled"}:
+                return {
+                    "cancelled": False,
+                    "reason": "The job was already saving its result and could not be stopped.",
+                    "job": job,
+                }
             return {
                 "cancelled": False,
                 "reason": "The job had already finished before it could be cancelled.",
@@ -5040,22 +5140,27 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
         raw_error = job.get("error", "")
         if isinstance(raw_error, dict):
             raw_error = raw_error.get("message", "") or json.dumps(raw_error, sort_keys=True)
+        status = _api_job_status(str(job["status"]))
+        result = job.get("result") if str(job.get("status")) == "completed" else None
+        if result is not None and not _is_loopback_host(str(self.server.server_address[0])):
+            result = _redact_local_paths_for_network(result)
+        search_id = job.get("search_id") or job.get("payload", {}).get("search_id")
         return {
             "id": job.get("id", job.get("job_id")),
-            "search_id": job.get("search_id") or job.get("payload", {}).get("search_id"),
-            "status": _api_job_status(str(job["status"])),
+            "search_id": search_id,
+            "status": status,
             "error": raw_error,
             # progress/message are already persisted by the job manager on every
             # update; surfacing them lets the browser show real stage feedback
             # instead of a constant "search running" placeholder.
-            "progress": _api_job_progress(job.get("progress")),
-            "message": _clean_job_message(job.get("message")),
+            "progress": 1.0 if status == "complete" else _api_job_progress(job.get("progress")),
+            "message": "Job completed." if status == "complete" else _clean_job_message(job.get("message")),
             "created_at": job.get("created_at"),
             "updated_at": job.get("updated_at"),
             # Search jobs persist their payload separately and only return an id
             # here; prepare jobs return the whole bundle, which the browser
             # collects from this field when the job completes.
-            "result": job.get("result") if str(job.get("status")) == "completed" else None,
+            "result": result,
         }
 
     def _discovery_publication_search(self, search_id: str) -> dict[str, Any]:
@@ -5144,11 +5249,29 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
 
         def worker(_job_id: str, _payload: dict[str, Any], progress: Any) -> dict[str, Any]:
             progress(0.02, "Starting preparation.")
+            commit_calls = 0
 
             def stage(fraction: float, message: str) -> None:
                 progress(0.05 + 0.90 * min(1.0, max(0.0, float(fraction))), message)
 
-            return self._discovery_prepare(request, progress=stage)
+            def before_publish() -> None:
+                nonlocal commit_calls
+                if commit_calls:
+                    raise RuntimeError("the preparation attempted to publish more than once")
+                _commit_discovery_job(manager, _job_id)
+                commit_calls += 1
+
+            result = _call_with_optional_keywords(
+                self._discovery_prepare,
+                request,
+                progress=stage,
+                before_publish=before_publish,
+                optional_keywords={"remember_result": False},
+            )
+            if commit_calls != 1:
+                raise RuntimeError("the preparation returned without reaching its commit barrier")
+            self._remember_discovery_bundle(result)
+            return result
 
         job = manager.submit("publication_prepare", {"species": request.get("species")}, worker)
         return {"job_id": job["job_id"], "status": "queued"}
@@ -5157,6 +5280,8 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
         self,
         payload: dict[str, Any],
         progress: Callable[[float, str], None] | None = None,
+        before_publish: Callable[[], None] | None = None,
+        remember_result: bool = True,
     ) -> dict[str, Any]:
         from .discovery import normalize_species, prepare_geo_studies
 
@@ -5165,60 +5290,91 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
         query = str(payload.get("query") or "")
         bundle_id = secrets.token_hex(8)
         target = self.server.discovery_root / spec.key / "bundles" / bundle_id
+        publish_reached = before_publish is None
+
+        def guarded_before_publish() -> None:
+            nonlocal publish_reached
+            if before_publish is None:
+                return
+            before_publish()
+            publish_reached = True
+
+        publish_callback = guarded_before_publish if before_publish is not None else None
         search_id = str(payload.get("search_id") or "").strip()
         record_ids = payload.get("record_ids")
-        if search_id or record_ids is not None:
-            if not re.fullmatch(r"[a-f0-9]{16}", search_id):
-                raise ValueError("search_id is invalid")
-            if not isinstance(record_ids, list):
-                raise ValueError("record_ids must be a JSON list")
-            search = self.server.discovery_search_store.get_search(search_id)
-            if search is None:
-                raise FileNotFoundError("persisted discovery search was not found")
-            if str(search.get("species") or "").lower() != spec.key:
-                raise ValueError("search species does not match the preparation workspace")
-            persisted_query = str(search.get("query") or "").strip()
-            if query and query != persisted_query:
-                raise ValueError("preparation query does not match the persisted search")
-            from .discovery_federated import resolve_publication_records
-            from .discovery_prepare import prepare_publication_records
+        try:
+            if search_id or record_ids is not None:
+                if not re.fullmatch(r"[a-f0-9]{16}", search_id):
+                    raise ValueError("search_id is invalid")
+                if not isinstance(record_ids, list):
+                    raise ValueError("record_ids must be a JSON list")
+                search = self.server.discovery_search_store.get_search(search_id)
+                if search is None:
+                    raise FileNotFoundError("persisted discovery search was not found")
+                if str(search.get("species") or "").lower() != spec.key:
+                    raise ValueError("search species does not match the preparation workspace")
+                persisted_query = str(search.get("query") or "").strip()
+                if query and query != persisted_query:
+                    raise ValueError("preparation query does not match the persisted search")
+                from .discovery_federated import resolve_publication_records
+                from .discovery_prepare import prepare_publication_records
 
-            snapshot = search.get("snapshot") if isinstance(search.get("snapshot"), dict) else {}
-            records = _select_publication_snapshot_records(snapshot, record_ids)
-            # Resolution is roughly the first third of the work, preparation the rest.
-            records = _call_with_optional_progress(
-                resolve_publication_records,
-                records,
-                spec,
-                progress=(lambda fraction, message: progress(0.30 * fraction, message)) if progress else None,
-            )
-            result = _call_with_optional_progress(
-                prepare_publication_records,
-                records,
-                spec.key,
-                query=persisted_query,
-                materialize_dir=target,
-                progress=(lambda fraction, message: progress(0.30 + 0.70 * fraction, message)) if progress else None,
-            )
-            result["search_id"] = search_id
-        else:
-            # Backward-compatible GSE-only action for older clients.
-            accessions = payload.get("accessions")
-            if not isinstance(accessions, list):
-                raise ValueError("record_ids or legacy accessions must be a JSON list")
-            result = prepare_geo_studies(
-                accessions,
-                spec.key,
-                query=query,
-                materialize_dir=target,
-            )
+                snapshot = search.get("snapshot") if isinstance(search.get("snapshot"), dict) else {}
+                records = _select_publication_snapshot_records(snapshot, record_ids)
+                # Resolution is roughly the first third of the work, preparation the rest.
+                records = _call_with_optional_progress(
+                    resolve_publication_records,
+                    records,
+                    spec,
+                    progress=(lambda fraction, message: progress(0.30 * fraction, message)) if progress else None,
+                )
+                result = _call_with_optional_keywords(
+                    prepare_publication_records,
+                    records,
+                    spec.key,
+                    query=persisted_query,
+                    materialize_dir=target,
+                    optional_keywords={
+                        "progress": (
+                            lambda fraction, message: progress(0.30 + 0.70 * fraction, message)
+                        ) if progress else None,
+                        "before_publish": publish_callback,
+                    },
+                )
+                result["search_id"] = search_id
+            else:
+                # Backward-compatible GSE-only action for older clients.
+                accessions = payload.get("accessions")
+                if not isinstance(accessions, list):
+                    raise ValueError("record_ids or legacy accessions must be a JSON list")
+                result = _call_with_optional_keywords(
+                    prepare_geo_studies,
+                    accessions,
+                    spec.key,
+                    query=query,
+                    materialize_dir=target,
+                    optional_keywords={"before_publish": publish_callback},
+                )
+            if not publish_reached:
+                raise RuntimeError("the preparation implementation skipped its required commit barrier")
+        except BaseException:
+            if before_publish is not None:
+                shutil.rmtree(target, ignore_errors=True)
+            raise
         result["bundle_id"] = bundle_id
+        if remember_result:
+            self._remember_discovery_bundle(result)
+        return result
+
+    def _remember_discovery_bundle(self, result: dict[str, Any]) -> None:
+        bundle_id = str(result.get("bundle_id") or "")
+        if not re.fullmatch(r"[a-f0-9]{16}", bundle_id):
+            raise ValueError("prepared discovery result has an invalid bundle_id")
         with self.server.discovery_lock:
             self.server.remember_discovery(self.server.discovery_bundles, bundle_id, result)
         save_artifact = getattr(self.server.discovery_search_store, "save_artifact", None)
         if callable(save_artifact):
             save_artifact("bundle", bundle_id, result)
-        return result
 
     def _discovery_analyze(self, payload: dict[str, Any]) -> dict[str, Any]:
         from .discovery import normalize_species

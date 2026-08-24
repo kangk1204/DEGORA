@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import pandas as pd
 import pytest
+from openpyxl import load_workbook
 
 from degora.beginner import (
+    BeginnerInitError,
     build_catalog,
     catalog_row,
     default_study_id,
+    describe_inference,
     find_source_tables,
     infer_source_table,
     run_init,
@@ -82,6 +85,29 @@ def test_a_missing_optional_column_is_not_a_question(tmp_path) -> None:
     assert [choice.role for choice in inference.needs_a_question] == []
 
 
+def test_beginner_infers_hyphenated_stat_headers_without_collisions(tmp_path) -> None:
+    path = tmp_path / "hyphenated.csv"
+    pd.DataFrame(
+        {
+            "Gene Symbol": ["TP53", "BRCA1", "EGFR"],
+            "fold-change": [1.2, -0.4, 0.8],
+            "p-value": [0.01, 0.02, 0.03],
+            "q-value": [0.03, 0.04, 0.05],
+        }
+    ).to_csv(path, index=False)
+
+    inference = infer_source_table(path)
+
+    assert inference.looks_like_a_deg_table
+    assert inference.mapping == {
+        "gene_column": "Gene Symbol",
+        "lfc_column": "fold-change",
+        "p_column": "p-value",
+        "padj_column": "q-value",
+    }
+    assert {choice.role for choice in inference.needs_a_question} == {"lfc_column"}
+
+
 def test_an_ambiguous_effect_column_is_a_question_not_a_guess(tmp_path) -> None:
     """Picking between two effect columns is the reader's call, not a coin toss."""
 
@@ -103,6 +129,124 @@ def test_a_file_that_is_not_a_deg_table_is_recognised(tmp_path) -> None:
     assert not infer_source_table(path).looks_like_a_deg_table
 
 
+def test_unnamed_sample_metadata_is_not_promoted_by_plausible_values(tmp_path) -> None:
+    path = tmp_path / "metadata.csv"
+    pd.DataFrame(
+        {
+            "sample": [f"S{i}" for i in range(120)],
+            "group": [i % 2 for i in range(120)],
+            "qc_score": [(i % 10) / 10.0 for i in range(120)],
+        }
+    ).to_csv(path, index=False)
+
+    inference = infer_source_table(path)
+
+    assert inference.plausible["gene_column"] == ()
+    assert inference.plausible["lfc_column"]
+    assert inference.plausible["p_column"] == ("qc_score",)
+    assert not inference.looks_like_a_deg_table
+
+
+def test_beginner_init_does_not_auto_accept_sample_id_as_gene_column(tmp_path) -> None:
+    deg = tmp_path / "deg"
+    deg.mkdir()
+    pd.DataFrame(
+        {
+            "sample_id": [f"S{i}" for i in range(120)],
+            "log2FoldChange": [1.2 - i / 100 for i in range(120)],
+            "pvalue": [0.001 + i / 10000 for i in range(120)],
+        }
+    ).to_csv(deg / "sample_id_results.csv", index=False)
+
+    lines: list[str] = []
+    with pytest.raises(BeginnerInitError, match="no table was confirmed"):
+        run_init(tmp_path / "config.csv", deg, ask=lambda *_args, **_kwargs: "human", echo=lines.append)
+
+    assert not (tmp_path / "config.csv").exists()
+    assert any("this does not look like a DEG results table" in line for line in lines)
+
+
+def test_beginner_init_does_not_treat_gsm_values_as_gene_symbols_under_sample_id(tmp_path) -> None:
+    path = tmp_path / "sample_accessions.tsv"
+    pd.DataFrame(
+        {
+            "sample_id": [f"GSM{100000 + i}" for i in range(120)],
+            "log2FoldChange": [1.2 - i / 100 for i in range(120)],
+            "pvalue": [0.001 + i / 10000 for i in range(120)],
+        }
+    ).to_csv(path, sep="\t", index=False)
+
+    inference = infer_source_table(path)
+
+    assert inference.plausible["gene_column"] == ()
+    assert inference.mapping.get("gene_column", "") == ""
+    assert not inference.looks_like_a_deg_table
+
+
+def test_beginner_init_rejects_sample_id_even_when_values_look_like_gene_symbols(tmp_path) -> None:
+    path = tmp_path / "sample_ids_with_symbol_like_values.tsv"
+    pd.DataFrame(
+        {
+            "sample_id": [f"GENE{i}" for i in range(120)],
+            "log2FoldChange": [1.2 - i / 100 for i in range(120)],
+            "pvalue": [0.001 + i / 10000 for i in range(120)],
+        }
+    ).to_csv(path, sep="\t", index=False)
+
+    inference = infer_source_table(path)
+
+    assert inference.plausible["gene_column"] == ()
+    assert inference.mapping.get("gene_column", "") == ""
+    assert not inference.looks_like_a_deg_table
+
+
+@pytest.mark.parametrize(
+    ("identifier", "values", "space"),
+    [
+        ("ID", [f"ENSG{i:011d}.{i % 9 + 1}" for i in range(120)], "Ensembl ID"),
+        ("feature", [100000 + i for i in range(120)], "Entrez ID"),
+        ("identifier", [f"{1000 + i}_at" for i in range(120)], "Affymetrix probe ID"),
+    ],
+)
+def test_beginner_rescues_value_recognised_gene_identifiers_from_generic_headers(
+    tmp_path,
+    identifier: str,
+    values: list[object],
+    space: str,
+) -> None:
+    path = tmp_path / "generic_identifier.tsv"
+    pd.DataFrame(
+        {
+            identifier: values,
+            "log2FoldChange": [1.2 - i / 100 for i in range(120)],
+            "pvalue": [0.001 + i / 10000 for i in range(120)],
+        }
+    ).to_csv(path, sep="\t", index=False)
+
+    inference = infer_source_table(path)
+
+    assert inference.looks_like_a_deg_table
+    assert inference.mapping["gene_column"] == identifier
+    assert inference.identifier_space == space
+
+
+@pytest.mark.parametrize("identifier", ["gene_id", "entrez_id", "ensembl_gene_id", "probe_id", "transcript_id", "ID_REF"])
+def test_beginner_preserves_known_gene_identifier_headers(tmp_path, identifier: str) -> None:
+    path = tmp_path / "known_ids.tsv"
+    pd.DataFrame(
+        {
+            identifier: [f"G{i}" for i in range(120)],
+            "log2FoldChange": [1.2 - i / 100 for i in range(120)],
+            "pvalue": [0.001 + i / 10000 for i in range(120)],
+        }
+    ).to_csv(path, sep="\t", index=False)
+
+    inference = infer_source_table(path)
+
+    assert inference.looks_like_a_deg_table
+    assert inference.mapping["gene_column"] == identifier
+
+
 def test_an_unreadable_file_does_not_end_the_walk(tmp_path) -> None:
     path = tmp_path / "broken.xlsx"
     path.write_text("not a workbook", encoding="utf-8")
@@ -119,6 +263,27 @@ def test_find_source_tables_skips_dotfiles(tmp_path) -> None:
     (tmp_path / ".hidden.csv").write_text("gene,lfc\n", encoding="utf-8")
 
     assert [path.name for path in find_source_tables(tmp_path)] == ["real.csv"]
+
+
+def test_generated_degora_catalog_is_not_treated_as_a_source_table(tmp_path) -> None:
+    catalog = tmp_path / "old_config.csv"
+    pd.DataFrame(
+        {
+            "study_id": ["S1"],
+            "source_path": ["source.csv"],
+            "gene_column": ["gene"],
+            "lfc_column": ["log2FoldChange"],
+            "p_column": ["pvalue"],
+            "padj_column": ["padj"],
+            "n_ctrl": [3],
+            "n_treat": [3],
+        }
+    ).to_csv(catalog, index=False)
+
+    inference = infer_source_table(catalog)
+
+    assert not inference.looks_like_a_deg_table
+    assert "config catalog" in inference.problem
 
 
 def test_study_ids_are_readable_and_unique(tmp_path) -> None:
@@ -215,6 +380,111 @@ def test_the_guided_flow_produces_a_config_that_validates(tmp_path) -> None:
     assert validation["source_units"] == 2
 
 
+def test_beginner_rejects_probability_column_as_effect_size(tmp_path) -> None:
+    """A p-value column must not be accepted as the effect column."""
+
+    deg = tmp_path / "deg"
+    deg.mkdir()
+    _ambiguous_table(deg / "ambiguous.tsv")
+    _clean_table(deg / "clean.csv")
+
+    lines: list[str] = []
+    answers = iter(
+        [
+            "human",
+            "P.Value",
+            "FC",
+            "yes",
+            "a vs b",
+            "P1",
+            "3",
+            "3",
+            "yes",
+            "a vs b",
+            "P2",
+            "3",
+            "3",
+        ]
+    )
+
+    summary = run_init(
+        tmp_path / "config.csv",
+        deg,
+        ask=lambda question, default="": next(answers),
+        echo=lines.append,
+    )
+
+    assert summary["n_contrasts"] == 2
+    assert any("cannot be used as both effect-size column and p-value column" in line for line in lines)
+    config = pd.read_csv(tmp_path / "config.csv")
+    ambiguous = config.loc[config["source_path"].eq("deg/ambiguous.tsv")].iloc[0]
+    assert ambiguous["lfc_column"] == "FC"
+    assert ambiguous["p_column"] == "P.Value"
+
+
+def test_beginner_rejects_a_distinct_probability_candidate_as_effect_size(tmp_path) -> None:
+    deg = tmp_path / "deg"
+    deg.mkdir()
+    path = deg / "ambiguous.tsv"
+    pd.DataFrame(
+        {
+            "Gene symbol": [f"G{index}" for index in range(60)],
+            "FC": [1.5] * 60,
+            "ratio": [1.2] * 60,
+            "P.Value": [0.01] * 60,
+            "p_backup": [0.02] * 60,
+            "adj.P.Val": [0.05] * 60,
+        }
+    ).to_csv(path, sep="\t", index=False)
+    lines: list[str] = []
+    answers = iter(["human", "p_backup", "FC", "yes", "a vs b", "P1", "3", "3"])
+
+    summary = run_init(
+        tmp_path / "config.csv",
+        deg,
+        ask=lambda question, default="": next(answers),
+        echo=lines.append,
+    )
+
+    assert summary["n_contrasts"] == 1
+    assert any("not one of the available lfc column choices" in line for line in lines)
+    config = pd.read_csv(tmp_path / "config.csv")
+    assert config.loc[0, "lfc_column"] == "FC"
+    assert config.loc[0, "p_column"] == "P.Value"
+
+
+def test_beginner_skips_after_three_bad_column_answers(tmp_path) -> None:
+    deg = tmp_path / "deg"
+    deg.mkdir()
+    _ambiguous_table(deg / "ambiguous.tsv")
+    _clean_table(deg / "clean.csv")
+
+    answers = iter(
+        [
+            "human",
+            "not_a_column",
+            "also_missing",
+            "still_missing",
+            "yes",
+            "a vs b",
+            "P2",
+            "3",
+            "3",
+        ]
+    )
+
+    summary = run_init(
+        tmp_path / "config.csv",
+        deg,
+        ask=lambda question, default="": next(answers),
+        echo=lambda _line: None,
+    )
+
+    assert summary["skipped"] == [{"path": "ambiguous.tsv", "reason": "column mapping was not usable"}]
+    config = pd.read_csv(tmp_path / "config.csv")
+    assert config["source_path"].tolist() == ["deg/clean.csv"]
+
+
 def test_an_unsure_reader_skips_the_table_rather_than_defaulting(tmp_path) -> None:
     """Pressing enter must never stand in for "yes" on the direction question."""
 
@@ -235,6 +505,26 @@ def test_an_unsure_reader_skips_the_table_rather_than_defaulting(tmp_path) -> No
     ]
 
 
+def test_invalid_direction_answers_are_bounded_and_skip_the_table(tmp_path) -> None:
+    deg = tmp_path / "deg"
+    deg.mkdir()
+    _clean_table(deg / "first.csv")
+    _clean_table(deg / "second.csv")
+    answers = iter(["human", "maybe", "maybe", "maybe", "yes", "a vs b", "P2", "3", "3"])
+    lines: list[str] = []
+
+    summary = run_init(
+        tmp_path / "config.csv",
+        deg,
+        ask=lambda question, default="": next(answers),
+        echo=lines.append,
+    )
+
+    assert summary["n_contrasts"] == 1
+    assert summary["skipped"] == [{"path": "first.csv", "reason": "contrast direction not confirmed"}]
+    assert any("not confirmed after three tries" in line for line in lines)
+
+
 def test_nothing_confirmed_writes_nothing(tmp_path) -> None:
     deg = tmp_path / "deg"
     deg.mkdir()
@@ -243,6 +533,20 @@ def test_nothing_confirmed_writes_nothing(tmp_path) -> None:
 
     with pytest.raises(ValueError, match="nothing to write"):
         run_init(config, deg, ask=lambda question, default="": "human", echo=lambda _line: None)
+
+    assert not config.exists()
+
+
+def test_all_bad_column_answers_write_nothing(tmp_path) -> None:
+    deg = tmp_path / "deg"
+    deg.mkdir()
+    _ambiguous_table(deg / "ambiguous.tsv")
+
+    answers = iter(["human", "missing_1", "missing_2", "missing_3"])
+    config = tmp_path / "config.csv"
+
+    with pytest.raises(ValueError, match="nothing to write"):
+        run_init(config, deg, ask=lambda question, default="": next(answers), echo=lambda _line: None)
 
     assert not config.exists()
 
@@ -328,6 +632,278 @@ def test_the_fallback_option_list_is_not_the_whole_spreadsheet(tmp_path) -> None
     assert "T0 - CPM" not in inference.plausible["gene_column"]
 
 
+def test_probability_columns_are_not_lfc_fallback_options_when_effects_exist(tmp_path) -> None:
+    path = tmp_path / "unnamed_effects.tsv"
+    pd.DataFrame(
+        {
+            "NAME": [f"G{i}" for i in range(120)],
+            "FC": [1.5] * 120,
+            "ratio": [1.2] * 120,
+            "P.Value": [0.01] * 120,
+            "adj.P.Val": [0.05] * 120,
+        }
+    ).to_csv(path, sep="\t", index=False)
+
+    inference = infer_source_table(path)
+
+    assert inference.plausible["lfc_column"] == ("FC", "ratio")
+    assert "P.Value" not in inference.plausible["lfc_column"]
+    assert "adj.P.Val" not in inference.plausible["lfc_column"]
+
+
+def test_treatment_label_p_in_effect_name_is_not_mistaken_for_a_pvalue(tmp_path) -> None:
+    path = tmp_path / "treatment_p.tsv"
+    pd.DataFrame(
+        {
+            "NAME": [f"G{i}" for i in range(120)],
+            "ratio_P": [1.2 + i / 1000 for i in range(120)],
+            "FC (P vs C)": [0.5 + i / 1000 for i in range(120)],
+            "P.Value": [0.001 + i / 10000 for i in range(120)],
+        }
+    ).to_csv(path, sep="\t", index=False)
+
+    inference = infer_source_table(path)
+
+    assert "ratio_P" in inference.plausible["lfc_column"]
+    assert "FC (P vs C)" in inference.plausible["lfc_column"]
+    assert "P.Value" not in inference.plausible["lfc_column"]
+
+
+def test_numeric_entrez_identifiers_remain_gene_column_options(tmp_path) -> None:
+    path = tmp_path / "numeric_ids.tsv"
+    pd.DataFrame(
+        {
+            "feature": [1000 + i for i in range(120)],
+            "log2FoldChange": [1.2 + i / 1000 for i in range(120)],
+            "P.Value": [0.001 + i / 10000 for i in range(120)],
+        }
+    ).to_csv(path, sep="\t", index=False)
+
+    inference = infer_source_table(path)
+
+    assert inference.looks_like_a_deg_table
+    assert "feature" in inference.plausible["gene_column"]
+    assert inference.identifier_space_for("feature") == "Entrez ID"
+
+
+def test_padj_spellings_are_not_lfc_fallback_options(tmp_path) -> None:
+    path = tmp_path / "padj_spellings.tsv"
+    pd.DataFrame(
+        {
+            "NAME": [f"G{i}" for i in range(120)],
+            "effect": [0.5] * 120,
+            "padj": [0.01] * 120,
+            "p_adj": [0.02] * 120,
+            "p.adjust": [0.03] * 120,
+        }
+    ).to_csv(path, sep="\t", index=False)
+
+    inference = infer_source_table(path)
+
+    assert "effect" in inference.plausible["lfc_column"]
+    assert "padj" not in inference.plausible["lfc_column"]
+    assert "p_adj" not in inference.plausible["lfc_column"]
+    assert "p.adjust" not in inference.plausible["lfc_column"]
+
+
+def test_unit_interval_effect_values_stay_lfc_fallback_options(tmp_path) -> None:
+    path = tmp_path / "small_effects.tsv"
+    pd.DataFrame(
+        {
+            "NAME": [f"G{i}" for i in range(120)],
+            "baseMean": [100.0 + i for i in range(120)],
+            "effect": [0.1 + (i % 8) * 0.1 for i in range(120)],
+            "P.Value": [0.01] * 120,
+        }
+    ).to_csv(path, sep="\t", index=False)
+
+    inference = infer_source_table(path)
+
+    assert "effect" in inference.plausible["lfc_column"]
+    assert "baseMean" in inference.plausible["lfc_column"]
+    assert "P.Value" not in inference.plausible["lfc_column"]
+
+
+def test_binary_significance_flag_is_not_inferred_as_a_probability_column(tmp_path) -> None:
+    path = tmp_path / "thresholded_flags.tsv"
+    pd.DataFrame(
+        {
+            "gene": [f"G{i}" for i in range(120)],
+            "log2FoldChange": [1.0 if i % 2 else -1.0 for i in range(120)],
+            "significant": [i % 2 for i in range(120)],
+        }
+    ).to_csv(path, sep="\t", index=False)
+
+    inference = infer_source_table(path)
+
+    assert "significant" not in inference.plausible["p_column"]
+    assert not inference.looks_like_a_deg_table
+
+
+def test_binary_values_under_a_pvalue_header_are_rejected_during_init_inference(tmp_path) -> None:
+    path = tmp_path / "thresholded_pvalue.tsv"
+    pd.DataFrame(
+        {
+            "gene": [f"G{i}" for i in range(120)],
+            "log2FoldChange": [1.0 if i % 2 else -1.0 for i in range(120)],
+            "pvalue": [i % 2 for i in range(120)],
+        }
+    ).to_csv(path, sep="\t", index=False)
+
+    inference = infer_source_table(path)
+
+    assert not inference.looks_like_a_deg_table
+    assert "p_column" not in inference.mapping
+    assert "binary significance flag" in inference.problem
+    assert "unrounded gene-level p-values" in "\n".join(describe_inference(inference))
+
+
+def test_probability_vector_with_zero_one_and_interior_values_remains_usable(tmp_path) -> None:
+    path = tmp_path / "real_pvalues.tsv"
+    pd.DataFrame(
+        {
+            "gene": [f"G{i}" for i in range(120)],
+            "log2FoldChange": [1.0 if i % 2 else -1.0 for i in range(120)],
+            "pvalue": [0.0, 1.0, 0.5] * 40,
+        }
+    ).to_csv(path, sep="\t", index=False)
+
+    inference = infer_source_table(path)
+
+    assert inference.looks_like_a_deg_table
+    assert inference.mapping["p_column"] == "pvalue"
+    assert inference.problem == ""
+
+
+def test_probability_only_numeric_columns_still_remain_lfc_fallback_options(tmp_path) -> None:
+    path = tmp_path / "probability_only.tsv"
+    pd.DataFrame(
+        {
+            "NAME": [f"G{i}" for i in range(120)],
+            "P.Value": [0.01] * 120,
+            "adj.P.Val": [0.05] * 120,
+        }
+    ).to_csv(path, sep="\t", index=False)
+
+    inference = infer_source_table(path)
+
+    assert inference.plausible["lfc_column"] == ("P.Value", "adj.P.Val")
+
+
+def test_lfc_answer_is_not_rejected_before_missing_pvalue_is_asked(tmp_path) -> None:
+    deg = tmp_path / "deg"
+    deg.mkdir()
+    pd.DataFrame(
+        {
+            "Gene symbol": [f"G{i}" for i in range(120)],
+            "FC": [1.2] * 120,
+            "ratio": [0.8] * 120,
+            "adj.P.Val": [0.01] * 120,
+        }
+    ).to_csv(deg / "padj_only_ambiguous_lfc.tsv", sep="\t", index=False)
+
+    answers = iter(["human", "ratio", "adj.P.Val", "yes", "a vs b", "P1", "3", "3"])
+
+    summary = run_init(
+        tmp_path / "config.csv",
+        deg,
+        ask=lambda question, default="": next(answers),
+        echo=lambda _line: None,
+    )
+
+    assert summary["n_contrasts"] == 1
+    assert summary["skipped"] == []
+    config = pd.read_csv(tmp_path / "config.csv")
+    row = config.iloc[0]
+    assert row["lfc_column"] == "ratio"
+    assert row["p_column"] == "adj.P.Val"
+    assert row["padj_column"] == "adj.P.Val"
+
+
+def test_empty_required_column_answer_retries_instead_of_skipping_immediately(tmp_path) -> None:
+    deg = tmp_path / "deg"
+    deg.mkdir()
+    pd.DataFrame(
+        {
+            "Gene symbol": [f"G{i}" for i in range(120)],
+            "FC": [1.2] * 120,
+            "ratio": [0.8] * 120,
+            "adj.P.Val": [0.01] * 120,
+        }
+    ).to_csv(deg / "padj_only.tsv", sep="\t", index=False)
+
+    lines: list[str] = []
+    answers = iter(["human", "", "ratio", "adj.P.Val", "yes", "a vs b", "P1", "3", "3"])
+    summary = run_init(
+        tmp_path / "config.csv",
+        deg,
+        ask=lambda question, default="": next(answers),
+        echo=lines.append,
+    )
+
+    assert summary["n_contrasts"] == 1
+    assert any("lfc column is required" in line and "Try again" in line for line in lines)
+    assert pd.read_csv(tmp_path / "config.csv").loc[0, "lfc_column"] == "ratio"
+
+
+def test_init_rejects_legacy_xls_output_before_prompting(tmp_path) -> None:
+    with pytest.raises(BeginnerInitError, match=r"cannot write the legacy \.xls format"):
+        run_init(
+            tmp_path / "config.xls",
+            tmp_path / "missing-input-dir",
+            ask=lambda *_args, **_kwargs: pytest.fail("init should reject .xls before prompting"),
+        )
+
+
+def test_init_rejects_directory_output_even_with_force_before_prompting(tmp_path) -> None:
+    output = tmp_path / "config_dir"
+    output.mkdir()
+
+    with pytest.raises(BeginnerInitError, match="output must be a file path"):
+        run_init(
+            output,
+            tmp_path / "missing-input-dir",
+            force=True,
+            ask=lambda *_args, **_kwargs: pytest.fail("init should reject a directory before prompting"),
+        )
+
+
+def test_init_rejects_zero_row_tables_before_prompting_or_writing(tmp_path) -> None:
+    deg = tmp_path / "deg"
+    deg.mkdir()
+    pd.DataFrame(columns=["gene", "log2FoldChange", "pvalue"]).to_csv(deg / "empty.csv", index=False)
+    config = tmp_path / "config.csv"
+
+    with pytest.raises(BeginnerInitError, match="no data rows"):
+        run_init(
+            config,
+            deg,
+            ask=lambda *_args, **_kwargs: pytest.fail("init should reject empty tables before prompting"),
+        )
+
+    assert not config.exists()
+
+
+def test_init_skips_an_empty_table_when_a_valid_deg_table_is_present(tmp_path) -> None:
+    deg = tmp_path / "deg"
+    deg.mkdir()
+    pd.DataFrame(columns=["gene", "log2FoldChange", "pvalue"]).to_csv(deg / "empty.csv", index=False)
+    _clean_table(deg / "valid.csv")
+
+    answers = iter(["human", "yes", "a vs b", "P1", "3", "3"])
+    summary = run_init(
+        tmp_path / "config.csv",
+        deg,
+        ask=lambda question, default="": next(answers),
+        echo=lambda _line: None,
+    )
+
+    assert summary["n_contrasts"] == 1
+    assert summary["skipped"] == [
+        {"path": "empty.csv", "reason": "this table has column headers but no data rows"}
+    ]
+
+
 def test_only_columns_inside_zero_and_one_are_offered_as_a_p_value(tmp_path) -> None:
     """Offering baseMean as a p-value candidate is offering nonsense."""
 
@@ -386,7 +962,7 @@ def test_a_long_option_list_is_truncated_with_a_way_out(tmp_path) -> None:
 
     options_line = next(line for line in lines if line.strip().startswith("Options:"))
     assert options_line.count(",") <= MAX_OPTIONS_SHOWN
-    assert "type the exact column name" in options_line
+    assert "type another listed choice" in options_line
 
 
 def test_an_ensembl_table_and_a_symbol_table_are_flagged_before_the_run(tmp_path) -> None:
@@ -429,6 +1005,39 @@ def test_an_ensembl_table_and_a_symbol_table_are_flagged_before_the_run(tmp_path
     assert "ensembl_study.csv" in summary["identifier_spaces"]["Ensembl ID"]
     assert "symbol_study.csv" in summary["identifier_spaces"]["gene symbol"]
     # And the reader is told, not just the return value.
+    assert any("WARNING" in line and "identifier space" in line for line in lines)
+
+
+def test_unrecognised_identifier_space_is_flagged_before_writing_config(tmp_path) -> None:
+    deg = tmp_path / "deg"
+    deg.mkdir()
+    pd.DataFrame(
+        {
+            "gene": [f"chr1:{index}-{index + 1}" for index in range(150)],
+            "log2FoldChange": [1.0] * 150,
+            "pvalue": [0.001] * 150,
+        }
+    ).to_csv(deg / "unknown_ids.csv", index=False)
+    _clean_table(deg / "symbols.csv")
+
+    config = tmp_path / "config.csv"
+    lines: list[str] = []
+    warning_saw_no_output = False
+
+    def echo(line: str) -> None:
+        nonlocal warning_saw_no_output
+        if "WARNING" in line and "identifier space" in line:
+            warning_saw_no_output = not config.exists()
+        lines.append(line)
+
+    answers = iter(["human", "yes", "a vs b", "P1", "3", "3", "yes", "a vs b", "P2", "3", "3"])
+    summary = run_init(config, deg, ask=lambda question, default="": next(answers), echo=echo)
+
+    assert config.exists()
+    assert warning_saw_no_output
+    assert summary["identifier_warning"]
+    assert "unrecognised identifiers" in summary["identifier_warning"]
+    assert "unknown_ids.csv" in summary["identifier_spaces"]["unrecognised identifiers"]
     assert any("WARNING" in line and "identifier space" in line for line in lines)
 
 
@@ -502,6 +1111,52 @@ def test_the_identifier_space_follows_the_column_the_reader_picked(tmp_path) -> 
     assert picked_symbol["identifier_warning"] == "", "both tables are symbols; nothing to warn about"
 
 
+def test_identifier_warning_ignores_excluded_reversed_tables(tmp_path) -> None:
+    deg = tmp_path / "deg"
+    deg.mkdir()
+    pd.DataFrame(
+        {
+            "gene": [f"ENSG{index:011d}" for index in range(150)],
+            "log2FoldChange": [1.0] * 150,
+            "pvalue": [0.001] * 150,
+        }
+    ).to_csv(deg / "excluded_ensembl.csv", index=False)
+    _clean_table(deg / "symbols_a.csv")
+    _clean_table(deg / "symbols_b.csv")
+
+    answers = iter(
+        [
+            "human",
+            "no",
+            "a vs b",
+            "P0",
+            "3",
+            "3",
+            "yes",
+            "a vs b",
+            "P1",
+            "3",
+            "3",
+            "yes",
+            "a vs b",
+            "P2",
+            "3",
+            "3",
+        ]
+    )
+    summary = run_init(
+        tmp_path / "config.csv",
+        deg,
+        ask=lambda question, default="": next(answers),
+        echo=lambda _line: None,
+    )
+
+    assert summary["identifier_warning"] == ""
+    assert summary["n_source_units"] == 2
+    assert summary["n_excluded_reversed_direction"] == 1
+    assert "excluded_ensembl.csv" in summary["identifier_spaces"]["Ensembl ID"]
+
+
 def test_tables_from_one_study_cannot_meet_the_replication_rule(tmp_path) -> None:
     """Five tables from one GEO series is a config that scores nothing."""
 
@@ -540,3 +1195,81 @@ def test_two_source_units_raise_no_replication_warning(tmp_path) -> None:
     )
 
     assert summary["replication_warning"] == ""
+
+
+def test_pvalue_override_resets_inferred_table_scope_to_auto(tmp_path) -> None:
+    from degora.beginner import ContrastAnswers
+
+    path = tmp_path / "scope.csv"
+    pd.DataFrame(
+        {
+            "gene": [f"G{i}" for i in range(200)],
+            "log2FoldChange": [1.0] * 200,
+            "pvalue": [0.001 if i < 20 else 0.9 for i in range(200)],
+            "pvalue_alt": [0.001] * 200,
+        }
+    ).to_csv(path, index=False)
+    inference = infer_source_table(path)
+
+    row = catalog_row(
+        inference,
+        ContrastAnswers(
+            positive_means_up_in_treated=True,
+            source_unit_id="P1",
+            overrides={"p_column": "pvalue_alt"},
+        ),
+        study_id="S1",
+        catalog_dir=tmp_path,
+    )
+
+    assert inference.table_scope == "full_results"
+    assert row["p_column"] == "pvalue_alt"
+    assert row["table_scope"] == "auto"
+
+
+def test_init_xlsx_stores_formula_like_text_as_literals(tmp_path) -> None:
+    deg = tmp_path / "deg"
+    deg.mkdir()
+    _clean_table(deg / "clean.csv")
+
+    answers = iter(["human", "yes", "-Dox vs +Dox", "=paper", "3", "3"])
+    output = tmp_path / "config.xlsx"
+
+    run_init(output, deg, ask=lambda question, default="": next(answers), echo=lambda _line: None)
+
+    workbook = load_workbook(output, data_only=False)
+    sheet = workbook["Contrasts"]
+    rows = list(sheet.iter_rows(values_only=False))
+    headers = [cell.value for cell in rows[0]]
+    values = {header: rows[1][index] for index, header in enumerate(headers)}
+    assert values["condition"].value == "-Dox vs +Dox"
+    assert values["condition"].data_type == "s"
+    assert values["source_unit_id"].value == "=paper"
+    assert values["source_unit_id"].data_type == "s"
+
+
+def test_identifier_warning_is_emitted_before_config_is_written(tmp_path) -> None:
+    deg = tmp_path / "deg"
+    deg.mkdir()
+    _clean_table(deg / "symbols.csv")
+    pd.DataFrame(
+        {
+            "gene": ["A-1", "B:2", "C/3", "D 4"] * 50,
+            "log2FoldChange": [1.0] * 200,
+            "pvalue": [0.01] * 200,
+        }
+    ).to_csv(deg / "unknown_ids.csv", index=False)
+    output = tmp_path / "config.csv"
+    answers = iter(["human", "yes", "a vs b", "P1", "3", "3", "yes", "a vs b", "P2", "3", "3"])
+    warning_seen_before_write = False
+
+    def echo(line: str) -> None:
+        nonlocal warning_seen_before_write
+        if line.startswith("WARNING:") and "identifier" in line:
+            warning_seen_before_write = not output.exists()
+
+    summary = run_init(output, deg, ask=lambda question, default="": next(answers), echo=echo)
+
+    assert warning_seen_before_write is True
+    assert output.exists()
+    assert "unrecognised identifiers" in summary["identifier_warning"]

@@ -300,6 +300,7 @@ class _RunProgress:
         self._started = time.monotonic()
         self._phase_started = self._started
         self._phase = ""
+        self._last_update = 0.0
 
     def start(self, phase: str) -> None:
         if not self.enabled:
@@ -315,6 +316,15 @@ class _RunProgress:
         suffix = f" - {detail}" if detail else ""
         print(f"[{self._elapsed():>6.1f}s] {self._phase} done in {took:.1f}s{suffix}", flush=True)
         self._phase = ""
+
+    def update(self, detail: str, *, force: bool = False) -> None:
+        if not self.enabled or not self._phase:
+            return
+        now = time.monotonic()
+        if not force and now - self._last_update < 1.0:
+            return
+        self._last_update = now
+        print(f"[{self._elapsed():>6.1f}s] {self._phase}: {detail}", flush=True)
 
     def _elapsed(self) -> float:
         return time.monotonic() - self._started
@@ -431,11 +441,27 @@ def _run_pipeline(
 
     version_info = runtime_version_info()
     progress = _RunProgress(enabled=not getattr(args, "quiet", False))
+
+    def validation_progress(done: int, total: int, study_id: str) -> None:
+        if total <= 0:
+            return
+        step = max(1, min(1000, total // 100 or 1))
+        if done in {0, 1, total} or done % step == 0:
+            suffix = f" ({study_id})" if study_id else ""
+            progress.update(f"checked {done:,}/{total:,} active row(s){suffix}", force=done in {0, total})
+
     progress.start("Validating the catalog and source tables")
-    validation = validate_catalog_inputs(config)
+    validation = validate_catalog_inputs(config, progress=validation_progress)
     progress.done(f"{validation.get('active_contrasts', '?')} contrast(s)")
     print("DEGORA config OK")
     _print_validation_summary(validation)
+    source_units = int(validation.get("source_units") or 0)
+    if source_units < min_studies:
+        raise CliUsageError(
+            f"DEGORA cannot run at min_studies={min_studies}: this config has only "
+            f"{source_units} independent source unit(s). A run would score zero genes. "
+            "Give each independent study its own source_unit_id, add another study, or lower Project.min_studies."
+        )
 
     progress.start("Harmonizing source tables")
     metrics = run_slice(config, output_dir, harmonized_dir, min_studies=min_studies)
@@ -666,9 +692,12 @@ def main(argv: list[str] | None = None) -> int:
             print("Next: edit the Contrasts sheet, then run: degora validate <your_config.xlsx>")
             return 0
         if args.command == "init":
-            from .beginner import run_init
+            from .beginner import BeginnerInitError, run_init
 
-            summary = run_init(args.output, args.deg_dir, force=args.force)
+            try:
+                summary = run_init(args.output, args.deg_dir, force=args.force)
+            except BeginnerInitError as exc:
+                raise CliUsageError(str(exc)) from exc
             print("")
             print(f"Wrote config: {summary['config_path']}")
             print(f"- Contrasts: {summary['n_contrasts']}")
@@ -713,7 +742,19 @@ def main(argv: list[str] | None = None) -> int:
                 validate_catalog_inputs(config)
             settings = read_excel_settings(config)
             _validate_score_version(settings)
-            validation = validate_catalog_inputs(config)
+            progress = _RunProgress()
+
+            def validation_progress(done: int, total: int, study_id: str) -> None:
+                if total <= 0:
+                    return
+                step = max(1, min(1000, total // 100 or 1))
+                if done in {0, 1, total} or done % step == 0:
+                    suffix = f" ({study_id})" if study_id else ""
+                    progress.update(f"checked {done:,}/{total:,} active row(s){suffix}", force=done in {0, total})
+
+            progress.start("Validating the catalog and source tables")
+            validation = validate_catalog_inputs(config, progress=validation_progress)
+            progress.done(f"{validation.get('active_contrasts', '?')} contrast(s)")
             print("DEGORA config OK")
             _print_validation_summary(validation, include_excluded=True)
             warnings = [str(message).strip() for message in validation.get("warnings", []) if str(message).strip()]

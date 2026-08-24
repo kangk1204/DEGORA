@@ -841,7 +841,16 @@ def test_study_gene_evidence_preserves_verified_sign_convention() -> None:
     ).any()
 
 
-def test_write_score_database_emits_sqlite_and_sidecars(tmp_path) -> None:
+def test_write_score_database_emits_sqlite_and_sidecars(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        score_db,
+        "runtime_version_info",
+        lambda: {
+            "degora_version": __version__,
+            "degora_code_revision": "abc1234-dirty",
+            "degora_code_dirty": "true",
+        },
+    )
     harmonized_path = tmp_path / "harmonized.csv"
     harmonized = _harmonized()
     harmonized["source_path"] = str(tmp_path / "inputs" / "source.csv")
@@ -870,10 +879,14 @@ def test_write_score_database_emits_sqlite_and_sidecars(tmp_path) -> None:
     assert (tmp_path / "degora_scores.db.source").exists()
     assert summary["n_gene_scores"] == 3
     assert summary["degora_version"] == __version__
+    assert summary["degora_code_revision"] == "abc1234-dirty"
+    assert summary["degora_code_dirty"] == "true"
     assert summary["score_csv"] == str((tmp_path / "degora_gene_scores.csv").resolve())
     assert summary["db_path"] == str(db_path.resolve())
     metadata_json = json.loads((tmp_path / "degora_score_metadata.json").read_text())
     assert metadata_json["degora_version"] == __version__
+    assert metadata_json["degora_code_revision"] == "abc1234-dirty"
+    assert metadata_json["degora_code_dirty"] == "true"
     assert metadata_json["primary_rank_column"] == "quality_weighted_degora_rank"
     assert metadata_json["path_base"] == "output_directory"
     assert metadata_json["source_path_base"] == "output_directory"
@@ -937,6 +950,8 @@ def test_write_score_database_emits_sqlite_and_sidecars(tmp_path) -> None:
     assert "source_reliability_weight" in quality_columns
     assert json.loads(metadata["score_weights"])["support_score"] == 0.30
     assert metadata["degora_version"] == __version__
+    assert metadata["degora_code_revision"] == "abc1234-dirty"
+    assert metadata["degora_code_dirty"] == "true"
     assert stored_source_paths == {"inputs/source.csv"}
     assert study_source_paths == {"inputs/source.csv"}
     assert "priority_score_weights" in metadata

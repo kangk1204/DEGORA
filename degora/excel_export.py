@@ -20,11 +20,25 @@ from .provenance import (
     set_reproducible_workbook_properties,
     write_source_sidecar,
 )
+from .score_db import HETEROGENEITY_RULE, RANDOM_EFFECTS_STOUFFER_RULE
 
 
 EXCEL_MAX_ROWS = 1_048_576
 DEFAULT_WORKBOOK_NAME = "DEGORA_output.xlsx"
 COMMENT_AUTHOR = "DEGORA"
+FORMULA_PREFIX_WHITESPACE = " \t\r\n"
+EXCEL_ERROR_LITERALS = frozenset(
+    {
+        "#DIV/0!",
+        "#N/A",
+        "#NAME?",
+        "#NULL!",
+        "#NUM!",
+        "#REF!",
+        "#VALUE!",
+        "#GETTING_DATA",
+    }
+)
 
 # Large corpora (e.g. the cross-platform hypoxia benchmark) can produce hundreds of
 # thousands of per-source evidence rows. Writing them all into a single Excel sheet is slow
@@ -176,12 +190,16 @@ COLUMN_DEFINITIONS: dict[str, tuple[str, str, str]] = {
     "stouffer_padj": ("BH-adjusted Stouffer p value; a ranking aid, not a calibrated FDR.", "0-1", "blank means unavailable"),
     "heterogeneity_q": ("Cochran-like heterogeneity Q across source units.", "non-negative number", "blank means unavailable"),
     "heterogeneity_df": ("Degrees of freedom for heterogeneity summary.", "integer", "blank means unavailable"),
-    "heterogeneity_i2": ("Descriptive (Q-df)/Q over sqrt(N)-weighted source-unit z values; positively biased, NOT a calibrated Higgins' I2 (cf. effect_meta_i2) -- audit/review-trigger only.", "0-1, higher is more heterogeneous", "blank means unavailable"),
+    "heterogeneity_i2": (HETEROGENEITY_RULE, "0-1, higher is more heterogeneous", "blank means unavailable"),
     "heterogeneity_flag": ("Text flag summarizing source-unit heterogeneity.", "text label", "blank means not flagged"),
-    "re_stouffer_z": ("Heterogeneity-aware random-effects Stouffer z statistic.", "signed z score", "blank means unavailable"),
-    "re_stouffer_p": ("P value from random-effects Stouffer summary.", "0-1", "blank means unavailable"),
-    "re_stouffer_padj": ("BH-adjusted p from the random-effects Stouffer summary; a screening/triage field inheriting the small-k-biased heterogeneity_i2 shrinkage, not a calibrated FDR.", "0-1", "blank means unavailable"),
-    "re_stouffer_shrinkage_factor": ("Shrinkage factor applied in heterogeneity-aware Stouffer summary.", "0-1", "blank means unavailable"),
+    "re_stouffer_z": (f"Z statistic from the {RANDOM_EFFECTS_STOUFFER_RULE}.", "signed z score", "blank means unavailable"),
+    "re_stouffer_p": (f"P value from the {RANDOM_EFFECTS_STOUFFER_RULE}.", "0-1", "blank means unavailable"),
+    "re_stouffer_padj": (f"BH-adjusted p from the {RANDOM_EFFECTS_STOUFFER_RULE}.", "0-1", "blank means unavailable"),
+    "re_stouffer_shrinkage_factor": (
+        f"Divisor applied in the {RANDOM_EFFECTS_STOUFFER_RULE}.",
+        ">=1, higher means more descriptive shrinkage",
+        "blank means unavailable",
+    ),
     "rra_rho": ("RobustRankAggreg-style rho statistic; a ranking aid, not a calibrated FDR or p-value. Use rra_neglog10_rho for top genes when rho underflows.", "0-1, lower is stronger", "blank means unavailable"),
     "rra_neglog10_rho": ("Negative log10 transform of RRA rho.", "higher is stronger", "blank means unavailable"),
     "rra_rank": ("Rank implied by RobustRankAggreg-style evidence.", "1 is strongest", "blank means unavailable"),
@@ -577,10 +595,13 @@ def _force_formula_like_text(writer: pd.ExcelWriter) -> None:
     for worksheet in writer.book.worksheets:
         for row in worksheet.iter_rows():
             for cell in row:
-                if cell.data_type not in {"s", "f", "str"}:
+                if cell.data_type not in {"s", "f", "str", "e"}:
                     continue
                 value = cell.value
-                if isinstance(value, str) and value.startswith(("=", "+", "-", "@")):
+                if not isinstance(value, str):
+                    continue
+                stripped = value.lstrip(FORMULA_PREFIX_WHITESPACE)
+                if stripped.startswith(("=", "+", "-", "@")) or stripped.upper() in EXCEL_ERROR_LITERALS:
                     cell.data_type = "s"
 
 

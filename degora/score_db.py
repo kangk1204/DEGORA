@@ -233,7 +233,7 @@ HETEROGENEITY_RULE = (
 RANDOM_EFFECTS_STOUFFER_RULE = (
     "descriptive heterogeneity-aware reporting lane only: stouffer_z / sqrt(1 + "
     "heterogeneity_i2 * (k_source_units - 1)). The divisor is a bounded ad-hoc shrinkage "
-    "and inherits the descriptive heterogeneity index's small-k positive bias; "
+    "based on the descriptive heterogeneity index; "
     "re_stouffer_p/padj are screening/triage fields, not calibrated formal random-effects "
     "inference or heterogeneity-corrected significance"
 )

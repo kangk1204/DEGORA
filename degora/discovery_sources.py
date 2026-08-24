@@ -65,6 +65,7 @@ SUPPORTED_DOWNLOAD_EXTENSIONS = {
     ".tsv",
     ".txt",
     ".xlsx",
+    ".xls",
     ".zip",
     ".gz",
 }
@@ -1128,16 +1129,16 @@ def _link_looks_public_repository(url: str, filename: str = "") -> bool:
     path = parsed.path.lower()
     if not _has_allowed_host(host):
         return False
-    candidate_name = str(filename or "").lower()
-    if any(
-        path.endswith(ext) or candidate_name.endswith(ext)
-        for ext in (".csv", ".tsv", ".txt", ".xlsx", ".zip", ".gz")
-    ):
+    candidate_name = str(filename or "")
+    if classify_filename(url).get("inspectable"):
         return True
+    assessment = classify_filename(candidate_name)
+    if not candidate_name or not assessment.get("inspectable"):
+        return False
     # Repository APIs sometimes expose an opaque numeric download URL next to a
     # separate filename.  The filename gate above still requires a supported
     # tabular/archive suffix before these routes are accepted.
-    return bool(candidate_name) and any(
+    return any(
         marker in path
         for marker in ("/ndownloader/files/", "/files/", "/supplementaryfiles")
     )

@@ -632,6 +632,34 @@ def test_same_title_repository_records_are_flagged_as_one_possible_submission() 
     assert not records[3].get("shared_submission_units")
 
 
+def test_strict_assay_title_suffixes_are_flagged_without_merging_species_or_timepoints() -> None:
+    from degora.discovery_federated import flag_shared_submission_records
+
+    base = "m6A depletion attenuates the macrophage type I interferon response"
+    records = flag_shared_submission_records(
+        [
+            {"paper_title": f"{base} [RNA-seq]", "source_unit_id": "GSE1"},
+            {"paper_title": f"{base} [CUT&Tag]", "source_unit_id": "GSE2"},
+            {"paper_title": f"{base} (ATAC-seq)", "source_unit_id": "GSE3"},
+            {"paper_title": f"{base} (mouse)", "source_unit_id": "GSE4"},
+            {"paper_title": f"{base} (24 h)", "source_unit_id": "GSE5"},
+        ]
+    )
+
+    assert records[0]["shared_submission_units"] == ["GSE2", "GSE3"]
+    assert records[1]["shared_submission_units"] == ["GSE1", "GSE3"]
+    assert records[2]["shared_submission_units"] == ["GSE1", "GSE2"]
+    assert not records[3].get("shared_submission_units")
+    assert not records[4].get("shared_submission_units")
+
+
+def test_likely_ready_requires_an_inspectable_file_candidate() -> None:
+    from degora.discovery_federated import _has_file_candidate
+
+    assert _has_file_candidate({"candidates": [{"source_url": "https://example.org/supplement.pdf"}]}) is False
+    assert _has_file_candidate({"candidates": [{"name": "author_DEG.csv", "role": "deg_table"}]}) is True
+
+
 def test_a_published_pair_is_left_alone() -> None:
     """A PubMed link already collapses them, so a warning would be noise."""
 

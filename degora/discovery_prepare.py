@@ -57,6 +57,7 @@ def prepare_publication_records(
     geo_client: Any | None = None,
     force: bool = False,
     progress: Callable[[float, str], None] | None = None,
+    before_publish: Callable[[], None] | None = None,
 ) -> dict[str, Any]:
     """Transactionally prepare publication records for ``run_discovery_analysis``.
 
@@ -119,6 +120,8 @@ def prepare_publication_records(
         result["exports"] = _export_paths(target)
         export_discovery_bundle(result, staging, force=True)
         _write_marker(staging, spec.key)
+        if before_publish is not None:
+            before_publish()
         _publish_prepared_bundle(staging, target, force=force)
         report(1.0, "Prepared bundle published")
         return result

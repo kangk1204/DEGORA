@@ -14,8 +14,11 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
+from .excel_export import EXCEL_ERROR_LITERALS
+
 
 FORMULA_PREFIXES = ("=", "+", "-", "@")
+FORMULA_PREFIX_WHITESPACE = " \t\r\n"
 SEARCH_JSON_NAME = "publication_search.json"
 SEARCH_CSV_NAME = "publication_search.csv"
 SEARCH_XLSX_NAME = "DEGORA_search_results.xlsx"
@@ -34,7 +37,9 @@ def _safe_cell(value: Any) -> Any:
         value = json.dumps(value, sort_keys=True, ensure_ascii=False)
     else:
         value = str(value)
-    return "'" + value if value.startswith(FORMULA_PREFIXES) else value
+    stripped = value.lstrip(FORMULA_PREFIX_WHITESPACE)
+    unsafe = stripped.startswith(FORMULA_PREFIXES) or stripped.upper() in EXCEL_ERROR_LITERALS
+    return "'" + value if unsafe else value
 
 
 def _atomic_bytes(path: Path, payload: bytes) -> None:
@@ -86,6 +91,8 @@ def publication_rows(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
                 "geo_accessions": record.get("geo_accessions") or _as_list(record.get("accession")),
                 "source_unit_id": record.get("source_unit_id", ""),
                 "source_unit_conflict": record.get("source_unit_conflict", []),
+                "shared_submission_units": record.get("shared_submission_units", []),
+                "shared_submission_warning": record.get("shared_submission_warning", ""),
                 "resolution_state": record.get("resolution_state", ""),
                 "relevance_rank": record.get("relevance_rank", record.get("ncbi_relevance_rank", "")),
                 "readiness_tier": readiness.get("tier", ""),
@@ -232,7 +239,7 @@ def build_publication_search_workbook(snapshot: dict[str, Any]) -> bytes:
     _write_sheet(workbook, "Publications", publications, list(publications[0]) if publications else [
         "canonical_id", "record_kind", "species", "species_decision", "paper_title", "authors", "journal",
         "year", "pubmed_ids", "doi", "pmcid", "geo_accessions", "source_unit_id", "source_unit_conflict",
-        "resolution_state", "relevance_rank",
+        "shared_submission_units", "shared_submission_warning", "resolution_state", "relevance_rank",
         "readiness_tier", "readiness_priority", "verification_state", "readiness_basis", "candidate_count",
     ])
     identifiers = _identifier_rows(records)

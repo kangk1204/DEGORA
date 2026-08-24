@@ -8,13 +8,20 @@ import json
 import re
 import zipfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import pandas as pd
 
 from .aggregate import _source_unit_series, slice_consensus, validate_min_studies
 from .excel_io import read_config_sheet
-from .harmonize import TableMapping, resolve_column_name, harmonize_frame, normalize_table_scope, read_deg_table
+from .harmonize import (
+    TableMapping,
+    harmonize_frame,
+    normalize_table_scope,
+    read_deg_table,
+    resolve_column_name,
+    validate_table_mapping_roles,
+)
 from .metrics import recall_at_k
 from .provenance import output_directory_lock, portable_path, shell_command, write_source_sidecar
 
@@ -211,6 +218,49 @@ def _format_columns(columns: list[Any]) -> str:
     return ", ".join(map(str, columns)) if columns else "(no columns found)"
 
 
+def _is_external_absolute_path(path: Path, catalog_path: Path) -> bool:
+    if not path.is_absolute():
+        return False
+    try:
+        path.resolve().relative_to(catalog_path.parent.resolve())
+    except ValueError:
+        return True
+    return False
+
+
+def _source_context(row: dict[str, Any], source_path: Path, catalog_path: Path, available: list[Any] | None = None) -> str:
+    if _is_external_absolute_path(source_path, catalog_path):
+        return (
+            f"{row.get('study_id', 'source table')}: source_path is outside the config folder; "
+            "path and available columns hidden"
+        )
+    if available is None:
+        return f"source file: {row.get('source_path', '')}"
+    return f"source file: {row.get('source_path', '')}; available columns: {_format_columns(list(available))}"
+
+
+def _source_path_context(row: dict[str, Any], source_path: Path, catalog_path: Path) -> str:
+    if _is_external_absolute_path(source_path, catalog_path):
+        name = source_path.name or "external source file"
+        return f"{row.get('study_id', 'source table')}: external source file {name}"
+    return f"{row.get('study_id', 'source table')}: {source_path}"
+
+
+def _source_path_problem(row: dict[str, Any], source_path: Path, catalog_path: Path, message: str) -> str:
+    if _is_external_absolute_path(source_path, catalog_path):
+        name = source_path.name or "external source file"
+        return f"{row['study_id']}: source_path points to external source file {name}, {message}"
+    return f"{row['study_id']}: source_path points to {source_path}, {message}"
+
+
+def _readable_source_read_failure(source_path: Path, catalog_path: Path, exc: Exception) -> str:
+    message = _readable_read_failure(source_path, exc)
+    if not _is_external_absolute_path(source_path, catalog_path):
+        return message
+    full = str(source_path)
+    return message.replace(full, source_path.name or "external source file")
+
+
 def _display_catalog_column(column: str) -> str:
     return "source_unit_id (or paper_id)" if column == "paper_id" else column
 
@@ -241,7 +291,7 @@ def _normalize_time_course_setting(value: Any) -> str | None:
     return TIME_COURSE_MODE_ALIASES.get(label)
 
 
-def _identifier_space_warnings(harmonized: pd.DataFrame) -> list[str]:
+def _identifier_space_warnings(harmonized: pd.DataFrame, *, min_studies: int = 2) -> list[str]:
     """Flag source units whose identifiers do not meet the rest of the corpus.
 
     Mixing Ensembl IDs with gene symbols produces a run that succeeds and reports
@@ -250,7 +300,7 @@ def _identifier_space_warnings(harmonized: pd.DataFrame) -> list[str]:
     simply never appears in a consensus row.
     """
 
-    if harmonized.empty or "source_unit_id" not in harmonized.columns:
+    if min_studies <= 1 or harmonized.empty or "source_unit_id" not in harmonized.columns:
         return []
     by_unit = {
         str(unit): set(group["gene_symbol"].dropna().astype(str))
@@ -865,7 +915,27 @@ def apply_gene_type_filter(frame: pd.DataFrame, column: str | None, keep: str | 
     return filtered, summary
 
 
-def _validate_source_columns(frame: pd.DataFrame, mapping: TableMapping, row: dict[str, Any]) -> None:
+def _validate_source_columns(
+    frame: pd.DataFrame,
+    mapping: TableMapping,
+    row: dict[str, Any],
+    source_path: Path,
+    catalog_path: Path,
+) -> None:
+    try:
+        validate_table_mapping_roles(frame, mapping, study_id=row.get("study_id"))
+    except ValueError as exc:
+        raise DegoraConfigError(
+            "source table column mapping reuses incompatible roles",
+            context=_source_context(row, source_path, catalog_path, list(frame.columns)),
+            problems=[str(exc)],
+            fixes=[
+                "Use different source-table columns for gene_column, lfc_column, and p_column.",
+                "Do not point lfc_column at a p-value/FDR column or reuse gene identifiers as statistical values.",
+                "padj_column may equal p_column only when the same unit-interval column is intentionally used as both p-value and adjusted p-value/FDR.",
+            ],
+        ) from exc
+
     requested = [
         ("required", column, getattr(mapping, column), meaning)
         for column, meaning in REQUIRED_SOURCE_TABLE_MAPPINGS
@@ -902,7 +972,7 @@ def _validate_source_columns(frame: pd.DataFrame, mapping: TableMapping, row: di
     if problems:
         raise DegoraConfigError(
             "source table column mapping is wrong",
-            context=f"source file: {row.get('source_path', '')}; available columns: {_format_columns(available)}",
+            context=_source_context(row, source_path, catalog_path, available),
             problems=problems,
             fixes=fixes
             + [
@@ -924,7 +994,7 @@ NON_NUMERIC_REJECT_SHARE = 0.10
 NON_NUMERIC_REJECT_MINIMUM = 3
 
 
-def _require_readable_source_file(source_path: Path, row: dict[str, Any]) -> None:
+def _require_readable_source_file(source_path: Path, row: dict[str, Any], catalog_path: Path) -> None:
     """Refuse anything that is not a regular file before a reader blocks on it.
 
     ``exists()`` is true for a FIFO, a device and a socket, and pandas then waits
@@ -938,7 +1008,7 @@ def _require_readable_source_file(source_path: Path, row: dict[str, Any]) -> Non
         raise DegoraConfigError(
             "source DEG table file was not found",
             problems=[
-                f"{row['study_id']}: source_path points to {source_path}, but that file does not exist.",
+                _source_path_problem(row, source_path, catalog_path, "but that file does not exist."),
             ],
             fixes=[
                 "Check the file path in the Contrasts sheet.",
@@ -949,7 +1019,7 @@ def _require_readable_source_file(source_path: Path, row: dict[str, Any]) -> Non
     kind = "directory" if source_path.is_dir() else "not a regular file (for example a pipe, socket or device)"
     raise DegoraConfigError(
         "source DEG table path is not a readable file",
-        problems=[f"{row['study_id']}: source_path points to {source_path}, which is {kind}."],
+        problems=[_source_path_problem(row, source_path, catalog_path, f"which is {kind}.")],
         fixes=[
             "Point source_path at a CSV, TSV, TXT, XLS or XLSX file on disk.",
             "DEGORA reads each source table more than once, so a stream or pipe cannot be used.",
@@ -957,7 +1027,13 @@ def _require_readable_source_file(source_path: Path, row: dict[str, Any]) -> Non
     )
 
 
-def _validate_numeric_source_columns(frame: pd.DataFrame, mapping: TableMapping, row: dict[str, Any]) -> None:
+def _validate_numeric_source_columns(
+    frame: pd.DataFrame,
+    mapping: TableMapping,
+    row: dict[str, Any],
+    source_path: Path,
+    catalog_path: Path,
+) -> None:
     """Reject an effect or p-value column that does not hold numbers.
 
     The p-value column was already checked for being inside [0, 1], which is a
@@ -996,7 +1072,7 @@ def _validate_numeric_source_columns(frame: pd.DataFrame, mapping: TableMapping,
         return
     raise DegoraConfigError(
         "source table effect or p-value column is not numeric",
-        context=f"source file: {row.get('source_path', '')}",
+        context=_source_context(row, source_path, catalog_path),
         problems=problems,
         fixes=[
             "Point lfc_column and p_column at the numeric columns of the DEG table.",
@@ -1109,7 +1185,11 @@ def _try_write_parquet(frame: pd.DataFrame, path: Path) -> str | None:
     return None
 
 
-def validate_catalog_inputs(catalog_path: Path) -> dict[str, Any]:
+def validate_catalog_inputs(
+    catalog_path: Path,
+    *,
+    progress: Callable[[int, int, str], None] | None = None,
+) -> dict[str, Any]:
     """Validate catalog/config rows and source-table column mappings without writing outputs."""
 
     catalog_path = catalog_path.resolve()
@@ -1130,9 +1210,13 @@ def validate_catalog_inputs(catalog_path: Path) -> dict[str, Any]:
     _validate_generated_replicate_provenance(catalog, catalog_path)
 
     checked_sources: list[str] = []
-    for row in catalog.to_dict(orient="records"):
+    rows = catalog.to_dict(orient="records")
+    total_rows = len(rows)
+    if progress is not None:
+        progress(0, total_rows, "")
+    for index, row in enumerate(rows, start=1):
         source_path = _resolve_source_path(row["source_path"], catalog_path)
-        _require_readable_source_file(source_path, row)
+        _require_readable_source_file(source_path, row, catalog_path)
 
         mapping = TableMapping(
             gene_column=row["gene_column"],
@@ -1147,16 +1231,16 @@ def validate_catalog_inputs(catalog_path: Path) -> dict[str, Any]:
         except Exception as exc:
             raise DegoraConfigError(
                 "source DEG table could not be read",
-                context=f"{row['study_id']}: {source_path}",
-                problems=[_readable_read_failure(source_path, exc)],
+                context=_source_path_context(row, source_path, catalog_path),
+                problems=[_readable_source_read_failure(source_path, catalog_path, exc)],
                 fixes=[
                     "Check that the file is a supported CSV/TSV/TXT/XLS/XLSX table.",
                     "For Excel sources, set sheet_name to the exact sheet containing the DEG table.",
                     "For TSV files, set sep to \\t if DEGORA cannot infer it.",
                 ],
             ) from exc
-        _validate_source_columns(raw_frame, mapping, row)
-        _validate_numeric_source_columns(raw_frame, mapping, row)
+        _validate_source_columns(raw_frame, mapping, row, source_path, catalog_path)
+        _validate_numeric_source_columns(raw_frame, mapping, row, source_path, catalog_path)
         filtered_frame, _ = apply_gene_type_filter(
             raw_frame,
             _nonempty(row.get("gene_type_column")),
@@ -1168,7 +1252,7 @@ def validate_catalog_inputs(catalog_path: Path) -> dict[str, Any]:
         except (KeyError, TypeError, ValueError) as exc:
             raise DegoraConfigError(
                 "source DEG table statistical values are invalid",
-                context=f"{row['study_id']}: {source_path}",
+                context=_source_path_context(row, source_path, catalog_path),
                 problems=[str(exc)],
                 fixes=[
                     "Check that gene_column, lfc_column, p_column, and padj_column (if filled) map to the intended source columns.",
@@ -1179,7 +1263,7 @@ def validate_catalog_inputs(catalog_path: Path) -> dict[str, Any]:
         if harmonized.empty:
             raise DegoraConfigError(
                 "source DEG table produced no usable rows",
-                context=f"{row['study_id']}: {source_path}",
+                context=_source_path_context(row, source_path, catalog_path),
                 problems=[
                     "No row retained a nonblank gene identifier together with numeric log2 fold change and p-value values."
                 ],
@@ -1189,6 +1273,8 @@ def validate_catalog_inputs(catalog_path: Path) -> dict[str, Any]:
                 ],
             )
         checked_sources.append(str(source_path))
+        if progress is not None:
+            progress(index, total_rows, str(row.get("study_id") or source_path.name))
 
     # Count independent source units with the same precedence the scoring layer uses
     # (explicit source_unit_id > paper_id > study_id), so the preflight count cannot
@@ -1273,7 +1359,7 @@ def _run_slice_locked(catalog_path: Path, output_dir: Path, harmonized_dir: Path
 
     for row in catalog.to_dict(orient="records"):
         source_path = _resolve_source_path(row["source_path"], catalog_path)
-        _require_readable_source_file(source_path, row)
+        _require_readable_source_file(source_path, row, catalog_path)
         source_inputs.append(source_path)
 
         mapping = TableMapping(
@@ -1289,16 +1375,16 @@ def _run_slice_locked(catalog_path: Path, output_dir: Path, harmonized_dir: Path
         except Exception as exc:
             raise DegoraConfigError(
                 "source DEG table could not be read",
-                context=f"{row['study_id']}: {source_path}",
-                problems=[_readable_read_failure(source_path, exc)],
+                context=_source_path_context(row, source_path, catalog_path),
+                problems=[_readable_source_read_failure(source_path, catalog_path, exc)],
                 fixes=[
                     "Check that the file is a supported CSV/TSV/TXT/XLS/XLSX table.",
                     "For Excel sources, set sheet_name to the exact sheet containing the DEG table.",
                     "For TSV files, set sep to \\t if DEGORA cannot infer it.",
                 ],
             ) from exc
-        _validate_source_columns(raw_frame, mapping, row)
-        _validate_numeric_source_columns(raw_frame, mapping, row)
+        _validate_source_columns(raw_frame, mapping, row, source_path, catalog_path)
+        _validate_numeric_source_columns(raw_frame, mapping, row, source_path, catalog_path)
         filtered_frame, filter_summary = apply_gene_type_filter(
             raw_frame,
             _nonempty(row.get("gene_type_column")),
@@ -1311,7 +1397,7 @@ def _run_slice_locked(catalog_path: Path, output_dir: Path, harmonized_dir: Path
         except ValueError as exc:
             raise DegoraConfigError(
                 "source DEG table failed harmonization",
-                context=f"{row['study_id']}: {source_path}",
+                context=_source_path_context(row, source_path, catalog_path),
                 problems=[str(exc)],
                 fixes=[
                     "Check that gene_column, lfc_column, p_column, and padj_column (if filled) map to the intended source columns.",
@@ -1406,7 +1492,7 @@ def _run_slice_locked(catalog_path: Path, output_dir: Path, harmonized_dir: Path
         .to_dict()
         if "table_scope" in all_harmonized.columns
         else {},
-        "identifier_space_warnings": _identifier_space_warnings(all_harmonized),
+        "identifier_space_warnings": _identifier_space_warnings(all_harmonized, min_studies=min_studies),
         "rank_universe_warnings": rank_universe_warnings,
         "gene_symbol_collapse_warnings": gene_symbol_collapse_warnings,
         "unusable_row_warnings": unusable_row_warnings,

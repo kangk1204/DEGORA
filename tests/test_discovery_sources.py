@@ -526,8 +526,15 @@ def test_repository_metadata_404_is_an_empty_route_not_a_provider_failure() -> N
 
 def test_repository_link_filter_requires_a_supported_file_signal() -> None:
     assert _link_looks_public_repository("https://www.ebi.ac.uk/files/123", "author_DEG.csv") is True
+    assert _link_looks_public_repository("https://www.ebi.ac.uk/files/123", "author_DEG.xls") is True
+    assert _link_looks_public_repository("https://www.ebi.ac.uk/files/123", "supplementary_tables.zip") is True
     assert _link_looks_public_repository("https://www.ebi.ac.uk/files/123") is False
+    assert _link_looks_public_repository("https://www.ebi.ac.uk/files/123", "paper.pdf") is False
+    assert _link_looks_public_repository("https://www.ebi.ac.uk/files/123", "signal.bw") is False
+    assert _link_looks_public_repository("https://www.ebi.ac.uk/files/123", "alignment.bam") is False
+    assert _link_looks_public_repository("https://www.ebi.ac.uk/files/123", "installer.exe") is False
     assert _link_looks_public_repository("https://www.ebi.ac.uk/articles/PMC123") is False
+    assert _link_looks_public_repository("https://www.ebi.ac.uk/articles/PMC123", "author_DEG.csv") is False
 
 
 def test_download_public_candidate_is_atomic_and_reports_sha256(tmp_path: Path) -> None:

@@ -154,10 +154,11 @@ if [ -d "$VENV_DIR" ] && ! supported_python "$VENV_DIR/bin/python"; then
 fi
 if [ ! -d "$VENV_DIR" ]; then
   note "Creating the virtual environment"
-  if ! "$PY" -m venv "$VENV_DIR" 2>/tmp/degora_venv_error.$$; then
+  VENV_ERROR_LOG="$(mktemp "${TMPDIR:-/tmp}/degora_venv_error.XXXXXX")" || die "could not create a temporary log file"
+  if ! "$PY" -m venv "$VENV_DIR" 2>"$VENV_ERROR_LOG"; then
     printf '\n' >&2
-    cat /tmp/degora_venv_error.$$ >&2 || true
-    rm -f /tmp/degora_venv_error.$$
+    cat "$VENV_ERROR_LOG" >&2 || true
+    rm -f "$VENV_ERROR_LOG"
     printf '\n' >&2
     case "$PLATFORM" in
       linux|wsl) printf 'Debian/Ubuntu ships venv separately. Install it with:\n  sudo apt install %s-venv\n' "$PY" >&2 ;;
@@ -165,7 +166,7 @@ if [ ! -d "$VENV_DIR" ]; then
     esac
     exit 1
   fi
-  rm -f /tmp/degora_venv_error.$$
+  rm -f "$VENV_ERROR_LOG"
 fi
 # shellcheck source=/dev/null
 . "$VENV_DIR/bin/activate"

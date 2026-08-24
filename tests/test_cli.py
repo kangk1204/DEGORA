@@ -357,6 +357,89 @@ def test_run_returns_clean_failure_when_no_gene_meets_minimum_sources(tmp_path, 
     assert "min_studies=2" in message
 
 
+def test_run_fails_before_writing_artifacts_when_source_units_cannot_satisfy_min_studies(tmp_path, capsys) -> None:
+    source = tmp_path / "one_source.csv"
+    _write_source(source, ["ISG15", "IFIT1", "RPL13A"], 1.0)
+    config = tmp_path / "one_source_config.csv"
+    pd.DataFrame(
+        [
+            {
+                "study_id": "S1_4h",
+                "source_unit_id": "P1",
+                "source_path": str(source),
+                "gene_column": "gene",
+                "lfc_column": "log2FoldChange",
+                "p_column": "pvalue",
+                "padj_column": "padj",
+            }
+        ]
+    ).to_csv(config, index=False)
+    output = tmp_path / "early_results"
+    harmonized = tmp_path / "early_harmonized"
+    db = tmp_path / "early_results" / "degora_scores.db"
+
+    assert (
+        main(
+            [
+                "run",
+                str(config),
+                "--min-studies",
+                "2",
+                "--output-dir",
+                str(output),
+                "--harmonized-dir",
+                str(harmonized),
+                "--db",
+                str(db),
+            ]
+        )
+        == 2
+    )
+
+    message = capsys.readouterr().err
+    assert "cannot run at min_studies=2" in message
+    assert "only 1 independent source unit" in message
+    assert not db.exists()
+    assert not (output / "slice_harmonized.csv").exists()
+    assert not (output / "degora_gene_scores.csv").exists()
+    assert not any(harmonized.glob("*.csv")) if harmonized.exists() else True
+
+
+def test_run_accepts_source_unit_count_equal_to_min_studies(tmp_path) -> None:
+    source_a = tmp_path / "source_a.csv"
+    source_b = tmp_path / "source_b.csv"
+    _write_source(source_a, ["ISG15", "IFIT1", "RPL13A"], 1.0)
+    _write_source(source_b, ["ISG15", "IFIT1", "RPL13A"], 0.8)
+    config = tmp_path / "config.xlsx"
+    _write_config(config, source_a, source_b)
+
+    assert main(["run", str(config), "--min-studies", "2", "--no-excel"]) == 0
+    assert (tmp_path / "results" / "degora_scores.db").is_file()
+
+
+def test_init_returns_clean_error_when_no_table_is_confirmed(tmp_path, monkeypatch, capsys) -> None:
+    source = tmp_path / "source.csv"
+    _write_source(source, ["ISG15", "IFIT1", "RPL13A"], 1.0)
+    output = tmp_path / "config.csv"
+
+    monkeypatch.setattr("builtins.input", lambda _prompt: (_ for _ in ()).throw(EOFError))
+
+    assert main(["init", str(output), "--deg-dir", str(tmp_path)]) == 2
+
+    message = capsys.readouterr().err
+    assert "no table was confirmed" in message
+    assert not output.exists()
+
+
+def test_init_does_not_hide_unexpected_value_errors(monkeypatch, tmp_path) -> None:
+    import degora.beginner as beginner
+
+    monkeypatch.setattr(beginner, "run_init", lambda *args, **kwargs: (_ for _ in ()).throw(ValueError("bug")))
+
+    with pytest.raises(ValueError, match="bug"):
+        main(["init", str(tmp_path / "config.csv"), "--deg-dir", str(tmp_path)])
+
+
 def test_run_returns_clean_failure_when_default_excel_export_fails(tmp_path, monkeypatch, capsys) -> None:
     import degora.excel_export as excel_export
 
@@ -473,6 +556,36 @@ def test_run_progress_can_be_silenced() -> None:
     progress = _RunProgress(enabled=False)
     progress.start("phase")
     progress.done("detail")  # must not raise
+
+
+def test_validate_reports_row_progress_for_large_catalogs(tmp_path, monkeypatch, capsys) -> None:
+    import degora.slice_runner as slice_runner
+
+    config = tmp_path / "config.csv"
+    config.write_text("placeholder\n", encoding="utf-8")
+
+    def fake_validate(path, *, progress=None):
+        if progress is not None:
+            progress(0, 50_000, "")
+            progress(1_000, 50_000, "S1000")
+            progress(50_000, 50_000, "S50000")
+        return {
+            "active_contrasts": 50_000,
+            "excluded_contrasts": 0,
+            "source_units": 50_000,
+            "required_contrasts_columns": [],
+            "required_source_table_mappings": [],
+            "optional_source_table_mappings": [],
+            "warnings": [],
+        }
+
+    monkeypatch.setattr(slice_runner, "validate_catalog_inputs", fake_validate)
+
+    assert main(["validate", str(config)]) == 0
+    out = capsys.readouterr().out
+    assert "checked 0/50,000 active row(s)" in out
+    assert "checked 50,000/50,000 active row(s) (S50000)" in out
+    assert "DEGORA config OK" in out
 
 
 def test_zero_gene_error_names_the_identifier_mismatch(tmp_path) -> None:

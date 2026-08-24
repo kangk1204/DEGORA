@@ -89,6 +89,72 @@ def test_manager_records_worker_failure(tmp_path) -> None:
     assert failed["error"] == {"message": "boom", "type": "RuntimeError"}
 
 
+def test_worker_failure_message_redacts_secret_and_absolute_path(tmp_path) -> None:
+    store = DiscoveryStateStore(tmp_path)
+    manager = DiscoveryJobManager(store, max_workers=1)
+
+    def worker(job_id, payload, progress):
+        progress(0.2, "before failure")
+        raise RuntimeError("provider failed with api_key=SECRET123 at /private/tmp/catalog.csv")
+
+    job = manager.submit("search", {"query": "x"}, worker)
+    manager.shutdown()
+
+    failed = store.get_job(job["job_id"])
+    assert failed is not None
+    assert failed["status"] == "failed"
+    message = failed["error"]["message"]
+    assert "SECRET123" not in message
+    assert "/private/tmp/catalog.csv" not in message
+    assert "api_key=[redacted]" in message
+    assert "[redacted: local path]" in message
+
+
+@pytest.mark.parametrize(
+    "secret_text,path_text",
+    [
+        ("client_secret=SECRET123", "/mnt/private/catalog.csv"),
+        ("Authorization: Bearer SECRET123", "file:///Users/reviewer/catalog.csv"),
+        ("token=SECRET123", "/catalog.csv"),
+        ("password=SECRET123", "file:///catalog.csv"),
+        ("ncbi_api_key:SECRET123", r"C:\\Users\\reviewer\\catalog.csv"),
+        ("access_token=SECRET123", r"\\\\server\\share\\catalog.csv"),
+    ],
+)
+def test_worker_failure_redaction_handles_common_secret_and_path_shapes(
+    tmp_path, secret_text: str, path_text: str
+) -> None:
+    store = DiscoveryStateStore(tmp_path)
+    manager = DiscoveryJobManager(store, max_workers=1)
+
+    def worker(job_id, payload, progress):
+        raise RuntimeError(f"provider failed with {secret_text} at {path_text}")
+
+    job = manager.submit("search", {"query": "x"}, worker)
+    manager.shutdown()
+
+    message = store.get_job(job["job_id"])["error"]["message"]
+    assert "SECRET123" not in message
+    assert path_text not in message
+    assert "[redacted]" in message
+    assert "[redacted: local path]" in message
+
+
+def test_artifact_paths_are_preserved_for_restart_and_local_reuse(tmp_path) -> None:
+    store = DiscoveryStateStore(tmp_path / "state")
+    materialize_dir = tmp_path / "prepared" / "bundle"
+    source_path = materialize_dir / "study.csv"
+    payload = {
+        "materialize_dir": str(materialize_dir),
+        "studies": [{"source_path": str(source_path)}],
+    }
+
+    store.save_artifact("bundle", "a" * 16, payload)
+    reopened = DiscoveryStateStore(tmp_path / "state")
+
+    assert reopened.get_artifact("bundle", "a" * 16) == payload
+
+
 def test_progress_must_be_monotonic(tmp_path) -> None:
     store = DiscoveryStateStore(tmp_path)
     job = store.create_job("search", {})
@@ -183,6 +249,144 @@ def test_interrupting_shutdown_returns_promptly_and_preserves_terminal_state(tmp
     release.set()
     manager.shutdown(wait=True)
     assert store.get_job(job["job_id"])["status"] == "interrupted"
+
+
+def test_shutdown_drains_committing_job_before_interrupting_others(tmp_path) -> None:
+    store = DiscoveryStateStore(tmp_path)
+    manager = DiscoveryJobManager(store, max_workers=2)
+    committing_ready = threading.Event()
+    running_ready = threading.Event()
+    release_committing = threading.Event()
+
+    def committing_worker(job_id, payload, progress):
+        progress(0.6, "Ready to publish.")
+        manager.commit(job_id)
+        committing_ready.set()
+        release_committing.wait(timeout=5)
+        progress(0.9, "Publishing.")
+        return {"done": "committed"}
+
+    def running_worker(job_id, payload, progress):
+        running_ready.set()
+        threading.Event().wait(timeout=5)
+        return {"done": "running"}
+
+    committed_job = manager.submit("search", {"kind": "committing"}, committing_worker)
+    running_job = manager.submit("search", {"kind": "running"}, running_worker)
+    assert committing_ready.wait(timeout=5)
+    assert running_ready.wait(timeout=5)
+
+    shutdown_done = threading.Event()
+    shutdown_thread = threading.Thread(
+        target=lambda: (manager.shutdown(wait=False, cancel_futures=True, interrupt=True), shutdown_done.set())
+    )
+    shutdown_thread.start()
+
+    assert not shutdown_done.wait(timeout=0.1)
+    release_committing.set()
+    assert shutdown_done.wait(timeout=5)
+    manager.shutdown(wait=True)
+
+    assert store.get_job(committed_job["job_id"])["status"] == "completed"
+    assert store.get_job(running_job["job_id"])["status"] == "interrupted"
+
+
+def test_shutdown_preserves_committing_job_after_drain_timeout(tmp_path) -> None:
+    store = DiscoveryStateStore(tmp_path)
+    manager = DiscoveryJobManager(store, max_workers=1)
+    manager._commit_drain_timeout = 0.01
+    committed = threading.Event()
+    release = threading.Event()
+
+    def worker(job_id, payload, progress):
+        progress(0.6, "Ready to publish.")
+        manager.commit(job_id)
+        committed.set()
+        release.wait(timeout=5)
+        return {"done": True}
+
+    job = manager.submit("search", {}, worker)
+    assert committed.wait(timeout=5)
+
+    manager.shutdown(wait=False, cancel_futures=True, interrupt=True)
+
+    assert store.get_job(job["job_id"])["status"] == "running"
+    release.set()
+    manager.shutdown(wait=True)
+    final = store.get_job(job["job_id"])
+    assert final["status"] == "completed"
+    assert final["result"] == {"done": True}
+
+
+def test_submit_after_shutdown_does_not_create_queued_orphan(tmp_path) -> None:
+    store = DiscoveryStateStore(tmp_path)
+    manager = DiscoveryJobManager(store, max_workers=1)
+    manager.shutdown(wait=False, cancel_futures=True, interrupt=True)
+
+    with pytest.raises(DiscoveryStoreError, match="shutting down"):
+        manager.submit("search", {}, lambda job_id, payload, progress: {"ok": True})
+
+    assert store.list_jobs() == []
+
+
+def test_submit_scheduling_failure_interrupts_created_job(tmp_path) -> None:
+    store = DiscoveryStateStore(tmp_path)
+    manager = DiscoveryJobManager(store, max_workers=1)
+    manager.shutdown(wait=True)
+
+    with pytest.raises(RuntimeError):
+        manager.submit(
+            "search",
+            {},
+            lambda job_id, payload, progress: {"ok": True},
+            job_id="1234567890abcdef",
+        )
+
+    final = store.get_job("1234567890abcdef")
+    assert final is not None
+    assert final["status"] == "interrupted"
+
+
+def test_cancelled_queued_future_cleanup_when_executor_drops_it(tmp_path) -> None:
+    store = DiscoveryStateStore(tmp_path)
+    manager = DiscoveryJobManager(store, max_workers=1)
+    started = threading.Event()
+    release = threading.Event()
+
+    def blocking_worker(job_id, payload, progress):
+        started.set()
+        release.wait(timeout=5)
+        return {"ok": True}
+
+    first = manager.submit("search", {"slot": 1}, blocking_worker)
+    second = manager.submit("search", {"slot": 2}, lambda job_id, payload, progress: {"ok": True})
+    assert started.wait(timeout=5)
+
+    assert manager.cancel(second["job_id"]) is not None
+    manager.shutdown(wait=False, cancel_futures=True)
+    release.set()
+    manager.shutdown(wait=True)
+
+    assert store.get_job(first["job_id"])["status"] == "completed"
+    assert store.get_job(second["job_id"])["status"] == "cancelled"
+    assert manager._state == {}
+
+
+def test_custom_reused_job_id_completes_and_cleans_manager_state(tmp_path) -> None:
+    store = DiscoveryStateStore(tmp_path)
+    manager = DiscoveryJobManager(store, max_workers=1)
+
+    def worker(job_id, payload, progress):
+        progress(0.3, "Working.")
+        manager.commit(job_id)
+        return {"ok": True}
+
+    job = manager.submit("search", {}, worker, job_id="abcdef1234567890")
+    manager.shutdown(wait=True)
+
+    assert job["job_id"] == "abcdef1234567890"
+    assert store.get_job(job["job_id"])["status"] == "completed"
+    assert manager._state == {}
 
 
 def test_a_cancelled_worker_stops_instead_of_writing_after_shutdown(tmp_path) -> None:

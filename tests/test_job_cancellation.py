@@ -8,6 +8,7 @@ import time
 import pytest
 
 from degora.discovery_store import (
+    DiscoveryJobCancelled,
     DiscoveryJobManager,
     DiscoveryStateStore,
     DiscoveryStoreError,
@@ -83,6 +84,128 @@ def test_a_running_worker_stops_at_its_next_progress_report(store) -> None:
     final = store.get_job(job["job_id"])
     assert final["status"] == "cancelled"
     assert final["result"] is None, "a cancelled job must never record a result"
+
+
+def test_commit_then_cancel_keeps_result_publishable(store) -> None:
+    manager = DiscoveryJobManager(store, max_workers=1)
+    committed = threading.Event()
+    release = threading.Event()
+
+    def worker(job_id, payload, progress):
+        progress(0.5, "Ready to publish.")
+        manager.commit(job_id)
+        committed.set()
+        release.wait(timeout=5)
+        return {"hits": 3}
+
+    job = manager.submit("search", {}, worker)
+    assert committed.wait(timeout=5)
+
+    assert manager.cancel(job["job_id"]) is None
+    assert store.get_job(job["job_id"])["status"] == "running"
+
+    release.set()
+    manager.shutdown(wait=True)
+
+    final = store.get_job(job["job_id"])
+    assert final["status"] == "completed"
+    assert final["result"] == {"hits": 3}
+    assert manager._state == {}
+
+
+def test_cancel_then_commit_stops_result_publish(store) -> None:
+    manager = DiscoveryJobManager(store, max_workers=1)
+    started = threading.Event()
+    may_commit = threading.Event()
+    outcome: list[str] = []
+
+    def worker(job_id, payload, progress):
+        progress(0.2, "Working.")
+        started.set()
+        may_commit.wait(timeout=5)
+        try:
+            manager.commit(job_id)
+        except BaseException as exc:  # noqa: BLE001 - assert the control-flow boundary
+            outcome.append(type(exc).__name__)
+            raise
+        return {"hits": 3}
+
+    job = manager.submit("search", {}, worker)
+    assert started.wait(timeout=5)
+
+    cancelled = manager.cancel(job["job_id"])
+    may_commit.set()
+    manager.shutdown(wait=True)
+
+    assert cancelled is not None and cancelled["status"] == "cancelled"
+    assert outcome == [DiscoveryJobCancelled.__name__]
+    final = store.get_job(job["job_id"])
+    assert final["status"] == "cancelled"
+    assert final["result"] is None
+    assert manager._state == {}
+
+
+def test_duplicate_cancel_cannot_clear_cancelled_state_before_worker_commit(store) -> None:
+    manager = DiscoveryJobManager(store, max_workers=1)
+    worker_started = threading.Event()
+    may_commit = threading.Event()
+    first_cancel_in_store = threading.Event()
+    release_first_cancel = threading.Event()
+    cancel_calls = 0
+    cancel_calls_lock = threading.Lock()
+    commit_outcome: list[str] = []
+    original_cancel_job = store.cancel_job
+
+    def blocking_cancel_job(job_id, message):
+        nonlocal cancel_calls
+        with cancel_calls_lock:
+            cancel_calls += 1
+            call_number = cancel_calls
+        if call_number == 1:
+            first_cancel_in_store.set()
+            assert release_first_cancel.wait(timeout=5)
+        return original_cancel_job(job_id, message)
+
+    store.cancel_job = blocking_cancel_job
+
+    def worker(job_id, payload, progress):
+        progress(0.5, "Ready to publish.")
+        worker_started.set()
+        may_commit.wait(timeout=5)
+        try:
+            manager.commit(job_id)
+        except DiscoveryJobCancelled:
+            commit_outcome.append("cancelled")
+            raise
+        return {"unsafe": True}
+
+    job = manager.submit("search", {}, worker)
+    assert worker_started.wait(timeout=5)
+
+    outcomes: list[dict | None] = []
+    first = threading.Thread(target=lambda: outcomes.append(manager.cancel(job["job_id"])))
+    second = threading.Thread(target=lambda: outcomes.append(manager.cancel(job["job_id"])))
+    first.start()
+    assert first_cancel_in_store.wait(timeout=5)
+    may_commit.set()
+    second.start()
+    time.sleep(0.05)
+    release_first_cancel.set()
+    first.join(timeout=5)
+    second.join(timeout=5)
+    manager.shutdown(wait=True)
+
+    assert not first.is_alive() and not second.is_alive()
+    # If the worker wins the wake-up race it removes its terminal in-memory state
+    # before the duplicate request rechecks it; that second store call is then a
+    # harmless terminal read. In either ordering it must not reopen publication.
+    assert cancel_calls in {1, 2}
+    assert sum(outcome is not None for outcome in outcomes) == 1
+    assert commit_outcome == ["cancelled"]
+    final = store.get_job(job["job_id"])
+    assert final["status"] == "cancelled"
+    assert final["result"] is None
+    assert manager._state == {}
 
 
 def test_a_worker_that_finishes_during_the_cancel_does_not_write_a_result(store) -> None:
@@ -164,3 +287,144 @@ def test_cancelling_one_job_leaves_the_others_running(store) -> None:
     assert store.get_job(human["job_id"])["status"] == "cancelled"
     assert store.get_job(mouse["job_id"])["status"] == "completed"
     assert store.get_job(mouse["job_id"])["result"] == {"species": "mouse"}
+
+
+def test_terminal_or_unknown_cancel_leaves_no_manager_state(store) -> None:
+    manager = DiscoveryJobManager(store, max_workers=1)
+    job = store.create_job("search", {})
+    store.update_job(job["job_id"], status="running")
+    store.update_job(job["job_id"], status="completed", result={"ok": True})
+
+    assert manager.cancel(job["job_id"]) is None
+    assert manager._state == {}
+
+    with pytest.raises(DiscoveryStoreError, match="unknown job"):
+        manager.cancel("0" * 16)
+    assert manager._state == {}
+
+
+def test_cancel_store_baseexception_cleans_pending_state_and_wakes_commit(tmp_path) -> None:
+    class RaisingCancelStore(DiscoveryStateStore):
+        def __init__(self, root):
+            super().__init__(root)
+            self.entered_cancel = threading.Event()
+            self.release_cancel = threading.Event()
+
+        def cancel_job(self, job_id: str, message: str):
+            self.entered_cancel.set()
+            self.release_cancel.wait(timeout=5)
+            raise KeyboardInterrupt("operator interrupted cancellation")
+
+    store = RaisingCancelStore(tmp_path / "discovery")
+    manager = DiscoveryJobManager(store, max_workers=1)
+    started = threading.Event()
+    may_commit = threading.Event()
+    committed = threading.Event()
+    cancel_errors: list[str] = []
+
+    def worker(job_id, payload, progress):
+        progress(0.2, "Working.")
+        started.set()
+        may_commit.wait(timeout=5)
+        manager.commit(job_id)
+        committed.set()
+        return {"hits": 3}
+
+    job = manager.submit("search", {}, worker)
+    assert started.wait(timeout=5)
+
+    def cancel_job():
+        try:
+            manager.cancel(job["job_id"])
+        except BaseException as exc:  # noqa: BLE001 - assert manager cleanup for BaseException.
+            cancel_errors.append(type(exc).__name__)
+        else:
+            cancel_errors.append("no-error")
+
+    cancel_thread = threading.Thread(target=cancel_job)
+    cancel_thread.start()
+    assert store.entered_cancel.wait(timeout=5)
+
+    may_commit.set()
+    time.sleep(0.05)
+    assert not committed.is_set()
+
+    store.release_cancel.set()
+    cancel_thread.join(timeout=5)
+    assert not cancel_thread.is_alive()
+    assert committed.wait(timeout=5)
+    manager.shutdown(wait=True)
+
+    assert cancel_errors == ["KeyboardInterrupt"]
+    final = store.get_job(job["job_id"])
+    assert final["status"] == "completed"
+    assert final["result"] == {"hits": 3}
+    assert manager._state == {}
+
+
+def test_repeated_cancelled_jobs_do_not_retain_manager_state(store) -> None:
+    manager = DiscoveryJobManager(store, max_workers=2)
+    releases = [threading.Event() for _ in range(5)]
+    started = [threading.Event() for _ in range(5)]
+
+    def worker(job_id, payload, progress):
+        progress(0.1, "Started.")
+        started[payload["index"]].set()
+        releases[payload["index"]].wait(timeout=5)
+        progress(0.9, "Should stop if cancelled.")
+        return {"index": payload["index"]}
+
+    jobs = [manager.submit("search", {"index": index}, worker) for index in range(5)]
+    for event in started[:2]:
+        assert event.wait(timeout=5)
+    for job in jobs:
+        manager.cancel(job["job_id"])
+    for release in releases:
+        release.set()
+    manager.shutdown(wait=True)
+
+    assert {store.get_job(job["job_id"])["status"] for job in jobs} == {"cancelled"}
+    assert manager._state == {}
+    assert manager._future_job_ids == {}
+    assert manager._futures == set()
+
+
+def test_cancel_pending_cleanup_when_worker_finishes_before_store_cancel(tmp_path) -> None:
+    class SlowCancelStore(DiscoveryStateStore):
+        def __init__(self, root):
+            super().__init__(root)
+            self.entered_cancel = threading.Event()
+            self.release_cancel = threading.Event()
+
+        def cancel_job(self, job_id: str, message: str):
+            self.entered_cancel.set()
+            self.release_cancel.wait(timeout=5)
+            return super().cancel_job(job_id, message)
+
+    store = SlowCancelStore(tmp_path / "discovery")
+    manager = DiscoveryJobManager(store, max_workers=1)
+    started = threading.Event()
+    release_worker = threading.Event()
+    cancel_result: list[dict | None] = []
+
+    def worker(job_id, payload, progress):
+        progress(0.2, "Working.")
+        started.set()
+        release_worker.wait(timeout=5)
+        return {"hits": 3}
+
+    job = manager.submit("search", {}, worker)
+    assert started.wait(timeout=5)
+
+    cancel_thread = threading.Thread(target=lambda: cancel_result.append(manager.cancel(job["job_id"])))
+    cancel_thread.start()
+    assert store.entered_cancel.wait(timeout=5)
+
+    release_worker.set()
+    manager.shutdown(wait=True)
+    store.release_cancel.set()
+    cancel_thread.join(timeout=5)
+
+    assert cancel_result and cancel_result[0] is not None
+    assert store.get_job(job["job_id"])["status"] == "cancelled"
+    assert manager._state == {}

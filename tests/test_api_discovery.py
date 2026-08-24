@@ -134,7 +134,7 @@ def test_discovery_api_search_prepare_analyze_and_run_query_are_species_scoped(t
             "studies": [{"accession": "GSE1", "paper_title": "Paper"}],
         }
 
-    def fake_prepare(accessions, species, *, query, materialize_dir):
+    def fake_prepare(accessions, species, *, query, materialize_dir, before_publish=None):
         Path(materialize_dir).mkdir(parents=True)
         return {
             "query": query,
@@ -476,6 +476,9 @@ def test_the_browser_sends_the_filter_and_keeps_the_caret() -> None:
     assert '"resultFilter",' in INDEX_HTML
     # And it must say it does not re-run the search.
     assert "It does not run a new search." in INDEX_HTML
+    # A new snapshot must not inherit a stale local filter/count from the last one.
+    assert 'state.textFilter = "";' in INDEX_HTML
+    assert "state.totalUnfiltered = 0;" in INDEX_HTML
 
 
 def _analyze_handler(monkeypatch, tmp_path, *, decisions, captured):

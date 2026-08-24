@@ -82,6 +82,12 @@ def test_quickstart_avoids_constructs_that_break_on_macos_bash_3_2() -> None:
     assert "readlink -f" not in text
 
 
+def test_quickstart_uses_unpredictable_venv_error_log() -> None:
+    text = SCRIPT.read_text(encoding="utf-8")
+    assert "mktemp \"${TMPDIR:-/tmp}/degora_venv_error.XXXXXX\"" in text
+    assert "/tmp/degora_venv_error.$$" not in text
+
+
 def test_quickstart_handles_every_supported_platform() -> None:
     text = SCRIPT.read_text(encoding="utf-8")
     # Platform detection plus one browser opener per platform.

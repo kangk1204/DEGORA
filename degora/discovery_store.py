@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import concurrent.futures
 import json
+import re
 import secrets
 import sqlite3
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -43,10 +44,32 @@ SENSITIVE_KEY_PARTS = (
     "token",
 )
 _MISSING = object()
+_SENSITIVE_ASSIGNMENT_RE = re.compile(
+    r"(?i)\b(api[_-]?key|apikey|ncbi[_-]?api[_-]?key|client[_-]?secret|access[_-]?token|"
+    r"refresh[_-]?token|token|secret|password|credentials?)"
+    r"(\s*[=:]\s*)([^,\s;]+)"
+)
+_BEARER_TOKEN_RE = re.compile(r"(?i)\b(Bearer\s+)([^,\s;]+)")
+_FILE_URI_RE = re.compile(r'''(?i)file:/+[^\s,;)\]}"']+''')
+_POSIX_ABSOLUTE_PATH_RE = re.compile(
+    r'''(?<![\w:/.-])/(?!/)[^/\s,;)\]}"']+(?:/[^/\s,;)\]}"']+)*'''
+)
+_WINDOWS_ABSOLUTE_PATH_RE = re.compile(r"(?i)\b[A-Z]:[\\/](?:[^\\/\s,;)]+[\\/]?)+")
+_UNC_PATH_RE = re.compile(r"\\\\[^\\\s,;)]+\\[^,\s;)]+")
 
 
 class DiscoveryStoreError(ValueError):
     """Invalid discovery state operation."""
+
+
+def _sanitize_text(value: str) -> str:
+    text = _BEARER_TOKEN_RE.sub(r"\1[redacted]", value)
+    text = _SENSITIVE_ASSIGNMENT_RE.sub(r"\1\2[redacted]", text)
+    text = _FILE_URI_RE.sub("[redacted: local path]", text)
+    text = _UNC_PATH_RE.sub("[redacted: local path]", text)
+    text = _WINDOWS_ABSOLUTE_PATH_RE.sub("[redacted: local path]", text)
+    text = _POSIX_ABSOLUTE_PATH_RE.sub("[redacted: local path]", text)
+    return text
 
 
 def _utc_now() -> str:
@@ -376,14 +399,26 @@ class DiscoveryStateStore:
             ).fetchone()
         return None if row is None else _json_loads(row["payload_json"])
 
-    def interrupt_active_jobs(self, message: str) -> list[dict[str, Any]]:
-        """Atomically mark queued/running jobs interrupted and return them."""
+    def interrupt_active_jobs(
+        self,
+        message: str,
+        *,
+        exclude_job_ids: Iterable[str] = (),
+    ) -> list[dict[str, Any]]:
+        """Atomically interrupt active jobs except results already past commit."""
 
+        excluded = {_validate_id(job_id, field="job_id") for job_id in exclude_job_ids}
         now = _utc_now()
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
-                rows = connection.execute("SELECT * FROM jobs WHERE status IN ('queued', 'running')").fetchall()
+                rows = [
+                    row
+                    for row in connection.execute(
+                        "SELECT * FROM jobs WHERE status IN ('queued', 'running')"
+                    ).fetchall()
+                    if row["job_id"] not in excluded
+                ]
                 for row in rows:
                     connection.execute(
                         """
@@ -468,8 +503,50 @@ class DiscoveryJobManager:
         self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
         self._futures: set[concurrent.futures.Future[Any]] = set()
         self._lock = threading.Lock()
+        self._condition = threading.Condition(self._lock)
         self._closing = threading.Event()
-        self._cancelled: set[str] = set()
+        self._state: dict[str, str] = {}
+        self._future_job_ids: dict[concurrent.futures.Future[Any], str] = {}
+        self._commit_drain_timeout = 2.0
+
+    def _job_stop_reason(self, job_id: str) -> str:
+        with self._condition:
+            state = self._state.get(job_id)
+            if state == "committing":
+                return ""
+            if self._closing.is_set():
+                return "discovery job was cancelled because the local DEGORA server is stopping"
+            if state in {"cancel_pending", "cancelled"}:
+                return "discovery job was cancelled by the reader"
+            return ""
+
+    def _finish_job_state(self, job_id: str) -> None:
+        with self._condition:
+            self._state.pop(job_id, None)
+            self._condition.notify_all()
+
+    def commit(self, job_id: str) -> None:
+        """Fence off the point after which a job must publish its terminal state.
+
+        Workers call this immediately before making a completed result visible.
+        The decision is linearized with reader cancellation while keeping SQLite
+        writes outside the manager lock.
+        """
+
+        _validate_id(job_id, field="job_id")
+        with self._condition:
+            while True:
+                state = self._state.get(job_id)
+                if state == "committing":
+                    return
+                if self._closing.is_set() or state == "cancelled":
+                    raise DiscoveryJobCancelled("discovery job was cancelled before its result was published")
+                if state == "cancel_pending":
+                    self._condition.wait()
+                    continue
+                self._state[job_id] = "committing"
+                self._condition.notify_all()
+                return
 
     def submit(
         self,
@@ -478,21 +555,51 @@ class DiscoveryJobManager:
         worker: Callable[[str, Any, Callable[[float, str | None], dict[str, Any]]], Any],
         job_id: str | None = None,
     ) -> dict[str, Any]:
+        if self._closing.is_set():
+            raise DiscoveryStoreError("discovery manager is shutting down")
         job = self.store.create_job(kind, payload, job_id=job_id)
+        if self._closing.is_set():
+            self.store.update_job(
+                job["job_id"],
+                status="interrupted",
+                message="Job was interrupted because the local DEGORA server was stopped.",
+            )
+            raise DiscoveryStoreError("discovery manager is shutting down")
 
         def progress_callback(progress: float, message: str | None = None) -> dict[str, Any]:
             # Cancellation point. cancel_futures only drops work that has not
             # started; a worker already downloading or writing needs somewhere to
             # notice, and every stage already reports here.
-            if self._closing.is_set():
-                raise DiscoveryJobCancelled(
-                    "discovery job was cancelled because the local DEGORA server is stopping"
-                )
-            with self._lock:
-                stopped_by_reader = job["job_id"] in self._cancelled
-            if stopped_by_reader:
-                raise DiscoveryJobCancelled("discovery job was cancelled by the reader")
+            stop_reason = self._job_stop_reason(job["job_id"])
+            if stop_reason:
+                raise DiscoveryJobCancelled(stop_reason)
             return self.store.update_job(job["job_id"], progress=progress, message=message)
+
+        def complete_job(result: Any) -> None:
+            try:
+                self.store.update_job(job["job_id"], status="completed", result=result, message="Job completed.")
+            except DiscoveryStoreError:
+                terminal = self.store.get_job(job["job_id"])
+                if terminal and terminal["status"] in TERMINAL_STATUSES:
+                    return
+                raise
+
+        def fail_job(exc: Exception) -> None:
+            try:
+                self.store.update_job(
+                    job["job_id"],
+                    status="failed",
+                    error={"type": type(exc).__name__, "message": _sanitize_text(str(exc))},
+                    message="Job failed.",
+                )
+            except DiscoveryStoreError:
+                terminal = self.store.get_job(job["job_id"])
+                if terminal and terminal["status"] in TERMINAL_STATUSES:
+                    return
+                raise
+
+        def should_stop_without_terminal_write() -> bool:
+            return bool(self._job_stop_reason(job["job_id"]))
 
         def run() -> None:
             try:
@@ -500,39 +607,37 @@ class DiscoveryJobManager:
                     return
                 self.store.update_job(job["job_id"], status="running", message="Job started.")
                 result = worker(job["job_id"], payload, progress_callback)
-                if self._closing.is_set():
+                if should_stop_without_terminal_write():
                     return
-                with self._lock:
-                    if job["job_id"] in self._cancelled:
-                        # The worker finished between its last progress report and
-                        # here. The store already holds the cancelled state, and
-                        # writing the result now would transition out of a terminal
-                        # status - which the store refuses - so stop quietly.
-                        return
-                self.store.update_job(job["job_id"], status="completed", result=result, message="Job completed.")
+                complete_job(result)
             except DiscoveryJobCancelled:
                 # interrupt_active_jobs has already written the terminal state, and
                 # anything this worker would have written next is exactly what the
                 # cancellation exists to prevent.
                 return
             except Exception as exc:  # noqa: BLE001 - persist arbitrary worker failures.
-                if self._closing.is_set():
+                if should_stop_without_terminal_write():
                     return
-                with self._lock:
-                    if job["job_id"] in self._cancelled:
-                        # A cancelled download usually fails on the way out. That
-                        # failure is the cancellation, not something to report.
-                        return
-                self.store.update_job(
-                    job["job_id"],
-                    status="failed",
-                    error={"type": type(exc).__name__, "message": str(exc)},
-                    message="Job failed.",
-                )
+                fail_job(exc)
+            finally:
+                self._finish_job_state(job["job_id"])
 
-        future = self._executor.submit(run)
-        with self._lock:
-            self._futures.add(future)
+        try:
+            # Register the future while holding the same condition used by
+            # commit/shutdown. A very fast worker can otherwise enter its commit
+            # section before shutdown can discover which future must be drained.
+            with self._condition:
+                future = self._executor.submit(run)
+                self._futures.add(future)
+                self._future_job_ids[future] = job["job_id"]
+                self._condition.notify_all()
+        except RuntimeError:
+            self.store.update_job(
+                job["job_id"],
+                status="interrupted",
+                message="Job was interrupted because the local DEGORA server was stopped.",
+            )
+            raise
         future.add_done_callback(self._discard_future)
         return job
 
@@ -550,13 +655,64 @@ class DiscoveryJobManager:
         search.
         """
 
-        with self._lock:
-            self._cancelled.add(job_id)
-        return self.store.cancel_job(job_id, "Job was cancelled by the reader.")
+        _validate_id(job_id, field="job_id")
+        with self._condition:
+            while True:
+                state = self._state.get(job_id)
+                if state == "committing":
+                    return None
+                if state == "cancelled":
+                    return None
+                if state == "cancel_pending":
+                    self._condition.wait()
+                    continue
+                self._state[job_id] = "cancel_pending"
+                self._condition.notify_all()
+                break
+        try:
+            cancelled = self.store.cancel_job(job_id, "Job was cancelled by the reader.")
+        except BaseException:
+            with self._condition:
+                if self._state.get(job_id) == "cancel_pending":
+                    self._state.pop(job_id, None)
+                    self._condition.notify_all()
+            raise
+        with self._condition:
+            live_future = any(
+                mapped_job_id == job_id and not future.done()
+                for future, mapped_job_id in self._future_job_ids.items()
+            )
+            if cancelled is None or not live_future:
+                if self._state.get(job_id) == "cancel_pending":
+                    self._state.pop(job_id, None)
+            else:
+                self._state[job_id] = "cancelled"
+            self._condition.notify_all()
+        return cancelled
 
     def _discard_future(self, future: concurrent.futures.Future[Any]) -> None:
-        with self._lock:
+        with self._condition:
             self._futures.discard(future)
+            job_id = self._future_job_ids.pop(future, None)
+            if job_id is not None:
+                self._state.pop(job_id, None)
+            self._condition.notify_all()
+
+    def _await_committing(self) -> set[str]:
+        with self._condition:
+            committing = {
+                future
+                for future, job_id in self._future_job_ids.items()
+                if self._state.get(job_id) == "committing" and not future.done()
+            }
+        if committing:
+            concurrent.futures.wait(committing, timeout=self._commit_drain_timeout)
+        with self._condition:
+            return {
+                job_id
+                for future, job_id in self._future_job_ids.items()
+                if self._state.get(job_id) == "committing" and not future.done()
+            }
 
     def shutdown(
         self,
@@ -569,7 +725,9 @@ class DiscoveryJobManager:
 
         if interrupt:
             self._closing.set()
+            still_committing = self._await_committing()
             self.store.interrupt_active_jobs(
-                "Job was interrupted because the local DEGORA server was stopped."
+                "Job was interrupted because the local DEGORA server was stopped.",
+                exclude_job_ids=still_committing,
             )
         self._executor.shutdown(wait=wait, cancel_futures=cancel_futures)
