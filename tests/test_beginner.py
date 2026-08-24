@@ -387,3 +387,77 @@ def test_a_long_option_list_is_truncated_with_a_way_out(tmp_path) -> None:
     options_line = next(line for line in lines if line.strip().startswith("Options:"))
     assert options_line.count(",") <= MAX_OPTIONS_SHOWN
     assert "type the exact column name" in options_line
+
+
+def test_an_ensembl_table_and_a_symbol_table_are_flagged_before_the_run(tmp_path) -> None:
+    """A run mixing identifier spaces scores zero genes, and said so only at the end.
+
+    Two real GEO series downloaded for the same keyword wrote their gene columns
+    in different conventions: one Ensembl IDs, one symbols. DEGORA matches genes
+    on the identifier itself, so those two share nothing. The config validated,
+    the run took its full time, and reported zero genes scored. Every table was
+    already read while the config was being built, so it can be said there.
+    """
+
+    deg = tmp_path / "deg"
+    deg.mkdir()
+    pd.DataFrame(
+        {
+            "gene": [f"ENSG{index:011d}" for index in range(150)],
+            "log2FoldChange": [1.0] * 150,
+            "pvalue": [0.001] * 150,
+        }
+    ).to_csv(deg / "ensembl_study.csv", index=False)
+    pd.DataFrame(
+        {
+            "gene": [f"GENE{index}" for index in range(150)],
+            "log2FoldChange": [1.0] * 150,
+            "pvalue": [0.001] * 150,
+        }
+    ).to_csv(deg / "symbol_study.csv", index=False)
+
+    lines: list[str] = []
+    answers = iter(["human", "yes", "a vs b", "P1", "3", "3", "yes", "a vs b", "P2", "3", "3"])
+    summary = run_init(
+        tmp_path / "config.csv",
+        deg,
+        ask=lambda question, default="": next(answers),
+        echo=lines.append,
+    )
+
+    assert summary["identifier_warning"]
+    assert "ensembl_study.csv" in summary["identifier_spaces"]["Ensembl ID"]
+    assert "symbol_study.csv" in summary["identifier_spaces"]["gene symbol"]
+    # And the reader is told, not just the return value.
+    assert any("WARNING" in line and "identifier space" in line for line in lines)
+
+
+def test_one_identifier_space_raises_no_warning(tmp_path) -> None:
+    deg = tmp_path / "deg"
+    deg.mkdir()
+    for name in ("first.csv", "second.csv"):
+        _clean_table(deg / name)
+
+    answers = iter(["human", "yes", "a vs b", "P1", "3", "3", "yes", "a vs b", "P2", "3", "3"])
+    summary = run_init(
+        tmp_path / "config.csv",
+        deg,
+        ask=lambda question, default="": next(answers),
+        echo=lambda _line: None,
+    )
+
+    assert summary["identifier_warning"] == ""
+    assert list(summary["identifier_spaces"]) == ["gene symbol"]
+
+
+def test_identifier_space_names_the_common_conventions() -> None:
+    from degora.beginner import UNKNOWN_IDENTIFIER_SPACE, identifier_space
+
+    assert identifier_space(["ENSG00000141510", "ENSG00000012048.7"]) == "Ensembl ID"
+    assert identifier_space(["TP53", "BRCA1", "A1BG-AS1"]) == "gene symbol"
+    assert identifier_space(["1007_s_at", "1053_at"]) == "Affymetrix probe ID"
+    assert identifier_space(["NM_000546.6", "NR_003286.2"]) == "RefSeq ID"
+    assert identifier_space(["7157", "672"]) == "Entrez ID"
+    # Too mixed to name is reported as such rather than guessed at.
+    assert identifier_space(["TP53", "ENSG00000141510", "1007_s_at", "7157"]) == UNKNOWN_IDENTIFIER_SPACE
+    assert identifier_space([]) == UNKNOWN_IDENTIFIER_SPACE

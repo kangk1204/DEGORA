@@ -19,6 +19,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Iterable, Sequence
 
+import re
+
 import numpy as np
 import pandas as pd
 
@@ -74,6 +76,7 @@ class SourceInference:
     table_scope: str = "auto"
     table_scope_reason: str = ""
     plausible: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    identifier_space: str = ""
     readable: bool = True
     problem: str = ""
 
@@ -146,6 +149,46 @@ def _read_header(path: Path) -> tuple[pd.DataFrame, str]:
 PLAUSIBILITY_SAMPLE_ROWS = 2000
 # A list longer than this stops being a choice and becomes something to scroll past.
 MAX_OPTIONS_SHOWN = 12
+
+
+IDENTIFIER_PATTERNS = (
+    ("Ensembl ID", re.compile(r"^ENS[A-Z]*[GT]\d{6,}(\.\d+)?$", re.I)),
+    ("RefSeq ID", re.compile(r"^[NX][MRP]_\d+(\.\d+)?$", re.I)),
+    ("Affymetrix probe ID", re.compile(r"^\d+_[a-z]?_?at$", re.I)),
+    ("Entrez ID", re.compile(r"^\d+$")),
+    ("gene symbol", re.compile(r"^[A-Za-z][A-Za-z0-9\-.@_]{0,24}$")),
+)
+IDENTIFIER_SAMPLE_ROWS = 200
+UNKNOWN_IDENTIFIER_SPACE = "unrecognised identifiers"
+
+
+def identifier_space(values: Iterable[Any]) -> str:
+    """Name the identifier space a gene column is written in.
+
+    DEGORA matches genes across studies by the identifier itself, so a table of
+    Ensembl IDs and a table of symbols have nothing in common even when they
+    describe the same genes. Recognising that while the config is being built is
+    the difference between a sentence now and a run that scores zero genes later.
+    """
+
+    counts: dict[str, int] = {}
+    seen = 0
+    for value in values:
+        text = str(value).strip()
+        if not text or text.lower() == "nan":
+            continue
+        seen += 1
+        for label, pattern in IDENTIFIER_PATTERNS:
+            if pattern.match(text):
+                counts[label] = counts.get(label, 0) + 1
+                break
+        if seen >= IDENTIFIER_SAMPLE_ROWS:
+            break
+    if not counts or not seen:
+        return UNKNOWN_IDENTIFIER_SPACE
+    label, hits = max(counts.items(), key=lambda item: item[1])
+    # A clear majority, or the column is too mixed to name honestly.
+    return label if hits >= seen * 0.7 else UNKNOWN_IDENTIFIER_SPACE
 
 
 def _plausible_columns(frame: pd.DataFrame) -> dict[str, tuple[str, ...]]:
@@ -269,6 +312,11 @@ def infer_source_table(path: str | Path) -> SourceInference:
         table_scope=scope_label,
         table_scope_reason=scope_reason,
         plausible=_plausible_columns(frame),
+        identifier_space=(
+            identifier_space(frame[mapping["gene_column"]])
+            if mapping.get("gene_column") and mapping["gene_column"] in frame.columns
+            else ""
+        ),
     )
 
 
@@ -299,6 +347,8 @@ def describe_inference(inference: SourceInference) -> list[str]:
             suffix = f"  ({choice.note})"
         lines.append(f"  {label}: {choice.chosen}{suffix}")
     lines.append(f"  table covers: {inference.table_scope} - {inference.table_scope_reason}")
+    if inference.identifier_space:
+        lines.append(f"  gene names are written as: {inference.identifier_space}")
     return lines
 
 
@@ -447,6 +497,7 @@ def run_init(
     echo(f"Found {len(tables)} file(s) under {deg_dir}.")
     echo("")
     rows: list[dict[str, Any]] = []
+    spaces: dict[str, list[str]] = {}
     skipped: list[dict[str, str]] = []
     taken: list[str] = []
 
@@ -502,6 +553,7 @@ def run_init(
             overrides=overrides,
         )
         rows.append(catalog_row(inference, answers, study_id=study_id, catalog_dir=output.parent))
+        spaces.setdefault(inference.identifier_space or UNKNOWN_IDENTIFIER_SPACE, []).append(path.name)
         echo("")
 
     if not rows:
@@ -517,8 +569,31 @@ def run_init(
     else:
         catalog.to_csv(output, index=False)
 
+    # DEGORA matches genes across studies on the identifier itself, so a run mixing
+    # Ensembl IDs with symbols scores zero genes. That was only discovered at the end
+    # of a full run; every table was read here, so it can be said now, while the
+    # reader can still do something about it.
+    mixed = [space for space in spaces if space != UNKNOWN_IDENTIFIER_SPACE]
+    identifier_warning = ""
+    if len(mixed) > 1:
+        detail = "; ".join(
+            f"{space}: {', '.join(sorted(spaces[space])[:3])}"
+            + (f" and {len(spaces[space]) - 3} more" if len(spaces[space]) > 3 else "")
+            for space in sorted(mixed)
+        )
+        identifier_warning = (
+            f"These tables do not use one gene identifier space ({detail}). DEGORA matches "
+            "genes across studies on the identifier itself, so sources written in different "
+            "spaces share no genes and a run scores none. Convert them to one convention - "
+            "all symbols, or all Ensembl IDs - before running."
+        )
+        echo("")
+        echo(f"WARNING: {identifier_warning}")
+
     reversed_rows = [row for row in rows if row["include_in_analysis"] == "no"]
     return {
+        "identifier_spaces": {space: sorted(names) for space, names in spaces.items()},
+        "identifier_warning": identifier_warning,
         "config_path": str(output),
         "n_contrasts": len(rows),
         "n_source_units": len({row["source_unit_id"] for row in rows}),

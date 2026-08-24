@@ -565,3 +565,46 @@ def test_malformed_workbook_config_reports_a_config_error(tmp_path, capsys) -> N
     message = capsys.readouterr().err
     assert "DEGORA config error: config file could not be read" in message
     assert "valid CSV or Excel (.xlsx) workbook" in message
+
+
+def test_validate_says_a_config_cannot_meet_the_replication_rule(tmp_path, capsys) -> None:
+    """One source unit against min_studies=2 scores zero genes, guaranteed.
+
+    validate reported "DEGORA config OK" for such a config, and the fact only
+    surfaced after a full run. Both numbers are already known at validate time.
+    """
+
+    import pandas as pd
+
+    from degora.cli import main
+
+    deg = tmp_path / "one_study.csv"
+    pd.DataFrame(
+        {
+            "gene": [f"G{index}" for index in range(120)],
+            "log2FoldChange": [2.0 - index * 0.01 for index in range(120)],
+            "pvalue": [1e-5 if index < 40 else 0.5 for index in range(120)],
+        }
+    ).to_csv(deg, index=False)
+
+    config = tmp_path / "config.csv"
+    pd.DataFrame(
+        [
+            {
+                "study_id": "S1",
+                "source_unit_id": "P1",
+                "source_path": deg.name,
+                "gene_column": "gene",
+                "lfc_column": "log2FoldChange",
+                "p_column": "pvalue",
+                "include_in_analysis": "yes",
+            }
+        ]
+    ).to_csv(config, index=False)
+
+    assert main(["validate", str(config)]) == 0
+
+    captured = capsys.readouterr()
+    assert "DEGORA config OK" in captured.out
+    assert "1 independent source unit(s) but min_studies is 2" in captured.err
+    assert "scores zero genes" in captured.err

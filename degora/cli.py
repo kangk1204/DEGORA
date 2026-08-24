@@ -711,11 +711,24 @@ def main(argv: list[str] | None = None) -> int:
             config = Path(args.config)
             if not config.exists():
                 validate_catalog_inputs(config)
-            _validate_score_version(read_excel_settings(config))
+            settings = read_excel_settings(config)
+            _validate_score_version(settings)
             validation = validate_catalog_inputs(config)
             print("DEGORA config OK")
             _print_validation_summary(validation, include_excluded=True)
             warnings = [str(message).strip() for message in validation.get("warnings", []) if str(message).strip()]
+            # A config with fewer independent source units than the replication rule
+            # requires cannot score a single gene. Saying "OK" and letting the run
+            # find that out spends the run to deliver a fact already visible here.
+            configured_min_studies = _int_setting(settings.get("min_studies"), 2)
+            source_units = int(validation.get("source_units") or 0)
+            if source_units < configured_min_studies:
+                warnings.insert(
+                    0,
+                    f"This config has {source_units} independent source unit(s) but min_studies is "
+                    f"{configured_min_studies}, so a run scores zero genes. Give each independent "
+                    f"study its own source_unit_id, add another study, or lower Project.min_studies.",
+                )
             if warnings:
                 print("", file=sys.stderr)
                 print("Non-fatal input warnings:", file=sys.stderr)
