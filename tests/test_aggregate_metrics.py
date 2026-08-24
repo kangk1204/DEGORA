@@ -270,6 +270,73 @@ def test_source_unit_collapse_supports_predeclared_time_course_modes() -> None:
     assert peak.iloc[0]["n_contrast_rows"] == 2
 
 
+def test_early_and_late_use_the_source_units_global_timepoints() -> None:
+    base = pd.DataFrame(
+        [
+            {
+                "study_id": "T1",
+                "source_unit_id": "P1",
+                "gene_symbol": "BOTH",
+                "signed_z": 1.0,
+                "lfc": 0.5,
+                "normalized_rank": 0.2,
+                "duration_h": "1",
+            },
+            {
+                "study_id": "T2",
+                "source_unit_id": "P1",
+                "gene_symbol": "BOTH",
+                "signed_z": 2.0,
+                "lfc": 1.0,
+                "normalized_rank": 0.1,
+                "duration_h": "24",
+            },
+            {
+                "study_id": "T1",
+                "source_unit_id": "P1",
+                "gene_symbol": "EARLY_ONLY",
+                "signed_z": 3.0,
+                "lfc": 1.5,
+                "normalized_rank": 0.1,
+                "duration_h": "1",
+            },
+            {
+                "study_id": "T2",
+                "source_unit_id": "P1",
+                "gene_symbol": "LATE_ONLY",
+                "signed_z": 4.0,
+                "lfc": 2.0,
+                "normalized_rank": 0.1,
+                "duration_h": "24",
+            },
+        ]
+    )
+
+    early = collapse_gene_source_units(base.assign(time_course_mode="early"))
+    late = collapse_gene_source_units(base.assign(time_course_mode="late"))
+
+    assert set(early["gene_symbol"]) == {"BOTH", "EARLY_ONLY"}
+    assert set(late["gene_symbol"]) == {"BOTH", "LATE_ONLY"}
+
+
+def test_source_unit_collapse_rejects_conflicting_time_course_modes() -> None:
+    harmonized = pd.DataFrame(
+        {
+            "study_id": ["T1", "T2"],
+            "source_unit_id": ["P1", "P1"],
+            "gene_symbol": ["GENE", "GENE"],
+            "signed_z": [1.0, 2.0],
+            "lfc": [0.5, 1.0],
+            "normalized_rank": [0.2, 0.1],
+            "duration_h": ["1", "24"],
+            "time_course_mode": ["early", "late"],
+        }
+    )
+
+    with pytest.raises(ValueError, match="each source_unit_id must use one time_course_mode"):
+        collapse_gene_source_units(harmonized)
+
+
 def test_peak_mean_selects_on_statistical_strength_not_effect_size() -> None:
     """Pin what "peak" means, because the two readings disagree.
 

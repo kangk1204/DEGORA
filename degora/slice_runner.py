@@ -78,6 +78,7 @@ CATALOG_ALIASES = {
     "array_platform": "platform",
     "probe_column": "probe_id_column",
     "probe_collapse_rule": "probe_collapse",
+    "temporal_mode": "time_course_mode",
     "time_mode": "time_course_mode",
     "temporal_aggregation": "time_course_mode",
     "include": "include_in_analysis",
@@ -129,8 +130,8 @@ CATALOG_COLUMN_HELP = {
     "probe_collapse": "for microarray sources, how probes were collapsed to gene symbols",
     "time_course_mode": (
         "how same-source time-course contrasts are preselected: mean keeps all, early/late keep the "
-        "smallest/largest duration_h, peak_mean keeps the strongest half by p-value-derived |signed_z| "
-        "(not by fold change)"
+        "globally smallest/largest duration_h, peak_mean keeps each gene's strongest half by "
+        "p-value-derived |signed_z| (not by fold change)"
     ),
     "include_in_analysis": "yes/no flag; blank means yes",
 }
@@ -638,6 +639,43 @@ def _validate_optional_scope_values(catalog: pd.DataFrame, include_mask: pd.Seri
             context=f"config file: {path}",
             problems=problems,
             fixes=fixes,
+        )
+
+
+def _validate_source_unit_time_course_modes(
+    catalog: pd.DataFrame,
+    include_mask: pd.Series,
+    path: Path,
+) -> None:
+    """Require one temporal preselection policy per independent source unit."""
+
+    active = catalog.loc[include_mask].copy()
+    if active.empty:
+        return
+    active["_source_unit_id"] = _source_unit_series(active)
+    active["_normalized_time_course_mode"] = active["time_course_mode"].map(
+        _normalize_time_course_setting
+    )
+    problems: list[str] = []
+    for source_unit_id, group in active.groupby("_source_unit_id", sort=True):
+        modes = sorted(set(group["_normalized_time_course_mode"].dropna().astype(str)))
+        if len(modes) <= 1:
+            continue
+        rows = ", ".join(str(_user_row_number(index)) for index in group.index)
+        problems.append(
+            f"source_unit_id={source_unit_id!r} uses conflicting normalized modes {modes} "
+            f"across config rows {rows}."
+        )
+    if problems:
+        raise DegoraConfigError(
+            "source unit has conflicting time_course_mode values",
+            context=f"config file: {path}",
+            problems=problems,
+            fixes=[
+                "Use one time_course_mode for every active row sharing a source_unit_id.",
+                "Use mean to keep every related contrast, early/late to keep the globally earliest/latest "
+                "duration_h, or peak_mean for the documented gene-specific strongest-window summary.",
+            ],
         )
 
 
@@ -1197,6 +1235,7 @@ def validate_catalog_inputs(
     include_mask = catalog_include_mask(full_catalog)
     _validate_catalog_required_values(full_catalog, include_mask, catalog_path)
     _validate_optional_scope_values(full_catalog, include_mask, catalog_path)
+    _validate_source_unit_time_course_modes(full_catalog, include_mask, catalog_path)
     _validate_optional_replicate_counts(full_catalog, include_mask, catalog_path)
     _reject_duplicate_active_study_ids(full_catalog, include_mask, catalog_path)
     _reject_delimiter_in_identifiers(full_catalog, include_mask, catalog_path)
@@ -1338,6 +1377,7 @@ def _run_slice_locked(catalog_path: Path, output_dir: Path, harmonized_dir: Path
     include_mask = catalog_include_mask(full_catalog)
     _validate_catalog_required_values(full_catalog, include_mask, catalog_path)
     _validate_optional_scope_values(full_catalog, include_mask, catalog_path)
+    _validate_source_unit_time_course_modes(full_catalog, include_mask, catalog_path)
     _validate_optional_replicate_counts(full_catalog, include_mask, catalog_path)
     _reject_duplicate_active_study_ids(full_catalog, include_mask, catalog_path)
     _reject_delimiter_in_identifiers(full_catalog, include_mask, catalog_path)

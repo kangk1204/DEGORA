@@ -57,10 +57,11 @@ SOURCE_UNIT_COLLAPSE_RULE = (
     f"with per-contrast sample-size weights capped at {MAX_SOURCE_SAMPLE_WEIGHT:g}; "
     "no max-|z| representative selection. Optional time_course_mode can preselect "
     "rows within a source unit before this aggregation: mean keeps every contrast; "
-    "early and late keep the contrast(s) at the smallest and largest numeric duration_h; "
-    "peak_mean keeps the strongest half by |signed_z| (at least two, and all of them when "
-    "the source unit has two or fewer), where |signed_z| is statistical strength derived "
-    "from the p-value rather than effect size, with ties broken by study_id."
+    "early and late keep all gene rows from the source unit's globally smallest and largest "
+    "numeric duration_h; peak_mean keeps each gene's strongest half by |signed_z| (at least "
+    "two, and all observations when that gene has two or fewer), where |signed_z| is "
+    "statistical strength derived from the p-value rather than effect size, with ties broken "
+    "by study_id."
 )
 
 
@@ -151,11 +152,11 @@ def _duration_numeric(values: pd.Series) -> pd.Series:
 def _apply_time_course_mode(frame: pd.DataFrame) -> pd.DataFrame:
     """Preselect the contrasts of a source unit before collapsing it.
 
-    ``mean`` keeps every contrast. ``early`` and ``late`` keep the contrast(s) at
-    the smallest and largest numeric ``duration_h``; a source unit whose rows carry
-    no parsable duration keeps all of them. ``peak_mean`` keeps the strongest half
-    by ``|signed_z|`` - at least two, and all of them when the source unit has two
-    or fewer.
+    ``mean`` keeps every contrast. ``early`` and ``late`` keep every gene row from
+    the source unit's globally smallest and largest numeric ``duration_h``; a source
+    unit whose rows carry no parsable duration keeps all of them. ``peak_mean`` is
+    gene-specific and keeps the strongest half by ``|signed_z|`` - at least two,
+    and all observations when the gene has two or fewer.
 
     "Strongest" here means statistical strength: ``signed_z`` is derived from the
     p-value, so a time point with a large fold change but a weak p-value is not the
@@ -173,10 +174,17 @@ def _apply_time_course_mode(frame: pd.DataFrame) -> pd.DataFrame:
         return frame
     frame = frame.copy()
     frame["time_course_mode"] = frame[mode_column].map(_normalize_time_course_mode)
+    modes_per_unit = frame.groupby("source_unit_id", sort=False)["time_course_mode"].nunique()
+    conflicting_units = sorted(modes_per_unit.index[modes_per_unit.gt(1)].astype(str))
+    if conflicting_units:
+        raise ValueError(
+            "each source_unit_id must use one time_course_mode; conflicting source unit(s): "
+            + ", ".join(conflicting_units)
+        )
     if frame["time_course_mode"].eq("mean").all():
         return frame
 
-    group_cols = ["gene_symbol", "source_unit_id"]
+    gene_source_cols = ["gene_symbol", "source_unit_id"]
     selected = [frame.loc[frame["time_course_mode"].eq("mean")]]
     duration = _duration_numeric(frame["duration_h"]) if "duration_h" in frame.columns else pd.Series(np.nan, index=frame.index)
 
@@ -187,20 +195,26 @@ def _apply_time_course_mode(frame: pd.DataFrame) -> pd.DataFrame:
         subset["_duration"] = duration.loc[subset.index]
         finite = np.isfinite(subset["_duration"])
         if finite.any():
-            targets = subset.loc[finite].groupby(group_cols, sort=False)["_duration"].transform(reducer)
+            targets = subset.loc[finite].groupby("source_unit_id", sort=False)["_duration"].transform(reducer)
             subset.loc[finite, "_target_duration"] = targets
-            has_finite = subset.groupby(group_cols, sort=False)["_duration"].transform(lambda values: np.isfinite(values).any())
+            has_finite = subset.groupby("source_unit_id", sort=False)["_duration"].transform(
+                lambda values: np.isfinite(values).any()
+            )
             subset = subset.loc[~has_finite | (subset["_duration"].eq(subset["_target_duration"]))]
         selected.append(subset.drop(columns=["_duration", "_target_duration"], errors="ignore"))
 
     peak = frame.loc[frame["time_course_mode"].eq("peak_mean")].copy()
     if not peak.empty:
         peak["_abs_for_peak"] = peak["signed_z"].abs()
-        peak = peak.sort_values([*group_cols, "_abs_for_peak", "study_id"], ascending=[True, True, False, True], kind="mergesort")
-        group_size = peak.groupby(group_cols, sort=False)["study_id"].transform("size")
+        peak = peak.sort_values(
+            [*gene_source_cols, "_abs_for_peak", "study_id"],
+            ascending=[True, True, False, True],
+            kind="mergesort",
+        )
+        group_size = peak.groupby(gene_source_cols, sort=False)["study_id"].transform("size")
         group_size_values = group_size.to_numpy(dtype=int)
         keep_n = np.where(group_size_values <= 2, group_size_values, np.maximum(2, np.ceil(group_size_values * 0.5))).astype(int)
-        rank_from_top = peak.groupby(group_cols, sort=False).cumcount()
+        rank_from_top = peak.groupby(gene_source_cols, sort=False).cumcount()
         selected.append(peak.loc[rank_from_top < keep_n].drop(columns=["_abs_for_peak"]))
 
     out = pd.concat([part for part in selected if not part.empty], ignore_index=True)

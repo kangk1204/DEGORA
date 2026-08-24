@@ -676,6 +676,53 @@ def test_run_slice_explains_bad_time_course_mode(tmp_path) -> None:
     assert "mean, early, late, peak_mean" in message
 
 
+def test_legacy_temporal_mode_populates_time_course_mode(tmp_path) -> None:
+    config_path = tmp_path / "legacy_temporal_mode.csv"
+    pd.DataFrame(
+        {
+            "study_id": ["S1"],
+            "paper_id": ["P1"],
+            "source_path": ["source.csv"],
+            "gene_column": ["gene"],
+            "lfc_column": ["log2FoldChange"],
+            "p_column": ["pvalue"],
+            "temporal_mode": ["earliest"],
+        }
+    ).to_csv(config_path, index=False)
+
+    catalog = read_catalog(config_path)
+
+    assert catalog.loc[0, "time_course_mode"] == "earliest"
+
+
+def test_validate_rejects_conflicting_time_course_modes_within_source_unit(tmp_path) -> None:
+    source_path = tmp_path / "deg.csv"
+    pd.DataFrame(
+        {"gene": ["ISG15"], "log2FoldChange": [2.0], "pvalue": [0.001]}
+    ).to_csv(source_path, index=False)
+    config_path = tmp_path / "conflicting_time_modes.csv"
+    pd.DataFrame(
+        {
+            "study_id": ["S1", "S2"],
+            "source_unit_id": ["P1", "P1"],
+            "source_path": [source_path.name, source_path.name],
+            "gene_column": ["gene", "gene"],
+            "lfc_column": ["log2FoldChange", "log2FoldChange"],
+            "p_column": ["pvalue", "pvalue"],
+            "time_course_mode": ["early", "late"],
+            "duration_h": [1, 24],
+        }
+    ).to_csv(config_path, index=False)
+
+    with pytest.raises(DegoraConfigError) as exc_info:
+        validate_catalog_inputs(config_path)
+
+    message = str(exc_info.value)
+    assert "conflicting time_course_mode" in message
+    assert "source_unit_id='P1'" in message
+    assert "early" in message and "late" in message
+
+
 def test_run_slice_explains_wrong_source_column_and_suggests_fix(tmp_path) -> None:
     source_path = tmp_path / "deg.csv"
     pd.DataFrame(
