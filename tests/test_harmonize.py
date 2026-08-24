@@ -3,7 +3,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from degora.harmonize import TableMapping, assess_table_scope, harmonize_frame
+from degora.harmonize import TableMapping, assess_table_scope, harmonize_frame, read_deg_table
 from degora.slice_runner import apply_gene_type_filter, catalog_include_mask
 
 
@@ -502,3 +502,33 @@ def test_duplicate_collapse_is_not_reported_as_unusable_rows() -> None:
     assert int(out["n_rows_dropped_unusable"].iloc[0]) == 0
     assert int(out["n_rows_merged_by_gene_collapse"].iloc[0]) == 1
     assert str(out["unusable_row_warning"].iloc[0]) == ""
+
+
+def test_a_gzipped_workbook_is_read_rather_than_decoded_as_text(tmp_path) -> None:
+    """Repositories serve supplementary workbooks gzipped, and pandas reads neither.
+
+    A .xls.gz fell through to the CSV reader and failed on the workbook's first
+    byte - "utf-8 codec can't decode byte 0xd0" - which says nothing about the
+    real problem and nothing a reader could act on.
+    """
+
+    import gzip
+    import shutil
+
+    from openpyxl import Workbook
+
+    book = Workbook()
+    sheet = book.active
+    sheet.append(["gene", "log2FoldChange", "pvalue"])
+    for index in range(1, 6):
+        sheet.append([f"G{index}", 2.0 - index * 0.1, 0.001 * index])
+    plain = tmp_path / "table.xlsx"
+    book.save(plain)
+    compressed = tmp_path / "table.xlsx.gz"
+    with plain.open("rb") as source, gzip.open(compressed, "wb") as target:
+        shutil.copyfileobj(source, target)
+
+    mapping = TableMapping("gene", "log2FoldChange", "pvalue")
+
+    assert read_deg_table(plain, mapping).shape == (5, 3)
+    assert read_deg_table(compressed, mapping).shape == (5, 3)

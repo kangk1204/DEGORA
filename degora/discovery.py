@@ -684,13 +684,17 @@ UPSTREAM_EXPRESSION_RE = re.compile(
 )
 WEAK_RE = re.compile(r"processed|compare|table[_\-.]?s?\d*|results?|supplement|analysis", re.I)
 SUPPORTED_TEXT_RE = re.compile(r"\.(csv|tsv|txt)(\.gz)?$", re.I)
+# Repositories serve supplementary tables as workbooks at least as often as text,
+# and gzipped. The analysis path reads all four shapes, so refusing to inspect
+# them here made DEGORA decline files it could have used.
+SUPPORTED_WORKBOOK_RE = re.compile(r"\.(xlsx|xls)(\.gz)?$", re.I)
 
 
 def classify_filename(name_or_url: str) -> dict[str, Any]:
     path = urllib.parse.urlsplit(str(name_or_url)).path
     name = urllib.parse.unquote(Path(path).name or str(name_or_url))
     lower = name.lower()
-    supported = bool(SUPPORTED_TEXT_RE.search(lower) or lower.endswith(".xlsx"))
+    supported = bool(SUPPORTED_TEXT_RE.search(lower) or SUPPORTED_WORKBOOK_RE.search(lower))
     if HARD_REJECT_RE.search(lower):
         return {
             "name": name,
@@ -977,12 +981,62 @@ def _validate_xlsx_archive(payload: bytes) -> None:
         raise DiscoveryError("XLSX candidate is not a valid OOXML archive") from exc
 
 
+def _decompressed_workbook(payload: bytes, lower_name: str) -> bytes:
+    """Expand a gzipped workbook, bounded, so it can be inspected in memory."""
+
+    if not lower_name.endswith(".gz"):
+        return payload
+    try:
+        with gzip.GzipFile(fileobj=io.BytesIO(payload)) as handle:
+            expanded = handle.read(MAX_GZIP_UNCOMPRESSED_BYTES + 1)
+    except (EOFError, OSError, zlib.error) as exc:
+        raise DiscoveryError(f"gzipped workbook could not be expanded: {exc}") from exc
+    if len(expanded) > MAX_GZIP_UNCOMPRESSED_BYTES:
+        raise DiscoveryError("gzipped workbook exceeds the uncompressed safety cap")
+    return expanded
+
+
+def _inspect_legacy_workbook(payload: bytes) -> dict[str, Any]:
+    """Classify a legacy .xls workbook's best sheet, the way .xlsx is classified."""
+
+    if not payload.startswith(b"\xd0\xcf\x11\xe0"):
+        raise DiscoveryError("legacy workbook does not carry the OLE2 signature a .xls file has")
+    try:
+        import pandas as pd
+
+        sheets = pd.read_excel(io.BytesIO(payload), sheet_name=None, header=None, nrows=30)
+    except ImportError as exc:  # pragma: no cover - xlrd ships as a runtime dependency
+        raise DiscoveryError(f"legacy workbook reader is unavailable: {exc}") from exc
+    except Exception as exc:  # noqa: BLE001 - an unreadable candidate is not a crash
+        raise DiscoveryError(f"legacy workbook could not be read: {exc}") from exc
+    ranks = {
+        "ready_for_review": 5,
+        "candidate_header": 4,
+        "requires_lfc_confirmation": 3,
+        "requires_pvalue_mapping": 2,
+        "not_deg_table": 1,
+    }
+    best: dict[str, Any] | None = None
+    best_rank = -1
+    for sheet_name, frame in list(sheets.items())[:8]:
+        rows = [list(row) for row in frame.itertuples(index=False, name=None)]
+        current = _inspect_rows(rows, sheet=str(sheet_name))
+        current_rank = ranks.get(current["status"], 0)
+        if current_rank > best_rank:
+            best, best_rank = current, current_rank
+    return best or classify_header([])
+
+
 def inspect_candidate_bytes(name_or_url: str, payload: bytes) -> dict[str, Any]:
     lower = urllib.parse.urlsplit(str(name_or_url)).path.lower()
     if SUPPORTED_TEXT_RE.search(lower):
         text = _decode_text_payload(payload, compressed=lower.endswith(".gz"))
         result = _inspect_rows(_delimited_rows(text))
-    elif lower.endswith(".xlsx"):
+    elif SUPPORTED_WORKBOOK_RE.search(lower):
+        payload = _decompressed_workbook(payload, lower)
+        if lower.replace(".gz", "").endswith(".xls"):
+            result = _inspect_legacy_workbook(payload)
+            return {**result, "bytes": len(payload)}
         _validate_xlsx_archive(payload)
         from openpyxl import load_workbook
 

@@ -1427,3 +1427,84 @@ def test_the_readiness_badge_says_what_the_estimate_rests_on() -> None:
     assert "`state: ${readiness}`" in INDEX_HTML
     # The raw tier no longer stands alone as the reader-facing label.
     assert "`search estimate · ${readiness}`" not in INDEX_HTML
+
+
+def test_every_interpolated_name_in_a_candidate_row_exists() -> None:
+    """A template can reference a variable nobody declared and still match a string test.
+
+    While collapsing the advanced settings, the markup referencing `columnsOpen`
+    landed without the declaration: every string assertion still passed, and the
+    row would have thrown a ReferenceError in the browser. This checks the two
+    functions that build a prepared-candidate row for bare interpolations whose
+    name is not declared in the function, its parameters, or module scope.
+    """
+
+    import re
+
+    from degora.api import INDEX_HTML
+
+    builtins = {"esc", "fmt", "badge", "tier", "Boolean", "String", "Number", "Math", "JSON", "Object", "Array"}
+    module_level = set(re.findall(r"\n    (?:function|const|let)\s+([A-Za-z_$][\w$]*)", INDEX_HTML))
+
+    for name in ("authorCandidateHtml", "fallbackCandidateHtml"):
+        start = INDEX_HTML.index(f"function {name}(")
+        end = INDEX_HTML.index("\n    function ", start + 10)
+        body = INDEX_HTML[start:end]
+
+        declared = set(re.findall(r"\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)", body))
+        parameters = re.search(rf"function {name}\(([^)]*)\)", body).group(1)
+        declared |= {part.strip() for part in parameters.split(",") if part.strip()}
+
+        # ${identifier} and ${identifier ? ... } - the shapes that name a variable
+        # outright rather than reading a property off one.
+        used = set(re.findall(r"\$\{([A-Za-z_$][\w$]*)\s*(?:\?|\})", body))
+        assert used, name
+        undefined = sorted(used - declared - module_level - builtins)
+        assert not undefined, f"{name} interpolates undeclared: {undefined}"
+
+
+def test_advanced_settings_start_collapsed_but_never_hide_a_set_value() -> None:
+    """Eight optional controls competed with the two or three that need deciding.
+
+    Collapsing them is only safe if a setting already carrying a value opens the
+    panel: otherwise the reader cannot see what their run is going to do.
+    """
+
+    from degora.api import INDEX_HTML
+
+    assert "<details class=\"candidate-advanced\"" in INDEX_HTML
+    assert "function anyValueSet(" in INDEX_HTML
+    # Advanced opens when anything in it is set, including the non-default policy.
+    assert "const advancedOpen = anyValueSet(" in INDEX_HTML
+    assert 'duplicateGenePolicy === "keep_first"' in INDEX_HTML
+    # Columns open when the file was not read cleanly or the reader edited them.
+    assert 'const columnsOpen = status !== "ready_for_review"' in INDEX_HTML
+    assert "anyValueSet(draft.sheetName, draft.geneColumn" in INDEX_HTML
+    # Collapsed, not removed: the activation gate still queries these controls.
+    assert 'class="row-filter-column"' in INDEX_HTML
+    assert 'class="duplicate-gene-policy"' in INDEX_HTML
+
+
+def test_group_sizes_are_bounded_by_the_series_rather_than_guessed() -> None:
+    """The split between groups is not derivable, and it feeds the source weight.
+
+    A results table has one row per gene, so nothing in it says how many samples
+    were in each arm; inferring it would put an unverifiable number straight into
+    min(sqrt(n_ctrl + n_treat), 4). What the linked series holds in total is
+    knowable, and is what a reader is otherwise squinting at the paper to find.
+    """
+
+    from degora.api import INDEX_HTML
+
+    assert "The linked series lists" in INDEX_HTML
+    assert "together they cannot exceed" in INDEX_HTML
+    assert 'data-series-samples="' in INDEX_HTML
+
+    # Entering the series total in both boxes doubles the source's weight against
+    # every other study, so the pair is checked against the series.
+    assert "const fitsSeries = !seriesTotal || enteredTotal <= seriesTotal;" in INDEX_HTML
+    assert "isPositiveWholeNumber(nCtrl?.value) && fitsSeries" in INDEX_HTML
+    assert "isPositiveWholeNumber(nTreat?.value) && fitsSeries" in INDEX_HTML
+
+    # And nothing prefills them: a guessed group size is not an improvement.
+    assert 'class="n-ctrl" type="number" min="1" step="1" inputmode="numeric" value="${esc(nCtrl)}"' in INDEX_HTML

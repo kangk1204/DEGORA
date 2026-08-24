@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import gzip
+import io
 import re
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -17,6 +19,9 @@ from scipy.stats import norm
 # non-finite guard then turns into NaN -- silently dropping the MOST significant gene
 # (a reported p-value of 0). 1e-300 floors p=0 to a large finite signed-z instead.
 P_MIN = 1e-300
+# A gzipped workbook has to be expanded in memory before pandas can read it, so
+# it needs the bound a streamed CSV does not.
+MAX_DECOMPRESSED_WORKBOOK_BYTES = 256 * 1024 * 1024
 AUTO_TABLE_SCOPE = "auto"
 FULL_RESULTS_SCOPE = "full_results"
 DEG_ONLY_SCOPE = "deg_only"
@@ -205,13 +210,33 @@ def normalize_table_scope(value: Any) -> str:
     )
 
 
+def _read_excel_any(path: Path, sheet_name: str | int | None) -> pd.DataFrame:
+    """Read a workbook, decompressing it first when it arrived gzipped.
+
+    Repositories serve supplementary workbooks as .xlsx.gz and .xls.gz, and pandas
+    reads neither. Such a file used to fall through to the CSV reader and fail on
+    the workbook's first byte, which said nothing about the real problem.
+    """
+
+    if not path.name.lower().endswith(".gz"):
+        return pd.read_excel(path, sheet_name=sheet_name)
+    with gzip.open(path, "rb") as handle:
+        payload = handle.read(MAX_DECOMPRESSED_WORKBOOK_BYTES + 1)
+    if len(payload) > MAX_DECOMPRESSED_WORKBOOK_BYTES:
+        raise ValueError(
+            f"{path.name} expands beyond the {MAX_DECOMPRESSED_WORKBOOK_BYTES // (1024 * 1024)} MB "
+            "workbook safety cap; decompress it and check what it contains before using it"
+        )
+    return pd.read_excel(io.BytesIO(payload), sheet_name=sheet_name)
+
+
 def read_deg_table(path: str | Path, mapping: TableMapping) -> pd.DataFrame:
     path = Path(path)
     suffixes = "".join(path.suffixes).lower()
 
-    if suffixes.endswith((".xlsx", ".xls")):
+    if suffixes.endswith((".xlsx", ".xls", ".xlsx.gz", ".xls.gz")):
         sheet_name: str | int | None = 0 if mapping.sheet_name in (None, "") else mapping.sheet_name
-        return pd.read_excel(path, sheet_name=sheet_name)
+        return _read_excel_any(path, sheet_name)
 
     raw_sep = mapping.sep
     auto_sep = raw_sep in (None, "")

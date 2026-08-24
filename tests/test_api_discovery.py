@@ -144,7 +144,10 @@ def test_discovery_api_search_prepare_analyze_and_run_query_are_species_scoped(t
             "studies": [],
         }
 
-    def fake_run(prepared, selections, output, *, species, min_studies):
+    run_metadata: list[dict] = []
+
+    def fake_run(prepared, selections, output, *, species, min_studies, extra_metadata=None):
+        run_metadata.append(dict(extra_metadata or {}))
         output = Path(output)
         target = output / "results" / f"degora_{species}_scores.db"
         target.parent.mkdir(parents=True)
@@ -473,3 +476,96 @@ def test_the_browser_sends_the_filter_and_keeps_the_caret() -> None:
     assert '"resultFilter",' in INDEX_HTML
     # And it must say it does not re-run the search.
     assert "It does not run a new search." in INDEX_HTML
+
+
+def _analyze_handler(monkeypatch, tmp_path, *, decisions, captured):
+    """A handler wired to a recording run_discovery_analysis, ready to analyse."""
+
+    import degora.api as api
+    import degora.discovery_run as discovery_run
+
+    def fake_run(prepared, selections, output, *, species, min_studies, extra_metadata=None, force=False):
+        captured["extra_metadata"] = dict(extra_metadata or {})
+        return {"db_path": str(output / "x.db"), "top_genes": [], "species": {"key": species}}
+
+    monkeypatch.setattr(discovery_run, "run_discovery_analysis", fake_run)
+
+    bundle = {
+        "species": {"key": "human"},
+        "studies": [{"species_decision": decision} for decision in decisions],
+    }
+    handler = api.DegoraRequestHandler.__new__(api.DegoraRequestHandler)
+    store = type("Store", (), {"get_artifact": staticmethod(lambda kind, key: bundle),
+                               "save_artifact": staticmethod(lambda *a, **k: None)})()
+    handler.server = type(
+        "S",
+        (),
+        {
+            "discovery_search_store": store,
+            "discovery_bundles": {},
+            "discovery_runs": {},
+            "discovery_lock": __import__("threading").RLock(),
+            "discovery_root": tmp_path,
+            "server_address": ("127.0.0.1", 0),
+            "remember_discovery": staticmethod(lambda registry, key, value: registry.__setitem__(key, value)),
+        },
+    )()
+    return handler
+
+
+def test_analysis_is_refused_until_an_unchecked_species_is_confirmed(tmp_path, monkeypatch) -> None:
+    """The README asked the reader to confirm; nothing collected the answer.
+
+    A record found only through the literature search carries the organism filter
+    that produced the search and no per-record evidence. DEGORA labels that
+    query_constrained, and the browser analysed it without ever asking.
+    """
+
+    captured: dict = {}
+    handler = _analyze_handler(
+        monkeypatch, tmp_path, decisions=["query_constrained", "target_species_likely"], captured=captured
+    )
+    request = {"bundle_id": "a" * 16, "species": "human", "selections": [{}]}
+
+    with pytest.raises(ValueError, match="confirm their species"):
+        handler._discovery_analyze({**request, "species_confirmation_required_for": 1, "species_confirmed": False})
+
+    handler._discovery_analyze({**request, "species_confirmation_required_for": 1, "species_confirmed": True})
+
+    # And the answer is recorded with the run, not merely acted on.
+    assert captured["extra_metadata"]["discovery_species_confirmed_by_reviewer"] == "true"
+    assert captured["extra_metadata"]["discovery_species_records_needing_confirmation"] == "1"
+
+
+def test_a_fully_checked_selection_needs_no_extra_confirmation(tmp_path, monkeypatch) -> None:
+    """Records with per-record organism evidence must not grow a new question."""
+
+    captured: dict = {}
+    handler = _analyze_handler(
+        monkeypatch, tmp_path, decisions=["target_species_likely"], captured=captured
+    )
+
+    handler._discovery_analyze(
+        {
+            "bundle_id": "a" * 16,
+            "species": "human",
+            "selections": [{}],
+            "species_confirmation_required_for": 0,
+            "species_confirmed": True,
+        }
+    )
+
+    assert captured["extra_metadata"]["discovery_species_records_needing_confirmation"] == "0"
+
+
+def test_the_browser_collects_the_species_confirmation() -> None:
+    from degora.api import INDEX_HTML
+
+    assert 'id="speciesConfirmed"' in INDEX_HTML
+    assert "function unconfirmedSpeciesStudies(" in INDEX_HTML
+    # It gates the run rather than merely appearing.
+    assert "rows.length > 0 && speciesConfirmed &&" in INDEX_HTML
+    # It is only asked where a per-record check is actually missing.
+    assert 'decision === "query_constrained"' in INDEX_HTML
+    # And the answer travels with the request.
+    assert "species_confirmed: pendingSpecies.length === 0" in INDEX_HTML

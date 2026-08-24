@@ -759,6 +759,7 @@ def _execute_discovery_analysis(
     species: str,
     min_studies: int = 2,
     force: bool = False,
+    extra_metadata: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Build an active catalog and run DEGORA for exactly one species."""
 
@@ -892,6 +893,7 @@ def _execute_discovery_analysis(
             "discovery_species": spec.key,
             "discovery_cross_species_pooling": "false",
             "discovery_source_units": ",".join(source_units),
+            **{str(key): str(value) for key, value in (extra_metadata or {}).items()},
         },
     )
     # A run that scored nothing is a failure, not a run with an empty table. The
@@ -956,6 +958,7 @@ def run_discovery_analysis(
     species: str,
     min_studies: int = 2,
     force: bool = False,
+    extra_metadata: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Run a species-specific activation with rollback on every failed attempt."""
 
@@ -969,6 +972,7 @@ def run_discovery_analysis(
             species=species,
             min_studies=min_studies,
             force=force,
+            extra_metadata=extra_metadata,
         )
     except BaseException:
         _rollback_output_transaction(output, existed_empty=existed_empty, backup=backup)

@@ -1073,6 +1073,7 @@ INDEX_HTML = """<!doctype html>
         </div>
         <div id="preparedCandidates"></div>
         <div class="table-footer">
+          <label class="confirm-line" id="speciesConfirmLine" hidden><input id="speciesConfirmed" type="checkbox"> <span id="speciesConfirmText"></span></label>
           <span class="status" id="analysisEligibility" role="status" aria-live="polite">Select candidates from at least two independent studies.</span>
           <div class="selection-action">
             <button class="action-secondary" id="backToResults" type="button">Back to studies</button>
@@ -2409,6 +2410,12 @@ INDEX_HTML = """<!doctype html>
       });
     }
 
+    // A control that already carries a value must not be hidden behind a closed
+    // panel: the reader would not see what their run is actually going to do.
+    function anyValueSet(...values) {
+      return values.some((value) => String(value ?? "").trim() !== "");
+    }
+
     function authorCandidateHtml(study, candidate, defaultChecked, activationKey, clone) {
       activationKey = activationKey || candidate.candidate_id;
       const mapping = candidate.inspection?.mapping || {};
@@ -2432,7 +2439,31 @@ INDEX_HTML = """<!doctype html>
       const rowFilterColumn = draft.rowFilterColumn === undefined ? "" : draft.rowFilterColumn;
       const rowFilterValue = draft.rowFilterValue === undefined ? "" : draft.rowFilterValue;
       const duplicateGenePolicy = draft.duplicateGenePolicy || "harmonizer";
-      return `<div class="candidate-row" data-candidate-id="${esc(candidate.candidate_id)}" data-activation-key="${esc(activationKey)}" data-clone="${clone ? "true" : "false"}" data-accession="${esc(study.accession)}" data-source-unit="${esc(study.source_unit_id || study.accession)}" data-mode="author" data-author-status="${esc(status)}" data-detected-sheet-name="${esc(detectedAuthorValue(candidate, "sheet_name"))}" data-detected-gene-column="${esc(detectedAuthorValue(candidate, "gene_column"))}" data-detected-lfc-column="${esc(detectedAuthorValue(candidate, "lfc_column"))}" data-detected-p-column="${esc(detectedAuthorValue(candidate, "p_column"))}" data-detected-padj-column="${esc(detectedAuthorValue(candidate, "padj_column"))}">
+      // Open the column panel when the reader has to look at it: the file was not
+      // read cleanly, or they have already changed something in it.
+      // The split between groups is not derivable from a results table - it has one
+      // row per gene - and it feeds the source weight directly, so it is never
+      // guessed. What the linked series holds in total is knowable, and is the
+      // number a reader is otherwise squinting at the paper to find.
+      const seriesSamples = Number(study.n_samples || 0);
+      const seriesSampleNote = seriesSamples > 0
+        ? `<p class="candidate-note">The linked series lists ${seriesSamples} sample${seriesSamples === 1 ? "" : "s"} in total. `
+          + `Enter the numbers for this contrast only; together they cannot exceed ${seriesSamples}.</p>`
+        : "";
+      const columnsOpen = status !== "ready_for_review"
+        || anyValueSet(draft.sheetName, draft.geneColumn, draft.lfcColumn, draft.pColumn, draft.padjColumn);
+      // And never hide a setting that is already carrying a value, or the reader
+      // cannot see what their run is actually going to do.
+      const advancedOpen = anyValueSet(
+        rowFilterColumn,
+        rowFilterValue,
+        assayType,
+        pipeline,
+        cellSystem,
+        durationH,
+        platform
+      ) || duplicateGenePolicy === "keep_first";
+      return `<div class="candidate-row" data-candidate-id="${esc(candidate.candidate_id)}" data-activation-key="${esc(activationKey)}" data-clone="${clone ? "true" : "false"}" data-accession="${esc(study.accession)}" data-source-unit="${esc(study.source_unit_id || study.accession)}" data-mode="author" data-author-status="${esc(status)}" data-series-samples="${esc(String(seriesSamples || ""))}" data-detected-sheet-name="${esc(detectedAuthorValue(candidate, "sheet_name"))}" data-detected-gene-column="${esc(detectedAuthorValue(candidate, "gene_column"))}" data-detected-lfc-column="${esc(detectedAuthorValue(candidate, "lfc_column"))}" data-detected-p-column="${esc(detectedAuthorValue(candidate, "p_column"))}" data-detected-padj-column="${esc(detectedAuthorValue(candidate, "padj_column"))}">
         <input class="candidate-enable" type="checkbox" aria-label="Use ${esc(candidate.name)}" ${checked ? "checked" : ""}>
         <div><span class="candidate-name">${esc(candidate.name)}${clone ? " · additional cohort/contrast" : ""}</span><span class="candidate-note">Author DEG candidate · ${esc(status)} · ${esc(geneColumn)} / ${esc(lfcColumn)} / ${esc(pColumn)}</span><div class="candidate-tools"><span class="status-pill">${status === "ready_for_review" ? "One-click mapping accepted" : "Mapping review required"}</span><button class="action-secondary clone-author-candidate" type="button">Add cohort/contrast</button></div></div>
         <div class="candidate-fields">
@@ -2441,6 +2472,9 @@ INDEX_HTML = """<!doctype html>
           <label>Control biological n<input class="n-ctrl" type="number" min="1" step="1" inputmode="numeric" value="${esc(nCtrl)}" required title="Independent biological control samples in this exact contrast, not total GEO samples"></label>
           <label>Treatment biological n<input class="n-treat" type="number" min="1" step="1" inputmode="numeric" value="${esc(nTreat)}" required title="Independent biological treatment/case samples in this exact contrast, not total GEO samples"></label>
         </div>
+        ${seriesSampleNote}
+        <details class="candidate-advanced" ${columnsOpen ? "open" : ""}>
+          <summary>Columns DEGORA read from the file${columnsOpen ? "" : " - detected, open to change"}</summary>
         <div class="candidate-fields">
           <label>Sheet name<input class="sheet-name" value="${esc(sheetName)}" maxlength="160" autocomplete="off"></label>
           <label>Gene column<input class="gene-column" value="${esc(geneColumn)}" maxlength="160" autocomplete="off"></label>
@@ -2448,6 +2482,9 @@ INDEX_HTML = """<!doctype html>
           <label>P-value column<input class="p-column" value="${esc(pColumn)}" maxlength="160" autocomplete="off"></label>
           <label>Adjusted-p column<input class="padj-column" value="${esc(padjColumn)}" maxlength="160" autocomplete="off"></label>
         </div>
+        </details>
+        <details class="candidate-advanced" ${advancedOpen ? "open" : ""}>
+          <summary>Advanced settings${advancedOpen ? "" : " - none set"}</summary>
         <div class="candidate-fields candidate-fields-wide">
           <label>Row filter column<input class="row-filter-column" value="${esc(rowFilterColumn)}" maxlength="160" autocomplete="off"></label>
           <label>Row filter value<input class="row-filter-value" value="${esc(rowFilterValue)}" maxlength="240" autocomplete="off"></label>
@@ -2458,6 +2495,7 @@ INDEX_HTML = """<!doctype html>
           <label>Duration h (optional)<input class="duration-h" value="${esc(durationH)}" maxlength="32" placeholder="e.g. 24 or 24-48" autocomplete="off"></label>
           <label>Platform (optional)<input class="platform" value="${esc(platform)}" maxlength="80" autocomplete="off"></label>
         </div>
+        </details>
         <div class="candidate-fields candidate-confirms">
           <label class="confirm-line"><input class="direction-confirmed" type="checkbox" ${draft.direction ? "checked" : ""}> A positive value here means the gene went UP in the treated group, not the control group</label>
           <label class="confirm-line"><input class="column-mapping-confirmed" type="checkbox" ${draft.columnMappingConfirmed ? "checked" : ""}> The gene, effect and p-value columns chosen above are the right ones</label>
@@ -2839,8 +2877,38 @@ INDEX_HTML = """<!doctype html>
       holder.insertBefore(node, holder.firstChild);
     }
 
+    // A record found only through the literature search carries the organism filter
+    // that produced the search and no per-record evidence, so DEGORA labels it
+    // query_constrained. The README asks the reader to confirm the species of such
+    // a record; nothing in the browser ever collected that answer or recorded it.
+    function unconfirmedSpeciesStudies(state) {
+      const studies = (state.prepared && state.prepared.studies) || [];
+      return studies.filter((study) => {
+        const decision = String(study.species_decision || "").toLowerCase();
+        return decision === "query_constrained" || decision === "unknown" || decision === "";
+      });
+    }
+
+    function updateSpeciesConfirmation(state) {
+      const pending = unconfirmedSpeciesStudies(state);
+      const line = $("speciesConfirmLine");
+      const control = $("speciesConfirmed");
+      if (!pending.length) {
+        line.hidden = true;
+        control.checked = false;
+        return true;
+      }
+      line.hidden = false;
+      $("speciesConfirmText").textContent =
+        `${pending.length} of these record${pending.length === 1 ? " was" : "s were"} matched by the `
+        + `${speciesLabel(activeSpecies)} search filter, not by a per-record organism check. `
+        + `I have confirmed ${pending.length === 1 ? "it is" : "they are"} ${speciesLabel(activeSpecies)} data.`;
+      return Boolean(control.checked);
+    }
+
     function updateAnalysisEligibility() {
       const rows = selectedCandidateRows();
+      const speciesConfirmed = updateSpeciesConfirmation(activeDiscoveryState());
       $("preparedCandidates").querySelectorAll(".candidate-row").forEach(updateSampleCounts);
       // A switched-off form must not also be painted red for being incomplete.
       const blockedState = activeDiscoveryState();
@@ -2890,7 +2958,7 @@ INDEX_HTML = """<!doctype html>
           && authorRowFilterComplete(row)
           && authorDuplicatePolicyComplete(row);
       };
-      const reviewComplete = rows.length > 0 && rows.every((row) => {
+      const reviewComplete = rows.length > 0 && speciesConfirmed && rows.every((row) => {
         if (!(row.querySelector(".contrast-label")?.value || "").trim()) return false;
         if (!row.querySelector(".direction-confirmed")?.checked) return false;
         if (row.querySelector(".lfc-scale-confirmed") && !row.querySelector(".lfc-scale-confirmed").checked) return false;
@@ -2934,8 +3002,13 @@ INDEX_HTML = """<!doctype html>
         if (row.dataset.mode === "author") {
           const nCtrl = row.querySelector(".n-ctrl");
           const nTreat = row.querySelector(".n-treat");
-          const ctrlValid = isPositiveWholeNumber(nCtrl?.value);
-          const treatValid = isPositiveWholeNumber(nTreat?.value);
+          const seriesTotal = Number(row.dataset.seriesSamples || 0);
+          const enteredTotal = Number(nCtrl?.value || 0) + Number(nTreat?.value || 0);
+          // Entering the series total in both boxes is the common mistake, and it
+          // doubles the source's weight against every other study in the corpus.
+          const fitsSeries = !seriesTotal || enteredTotal <= seriesTotal;
+          const ctrlValid = isPositiveWholeNumber(nCtrl?.value) && fitsSeries;
+          const treatValid = isPositiveWholeNumber(nTreat?.value) && fitsSeries;
           const gene = row.querySelector(".gene-column");
           const lfc = row.querySelector(".lfc-column");
           const pColumn = row.querySelector(".p-column");
@@ -3084,10 +3157,13 @@ INDEX_HTML = """<!doctype html>
         renderPreparedState();
       }
       try {
+        const pendingSpecies = unconfirmedSpeciesStudies(state);
         const result = await postJson("/api/discovery/analyze", {
           bundle_id: state.bundleId,
           species: requestSpecies,
-          selections
+          selections,
+          species_confirmed: pendingSpecies.length === 0 || Boolean($("speciesConfirmed").checked),
+          species_confirmation_required_for: pendingSpecies.length
         });
         if (requestId !== state.analysisRequest) return;
         state.run = result;
@@ -4993,6 +5069,17 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
         selections = payload.get("selections")
         if not isinstance(selections, list):
             raise ValueError("selections must be a JSON list")
+        # A record matched only by the search's organism filter carries no
+        # per-record species evidence. The reader is asked to confirm it; the answer
+        # is recorded with the run, so an audit can see it was confirmed rather than
+        # assumed - which is what the documentation already promised.
+        pending_species = int(payload.get("species_confirmation_required_for") or 0)
+        species_confirmed = bool(payload.get("species_confirmed"))
+        if pending_species and not species_confirmed:
+            raise ValueError(
+                f"{pending_species} selected record(s) were matched by the {spec.label} search filter "
+                "rather than a per-record organism check; confirm their species before analysing"
+            )
         run_id = secrets.token_hex(8)
         output = self.server.discovery_root / spec.key / "runs" / run_id
         result = run_discovery_analysis(
@@ -5001,6 +5088,10 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
             output,
             species=spec.key,
             min_studies=2,
+            extra_metadata={
+                "discovery_species_confirmed_by_reviewer": "true" if species_confirmed else "false",
+                "discovery_species_records_needing_confirmation": str(pending_species),
+            },
         )
         record = {"run_id": run_id, "bundle_id": bundle_id, **result}
         with self.server.discovery_lock:

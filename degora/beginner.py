@@ -25,7 +25,18 @@ from .discovery import classify_header
 from .harmonize import TableMapping, assess_table_scope, read_deg_table
 
 # Extensions read_deg_table knows how to open.
-SOURCE_TABLE_SUFFIXES = (".csv", ".tsv", ".txt", ".xlsx", ".xls", ".csv.gz", ".tsv.gz", ".txt.gz")
+SOURCE_TABLE_SUFFIXES = (
+    ".csv",
+    ".tsv",
+    ".txt",
+    ".xlsx",
+    ".xls",
+    ".csv.gz",
+    ".tsv.gz",
+    ".txt.gz",
+    ".xlsx.gz",
+    ".xls.gz",
+)
 
 # How the reader is asked about contrast direction. The wording avoids "log2FC
 # sign" and "reference level": it asks about the experiment, not the file.

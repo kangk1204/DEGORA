@@ -1008,3 +1008,54 @@ def test_short_or_empty_column_names_never_match() -> None:
     labels = {"GSM1": {"title": "A1", "source": "", "characteristics": []}}
 
     assert match_sample_labels(["A1", "", "  "], labels) == {}
+
+
+def test_workbook_candidates_are_inspectable_not_unsupported() -> None:
+    """DEGORA read .xls and .xlsx all along; discovery refused to look at them.
+
+    A supplementary workbook - the commonest shape after plain text, and often
+    gzipped - was classified unsupported and never offered as a candidate, so the
+    search declined files the analysis path could have used.
+    """
+
+    from degora.discovery import classify_filename
+
+    for name in ("deg.xlsx", "deg.xls", "deg.xlsx.gz", "deg.xls.gz"):
+        assessment = classify_filename(name)
+        assert assessment["inspectable"] is True, name
+        assert assessment["tier"] != "unsupported", name
+
+    assert classify_filename("paper.pdf")["inspectable"] is False
+
+
+def test_a_workbook_candidate_is_classified_from_its_contents(tmp_path) -> None:
+    """Including the legacy and gzipped shapes, and refusing a file that only claims to be one."""
+
+    import gzip
+    import shutil
+
+    from openpyxl import Workbook
+
+    from degora.discovery import DiscoveryError, inspect_candidate_bytes
+
+    book = Workbook()
+    sheet = book.active
+    sheet.append(["gene", "log2FoldChange", "pvalue"])
+    for index in range(1, 6):
+        sheet.append([f"G{index}", 2.0 - index * 0.1, 0.001 * index])
+    plain = tmp_path / "deg.xlsx"
+    book.save(plain)
+    packed = tmp_path / "deg.xlsx.gz"
+    with plain.open("rb") as source, gzip.open(packed, "wb") as target:
+        shutil.copyfileobj(source, target)
+
+    for path in (plain, packed):
+        result = inspect_candidate_bytes(path.name, path.read_bytes())
+        assert result["status"] == "ready_for_review", path.name
+        assert result["mapping"]["lfc_column"] == "log2FoldChange"
+
+    # A renamed text file must not be inspected as a workbook.
+    with pytest.raises(DiscoveryError, match="OLE2 signature"):
+        inspect_candidate_bytes("renamed.xls", b"gene,lfc\nA,1\n")
+    with pytest.raises(DiscoveryError, match="could not be expanded"):
+        inspect_candidate_bytes("broken.xlsx.gz", b"not gzip at all")
