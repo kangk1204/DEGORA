@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import hashlib
+import math
 import re
 from typing import Any, Callable, Iterable
 
@@ -1137,8 +1138,9 @@ def _number_or_inf(value: Any) -> float:
     try:
         if value is None:
             return float("inf")
-        return float(value)
-    except (TypeError, ValueError):
+        number = float(value)
+        return number if math.isfinite(number) else float("inf")
+    except (TypeError, ValueError, OverflowError):
         return float("inf")
 
 

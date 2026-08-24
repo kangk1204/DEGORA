@@ -15,7 +15,9 @@ downstream for a reader to notice. It is asked, and the answer is recorded.
 
 from __future__ import annotations
 
+import os
 import re
+import tempfile
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -740,6 +742,28 @@ def _prompt_yes_no(
     return None
 
 
+def _write_catalog_atomic(catalog: pd.DataFrame, output: Path) -> None:
+    """Publish a complete config without damaging an existing forced target."""
+
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{output.name}.",
+        suffix=output.suffix,
+        dir=output.parent,
+    )
+    os.close(descriptor)
+    temporary = Path(temporary_name)
+    try:
+        if output.suffix.lower() == ".xlsx":
+            with pd.ExcelWriter(temporary, engine="openpyxl") as writer:
+                catalog.to_excel(writer, sheet_name="Contrasts", index=False)
+                _force_formula_like_text(writer)
+        else:
+            catalog.to_csv(temporary, index=False)
+        os.replace(temporary, output)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def run_init(
     output: str | Path,
     deg_dir: str | Path,
@@ -752,12 +776,18 @@ def run_init(
 
     ask = ask or _prompt
     output = Path(output)
-    if output.suffix.lower() == ".xls":
+    output_suffix = output.suffix.lower()
+    if output_suffix == ".xls":
         raise BeginnerInitError(
             "degora init cannot write the legacy .xls format; use a .xlsx or .csv output name"
         )
     if output.exists() and output.is_dir():
         raise BeginnerInitError("degora init output must be a file path, not an existing directory")
+    if output_suffix not in {".csv", ".xlsx"}:
+        raise BeginnerInitError(
+            "degora init output must end in .csv or .xlsx so DEGORA and spreadsheet tools "
+            "read the generated config in the format it was written"
+        )
     if output.exists() and not force:
         raise FileExistsError(f"{output} already exists; pass --force to replace it")
 
@@ -910,12 +940,7 @@ def run_init(
         echo(f"WARNING: {replication_warning}")
 
     output.parent.mkdir(parents=True, exist_ok=True)
-    if output.suffix.lower() == ".xlsx":
-        with pd.ExcelWriter(output, engine="openpyxl") as writer:
-            catalog.to_excel(writer, sheet_name="Contrasts", index=False)
-            _force_formula_like_text(writer)
-    else:
-        catalog.to_csv(output, index=False)
+    _write_catalog_atomic(catalog, output)
 
     reversed_rows = [row for row in rows if row["include_in_analysis"] == "no"]
     active_rows = [row for row in rows if row["include_in_analysis"] == "yes"]

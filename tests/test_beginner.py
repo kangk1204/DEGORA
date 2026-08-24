@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pandas as pd
 import pytest
 from openpyxl import load_workbook
@@ -287,8 +289,6 @@ def test_generated_degora_catalog_is_not_treated_as_a_source_table(tmp_path) -> 
 
 
 def test_study_ids_are_readable_and_unique(tmp_path) -> None:
-    from pathlib import Path
-
     assert default_study_id(Path("GSE123 hypoxia (4h).csv"), []) == "GSE123_hypoxia_4h"
     assert default_study_id(Path("a.csv"), ["a"]) == "a_2"
     assert default_study_id(Path("a.csv"), ["a", "a_2"]) == "a_3"
@@ -855,6 +855,40 @@ def test_init_rejects_legacy_xls_output_before_prompting(tmp_path) -> None:
         )
 
 
+@pytest.mark.parametrize("name", ["config", "config.json", "config.tsv", "config.csv.gz"])
+def test_init_rejects_unsupported_output_suffix_before_prompting(tmp_path, name) -> None:
+    with pytest.raises(BeginnerInitError, match=r"must end in \.csv or \.xlsx"):
+        run_init(
+            tmp_path / name,
+            tmp_path / "missing-input-dir",
+            ask=lambda *_args, **_kwargs: pytest.fail("init should reject the suffix before prompting"),
+        )
+
+
+def test_init_force_keeps_existing_config_when_csv_write_fails(tmp_path, monkeypatch) -> None:
+    deg = tmp_path / "deg"
+    deg.mkdir()
+    _clean_table(deg / "clean.csv")
+    output = tmp_path / "config.csv"
+    original = "original,config\n1,2\n"
+    output.write_text(original)
+    answers = iter(["human", "yes", "a vs b", "P1", "3", "3"])
+
+    def fail_to_csv(self, path, *args, **kwargs):
+        if Path(path).name.startswith(".config.csv."):
+            raise OSError("simulated writer failure")
+        return original_to_csv(self, path, *args, **kwargs)
+
+    original_to_csv = pd.DataFrame.to_csv
+    monkeypatch.setattr(pd.DataFrame, "to_csv", fail_to_csv)
+
+    with pytest.raises(OSError, match="simulated writer failure"):
+        run_init(output, deg, ask=lambda question, default="": next(answers), echo=lambda _line: None, force=True)
+
+    assert output.read_text() == original
+    assert not list(tmp_path.glob(".config.csv.*"))
+
+
 def test_init_rejects_directory_output_even_with_force_before_prompting(tmp_path) -> None:
     output = tmp_path / "config_dir"
     output.mkdir()
@@ -882,6 +916,37 @@ def test_init_rejects_zero_row_tables_before_prompting_or_writing(tmp_path) -> N
         )
 
     assert not config.exists()
+
+
+@pytest.mark.parametrize("suffix", [".csv", ".xlsx"])
+def test_forced_init_preserves_existing_config_when_atomic_replace_fails(tmp_path, monkeypatch, suffix) -> None:
+    import degora.beginner as beginner
+
+    deg = tmp_path / "deg"
+    deg.mkdir()
+    _clean_table(deg / "valid.csv")
+    output = tmp_path / f"config{suffix}"
+    original = b"ORIGINAL CONFIG\n"
+    output.write_bytes(original)
+    answers = iter(["human", "yes", "a vs b", "P1", "3", "3"])
+
+    def fail_replace(source, target):
+        assert Path(target) == output
+        assert Path(source).is_file()
+        raise OSError("synthetic atomic replace failure")
+
+    monkeypatch.setattr(beginner.os, "replace", fail_replace)
+    with pytest.raises(OSError, match="synthetic atomic replace failure"):
+        run_init(
+            output,
+            deg,
+            ask=lambda question, default="": next(answers),
+            echo=lambda _line: None,
+            force=True,
+        )
+
+    assert output.read_bytes() == original
+    assert list(tmp_path.glob(f".{output.name}.*")) == []
 
 
 def test_init_skips_an_empty_table_when_a_valid_deg_table_is_present(tmp_path) -> None:

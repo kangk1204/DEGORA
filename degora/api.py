@@ -5058,7 +5058,7 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
                 store.save_search(search_id, complete)
             except DiscoveryJobCancelled:
                 raise
-            except Exception as exc:
+            except BaseException as exc:  # noqa: BLE001 - persist hard storage failures too.
                 mark_search_failed(exc)
                 raise
             progress(1.0, "Publication snapshot persisted.")

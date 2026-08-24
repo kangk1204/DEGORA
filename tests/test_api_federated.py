@@ -801,7 +801,11 @@ def test_search_cancel_after_commit_keeps_the_snapshot_and_completes(tmp_path: P
         _stop_server(server, thread)
 
 
-def test_search_snapshot_save_failure_marks_search_failed(tmp_path: Path, monkeypatch) -> None:
+@pytest.mark.parametrize(
+    "failure",
+    [OSError("snapshot fsync failed"), KeyboardInterrupt("snapshot interrupted")],
+)
+def test_search_snapshot_save_failure_marks_search_failed(tmp_path: Path, monkeypatch, failure) -> None:
     calls: list[dict] = []
     _install_federated_module(monkeypatch, calls=calls)
     server, thread, base = _start_server(tmp_path)
@@ -812,7 +816,7 @@ def test_search_snapshot_save_failure_marks_search_failed(tmp_path: Path, monkey
         nonlocal failed_once
         if isinstance(payload, dict) and payload.get("status") == "complete" and not failed_once:
             failed_once = True
-            raise OSError("snapshot fsync failed")
+            raise failure
         return original_save_search(search_id, payload)
 
     server.discovery_search_store.save_search = failing_complete_save
@@ -834,7 +838,7 @@ def test_search_snapshot_save_failure_marks_search_failed(tmp_path: Path, monkey
 
         _, search = _request_json(f"{base}/api/discovery/searches/{created['search_id']}")
         assert search["search"]["status"] == "failed"
-        assert "snapshot fsync failed" in search["search"]["error"]
+        assert str(failure) in search["search"]["error"]
     finally:
         _stop_server(server, thread)
 

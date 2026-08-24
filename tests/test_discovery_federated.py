@@ -187,6 +187,32 @@ def test_deterministic_tie_order_uses_canonical_id() -> None:
     assert [row["canonical_id"] for row in second] == ["pmid:1", "pmid:2", "pmid:3"]
 
 
+@pytest.mark.parametrize("missing_rank", [float("nan"), float("inf"), float("-inf")])
+@pytest.mark.parametrize("sort_by", ["data_readiness", "relevance"])
+def test_nonfinite_relevance_rank_is_missing_and_order_invariant(missing_rank, sort_by) -> None:
+    records = [
+        {
+            "canonical_id": "pmid:missing",
+            "year": 2024,
+            "relevance_rank": missing_rank,
+            "data_readiness": {"priority": 1},
+        },
+        {
+            "canonical_id": "pmid:finite",
+            "year": 2020,
+            "relevance_rank": 1,
+            "data_readiness": {"priority": 1},
+        },
+    ]
+
+    first = rank_publication_records(records, sort_by=sort_by)
+    second = rank_publication_records(list(reversed(records)), sort_by=sort_by)
+
+    expected = ["pmid:finite", "pmid:missing"]
+    assert [row["canonical_id"] for row in first] == expected
+    assert [row["canonical_id"] for row in second] == expected
+
+
 def test_search_publications_caps_evaluated_records_at_1000() -> None:
     class Provider:
         name = "fixture"
