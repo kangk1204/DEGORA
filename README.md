@@ -34,7 +34,7 @@ GitHub names those folders `DEGORA-main` and `DEGORA-<version>`, respectively:
 
 ```bash
 cd DEGORA-main       # main-branch ZIP
-# or: cd DEGORA-0.4.13  # v0.4.13 release ZIP
+# or: cd DEGORA-0.4.14  # v0.4.14 release ZIP
 ```
 
 Confirm that the interpreter you will use is supported:
@@ -155,7 +155,7 @@ Useful options:
 ```
 
 Use `--ref` to review a specific branch or release tag in one command, for
-example `bash degora_quickstart.sh --ref v0.4.13`. It fetches the name from
+example `bash degora_quickstart.sh --ref v0.4.14`. It fetches the name from
 `origin`, fast-forwards a local copy that is behind, and stops rather than
 serving stale code when a local branch of the same name has diverged.
 
@@ -376,6 +376,58 @@ make smoke
 ```
 
 ## Release notes
+
+### 0.4.14
+
+The score contract is unchanged, and nothing about an existing config or run
+behaves differently. This release lets you stop a running job, and answers what
+happened when `degora init` was pointed at tables nobody had curated first.
+
+**A search or a preparation can be stopped.** Either issues dozens of paced
+requests to public repositories and can take minutes, and there was no way to
+end one: closing the tab left the worker downloading, and the only cancellation
+that existed stopped every job at once when the server shut down. The Stop
+button on the progress card cancels that one job, server-side, at its next
+progress report.
+
+What stopping does is stated rather than left to be inferred. Files already
+downloaded are kept and a later run reuses them; what is guaranteed is that a
+cancelled job never records a result, so partial work cannot be read as a
+finished search. A stopped search says it was stopped instead of showing the
+empty state, which would have been a claim about the query rather than about
+your own action. Pressing Stop a moment too late is answered with "the job had
+already finished", and the result stays readable.
+
+**A run that cannot produce anything says so before it is spent finding out.**
+Two failures each cost a full run to discover, and both were visible beforehand.
+
+Sources written in different gene identifier spaces share no genes. Two series
+downloaded for one topic wrote their gene columns one in Ensembl IDs and one in
+symbols; the config validated, the run took its full time and scored zero genes.
+`degora init` reads every table anyway, so it now names the identifier space of
+each one - gene symbol, Ensembl, RefSeq, Entrez, Affymetrix probe - and warns
+before writing the config when the confirmed tables do not agree, naming which
+files use which convention. And a config with fewer independent source units
+than `min_studies` cannot score a single gene; both `degora init` and
+`degora validate` now say that instead of leaving it to the run.
+
+**Questions offer columns that could hold the role.** A table with 43 columns,
+32 of them per-sample expression values, asked which one held the gene names and
+listed all 43. Nothing in that list was wrong, but a list that long is not a
+choice. Candidates are drawn from what the values allow rather than from the
+whole header, so that table now offers two. A DESeq2 export carrying only
+baseMean, a fold change and padj was offered baseMean as a p-value candidate; a
+p-value lies in [0, 1], so only padj is offered now - and the prompt says the
+table has no unadjusted p-value, which is worth choosing knowingly.
+
+**R row labels are recognised.** `write.csv` writes gene identifiers as an
+unnamed index, which DEGORA recovers under `row_name` - and its own header
+classifier had no entry for that name, so the guided setup asked which column
+held the gene names for a file whose gene column it had just built itself.
+
+Verified on Ubuntu (Python 3.10-3.13), macOS, a wheel installed without the
+development extra, and both the pinned lower-bound and upper-bound dependency
+sets.
 
 ### 0.4.13
 
