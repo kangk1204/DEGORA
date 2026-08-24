@@ -5009,7 +5009,7 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
         store.save_search(search_id, search_payload)
 
         def worker(_job_id: str, payload: dict[str, Any], progress: Any) -> dict[str, Any]:
-            from .discovery_store import DiscoveryJobCancelled
+            from .discovery_store import DiscoveryJobCancelled, _sanitize_text
 
             def mark_search_failed(exc: BaseException) -> None:
                 try:
@@ -5017,7 +5017,13 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
                 except BaseException:  # noqa: BLE001 - the job failure is still recorded by the manager.
                     current = None
                 failed = dict(current) if isinstance(current, dict) else dict(search_payload)
-                failed.update({"status": "failed", "error": str(exc), "updated_at": time.time()})
+                failed.update(
+                    {
+                        "status": "failed",
+                        "error": _sanitize_text(str(exc)),
+                        "updated_at": time.time(),
+                    }
+                )
                 try:
                     store.save_search(search_id, failed)
                 except BaseException:  # noqa: BLE001 - best-effort projection must not mask the real failure.

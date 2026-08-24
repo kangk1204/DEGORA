@@ -377,6 +377,30 @@ make smoke
 
 ## Release notes
 
+### 0.4.16
+
+The primary default-`mean` score contract is unchanged, so `SCORE_VERSION`
+remains `degora_score_v1_2_source_unit_mean`. Configs that explicitly use
+`early` or `late` can change: those modes now select the source unit's globally
+earliest or latest numeric duration before gene-level collapse, instead of
+silently selecting a different earliest/latest row for each gene. One source
+unit must declare one normalized temporal mode, and the legacy `temporal_mode`
+header is promoted when the canonical column is absent or blank.
+
+Guided config creation now publishes `.csv` and `.xlsx` through an atomic sibling
+file, so a forced overwrite that fails cannot corrupt the existing config. Other
+output suffixes are refused rather than receiving CSV bytes under a misleading
+name. Discovery ordering treats NaN and infinite relevance ranks as missing and
+therefore remains independent of provider row order.
+
+Background discovery jobs and their search snapshots now converge to terminal
+failure or interruption states even for hard worker failures, server shutdown,
+provider failure, and final snapshot-write failure. Invalid custom ablation
+weights are rejected before scoring and are snapshotted so caller mutation cannot
+change a recorded ablation. The public `discovery-analyze` CLI also validates its
+JSON artifacts and `min_studies` without exposing a traceback for reader-correctable
+input errors.
+
 ### 0.4.15
 
 The score contract is unchanged. This patch release tightens the v0.4.14

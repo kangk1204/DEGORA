@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 import sys
 import types
@@ -34,6 +35,135 @@ def _snapshot() -> dict:
             },
         ],
     }
+
+
+def test_discovery_analyze_cli_loads_review_artifacts_and_reports_result(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    import degora.discovery_run as discovery_run
+
+    bundle = tmp_path / "prepared.json"
+    selections = tmp_path / "selections.json"
+    bundle.write_text(json.dumps({"species": {"key": "human"}}), encoding="utf-8")
+    selections.write_text(json.dumps({"selections": [{"candidate_id": "candidate1"}]}), encoding="utf-8")
+    captured = {}
+
+    def fake_run(prepared, selected, output_dir, **kwargs):
+        captured.update(prepared=prepared, selected=selected, output_dir=output_dir, kwargs=kwargs)
+        return {"db_path": str(tmp_path / "scores.db"), "top_genes": ["TP53", "CDKN1A"]}
+
+    monkeypatch.setattr(discovery_run, "run_discovery_analysis", fake_run)
+
+    assert main(
+        [
+            "discovery-analyze",
+            str(bundle),
+            str(selections),
+            "--species",
+            "human",
+            "--output-dir",
+            str(tmp_path / "analysis"),
+            "--min-studies",
+            "3",
+            "--force",
+        ]
+    ) == 0
+
+    assert captured == {
+        "prepared": {"species": {"key": "human"}},
+        "selected": [{"candidate_id": "candidate1"}],
+        "output_dir": str(tmp_path / "analysis"),
+        "kwargs": {"species": "human", "min_studies": 3, "force": True},
+    }
+    output = capsys.readouterr().out
+    assert "scores.db" in output
+    assert "TP53, CDKN1A" in output
+
+
+@pytest.mark.parametrize(
+    ("bundle_payload", "selection_payload", "expected"),
+    [
+        ("not-json", "[]", "bundle_json is not readable UTF-8 JSON"),
+        ("{}", "not-json", "selections_json is not readable UTF-8 JSON"),
+        ("[]", "[]", "bundle_json must contain an object"),
+        ("{}", "{}", "selections_json must contain a list"),
+    ],
+)
+def test_discovery_analyze_cli_rejects_malformed_review_artifacts_without_traceback(
+    tmp_path, capsys, bundle_payload, selection_payload, expected
+) -> None:
+    bundle = tmp_path / "prepared.json"
+    selections = tmp_path / "selections.json"
+    bundle.write_text(bundle_payload, encoding="utf-8")
+    selections.write_text(selection_payload, encoding="utf-8")
+
+    assert main(
+        [
+            "discovery-analyze",
+            str(bundle),
+            str(selections),
+            "--species",
+            "human",
+            "--output-dir",
+            str(tmp_path / "analysis"),
+        ]
+    ) == 2
+
+    assert expected in capsys.readouterr().err
+
+
+def test_discovery_analyze_cli_reports_a_missing_review_artifact_without_traceback(
+    tmp_path, capsys
+) -> None:
+    missing_bundle = tmp_path / "missing-prepared.json"
+    selections = tmp_path / "selections.json"
+    selections.write_text("[]", encoding="utf-8")
+
+    assert main(
+        [
+            "discovery-analyze",
+            str(missing_bundle),
+            str(selections),
+            "--species",
+            "human",
+            "--output-dir",
+            str(tmp_path / "analysis"),
+        ]
+    ) == 2
+
+    error = capsys.readouterr().err
+    assert "bundle_json is not readable UTF-8 JSON" in error
+    assert str(missing_bundle) in error
+
+
+def test_discovery_analyze_cli_rejects_nonpositive_min_studies(tmp_path, monkeypatch, capsys) -> None:
+    import degora.discovery_run as discovery_run
+
+    bundle = tmp_path / "prepared.json"
+    selections = tmp_path / "selections.json"
+    bundle.write_text("{}", encoding="utf-8")
+    selections.write_text("[]", encoding="utf-8")
+    monkeypatch.setattr(
+        discovery_run,
+        "run_discovery_analysis",
+        lambda *_args, **_kwargs: pytest.fail("invalid min_studies must fail before analysis"),
+    )
+
+    assert main(
+        [
+            "discovery-analyze",
+            str(bundle),
+            str(selections),
+            "--species",
+            "human",
+            "--output-dir",
+            str(tmp_path / "analysis"),
+            "--min-studies",
+            "0",
+        ]
+    ) == 2
+
+    assert "min_studies must be an integer >= 1" in capsys.readouterr().err
 
 
 def test_federated_discover_is_default_and_exports_full_snapshot(tmp_path, monkeypatch, capsys) -> None:

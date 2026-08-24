@@ -899,21 +899,36 @@ def main(argv: list[str] | None = None) -> int:
                 print("Review Human and Mouse snapshots separately; cross-species pooling is not performed.")
             return 0
         if args.command == "discovery-analyze":
+            from .aggregate import validate_min_studies
             from .discovery_run import run_discovery_analysis
 
             bundle_path = Path(args.bundle_json)
             selections_path = Path(args.selections_json)
-            prepared = json.loads(bundle_path.read_text(encoding="utf-8"))
-            selection_payload = json.loads(selections_path.read_text(encoding="utf-8"))
+            try:
+                prepared = json.loads(bundle_path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+                raise CliUsageError(f"bundle_json is not readable UTF-8 JSON: {bundle_path}: {exc}") from exc
+            try:
+                selection_payload = json.loads(selections_path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+                raise CliUsageError(
+                    f"selections_json is not readable UTF-8 JSON: {selections_path}: {exc}"
+                ) from exc
             selections = selection_payload.get("selections", selection_payload) if isinstance(selection_payload, dict) else selection_payload
             if not isinstance(prepared, dict) or not isinstance(selections, list):
-                raise ValueError("bundle_json must contain an object and selections_json must contain a list or {selections: [...]}")
+                raise CliUsageError(
+                    "bundle_json must contain an object and selections_json must contain a list or {selections: [...]}"
+                )
+            try:
+                min_studies = validate_min_studies(args.min_studies)
+            except ValueError as exc:
+                raise CliUsageError(str(exc)) from exc
             result = run_discovery_analysis(
                 prepared,
                 selections,
                 args.output_dir,
                 species=args.species,
-                min_studies=args.min_studies,
+                min_studies=min_studies,
                 force=args.force,
             )
             print(f"DEGORA {args.species} discovery run complete: {result['db_path']}")

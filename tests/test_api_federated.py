@@ -876,6 +876,44 @@ def test_search_provider_base_exception_marks_search_failed(tmp_path: Path, monk
         _stop_server(server, thread)
 
 
+def test_search_provider_failure_redacts_secrets_and_local_paths(tmp_path: Path, monkeypatch) -> None:
+    calls: list[dict] = []
+    _install_federated_module(monkeypatch, calls=calls)
+
+    def failed_search_publications(*, query, species, limit, progress=None):
+        raise RuntimeError(
+            "provider failed with api_key=SECRET123 at /private/tmp/reviewer/catalog.csv"
+        )
+
+    sys.modules["degora.discovery_federated"].search_publications = failed_search_publications
+    server, thread, base = _start_server(tmp_path)
+    try:
+        status, created = _request_json(
+            f"{base}/api/discovery/searches",
+            payload={"query": "hypoxia", "species": "human", "limit": 120},
+            action=True,
+        )
+        assert status == 202
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            _, payload = _request_json(f"{base}/api/discovery/jobs/{created['job_id']}")
+            if payload["job"]["status"] == "failed":
+                break
+            time.sleep(0.02)
+        else:
+            raise AssertionError("search job did not fail after provider failure")
+
+        _, search = _request_json(f"{base}/api/discovery/searches/{created['search_id']}")
+        error = search["search"]["error"]
+        assert search["search"]["status"] == "failed"
+        assert "SECRET123" not in error
+        assert "/private/tmp/reviewer/catalog.csv" not in error
+        assert "api_key=[redacted]" in error
+        assert "[redacted: local path]" in error
+    finally:
+        _stop_server(server, thread)
+
+
 def test_prepare_cancel_after_commit_keeps_the_bundle_and_completes(tmp_path: Path, monkeypatch) -> None:
     calls: list[dict] = []
     _install_federated_module(monkeypatch, calls=calls)
