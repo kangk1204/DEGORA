@@ -127,12 +127,47 @@ def rank_publication_records(
     return rows
 
 
+PUBLICATION_FILTER_FIELDS = (
+    "paper_title",
+    "title",
+    "authors_display",
+    "authors",
+    "journal",
+    "year",
+    "data_sources",
+    "canonical_id",
+    "source_unit_id",
+)
+
+
+def filter_publication_records(records: Iterable[dict[str, Any]], text: str) -> list[dict[str, Any]]:
+    """Keep records whose visible fields contain every whitespace-separated term.
+
+    A thousand-record snapshot is a hundred pages, and narrowing it meant running
+    the whole search again with a different query - minutes, against live
+    providers. This filters what has already been fetched.
+    """
+
+    terms = [term for term in str(text or "").lower().split() if term]
+    if not terms:
+        return [dict(record) for record in records]
+    kept: list[dict[str, Any]] = []
+    for record in records:
+        haystack = " ".join(
+            _sortable_text(record.get(field)) for field in PUBLICATION_FILTER_FIELDS
+        ).lower()
+        if all(term in haystack for term in terms):
+            kept.append(dict(record))
+    return kept
+
+
 def page_publication_snapshot(
     snapshot: dict[str, Any],
     page: int = 1,
     page_size: int = 20,
     sort_by: str | None = None,
     sort_order: str | None = None,
+    text_filter: str = "",
 ) -> dict[str, Any]:
     """Sort a full snapshot before slicing out one page.
 
@@ -143,7 +178,8 @@ def page_publication_snapshot(
 
     requested_page = max(1, int(page))
     requested_size = max(1, min(20, int(page_size)))
-    records = rank_publication_records(snapshot.get("records", []), sort_by or "data_readiness", sort_order)
+    matching = filter_publication_records(snapshot.get("records", []), text_filter)
+    records = rank_publication_records(matching, sort_by or "data_readiness", sort_order)
     start = (requested_page - 1) * requested_size
     page_records = records[start : start + requested_size]
     out = {key: value for key, value in snapshot.items() if key != "records"}
@@ -158,6 +194,10 @@ def page_publication_snapshot(
             "has_next": start + requested_size < len(records),
             "sort_by": sort_by or "data_readiness",
             "sort_order": sort_order or _default_sort_order(sort_by or "data_readiness"),
+            "text_filter": str(text_filter or ""),
+            # The unfiltered size, so the panel can say what a filter is hiding
+            # rather than looking like the search itself returned fewer records.
+            "total_unfiltered": len(snapshot.get("records", []) or []),
         }
     )
     return out

@@ -1403,3 +1403,27 @@ def test_every_hidden_confirmation_sits_in_something_that_can_be_hidden() -> Non
     helper = re.search(r"const showWhenRequired = \(control, required\) => \{(.*?)\};", INDEX_HTML, re.S)
     assert helper is not None
     assert 'closest(".confirm-line")' in helper.group(1)
+
+
+def test_the_readiness_badge_says_what_the_estimate_rests_on() -> None:
+    """"likely_ready" reads as a promise; it is an estimate from metadata.
+
+    An audit inspected the top-ranked likely_ready candidate and found no usable
+    file at all, and five publications across eight repository records yielded two
+    analysable datasets. The label already said "search estimate", but what the
+    estimate was built from - how many candidate files had actually been seen -
+    appeared nowhere on the row.
+    """
+
+    from degora.api import INDEX_HTML
+
+    assert "may have usable data" in INDEX_HTML
+    assert "not inspected yet" in INDEX_HTML
+    assert "data confirmed" in INDEX_HTML
+    # The count is in the visible label, not only a tooltip nobody hovers.
+    assert 'candidate file${files.length === 1 ? "" : "s"}' in INDEX_HTML
+    assert "nothing inspected yet" in INDEX_HTML
+    # The machine state stays reachable for an audit, in the tooltip.
+    assert "`state: ${readiness}`" in INDEX_HTML
+    # The raw tier no longer stands alone as the reader-facing label.
+    assert "`search estimate · ${readiness}`" not in INDEX_HTML

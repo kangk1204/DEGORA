@@ -279,6 +279,10 @@ INDEX_HTML = """<!doctype html>
     .study-action-bar .selection-action button { min-width: 0; }
     .study-action-bar .selection-action .action-secondary { min-width: 72px; }
     .results-scroll { overflow: auto; }
+    .result-filter { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; flex-wrap: wrap; }
+    .result-filter label { color: var(--muted); font-size: 12px; }
+    .result-filter input { flex: 1; min-width: 200px; max-width: 420px; }
+    .result-filter .filter-count { color: var(--muted); font-size: 12px; }
     .study-table { min-width: 1120px; table-layout: fixed; }
     .study-table th:first-child, .study-table td:first-child { width: 46px; text-align: center; }
     .study-table th:nth-child(2) { width: 29%; }
@@ -1526,6 +1530,8 @@ INDEX_HTML = """<!doctype html>
       verified: false,
       selected: new Set(),
       sort: { key: "readiness", order: "desc" },
+      textFilter: "",
+      totalUnfiltered: 0,
       prepared: null,
       bundleId: "",
       run: null,
@@ -1675,8 +1681,23 @@ INDEX_HTML = """<!doctype html>
       const detail = study.data_readiness && typeof study.data_readiness === "object" ? study.data_readiness : {};
       const readiness = detail.verification_state || detail.tier || study.readiness || study.readiness_label || study.status || "provisional";
       const verified = Boolean(study.verified || study.final || study.readiness_verified || readiness === "verified_ready");
-      const label = verified ? `content verified · ${readiness}` : `search estimate · ${readiness}`;
-      return `<span class="deg-input ${verified ? "author_deg_likely" : "matrix_fallback"}">${esc(label)}</span>`;
+      // "likely_ready" reads as a promise. It is an estimate from the record's
+      // metadata, and the top-ranked one can hold no usable file at all, so say
+      // what the estimate rests on: how many candidate files were actually seen.
+      const files = Array.isArray(degAssessment(study).candidate_files) ? degAssessment(study).candidate_files : [];
+      const seen = files.length
+        ? `${files.length} candidate file${files.length === 1 ? "" : "s"}`
+        : "nothing inspected yet";
+      const headline = verified
+        ? "data confirmed"
+        : readiness === "likely_ready"
+        ? "may have usable data"
+        : "not inspected yet";
+      const basis = [degAssessment(study).basis, detail.basis, `state: ${readiness}`]
+        .filter(Boolean)
+        .join(" · ");
+      return `<span class="deg-input ${verified ? "author_deg_likely" : "matrix_fallback"}"`
+        + ` title="${esc(basis)}">${esc(`${headline} · ${seen}`)}</span>`;
     }
 
     // Source units collapse on a shared PubMed ID, so an unpublished submission
@@ -1818,7 +1839,7 @@ INDEX_HTML = """<!doctype html>
     // back on when the work finishes, or the search box would stay dead forever.
     const BUSY_OWNED_CONTROLS = [
       "discoverySearch", "discoveryQuery", "discoverySearchBoth",
-      "humanSpeciesTab", "mouseSpeciesTab", "mobileStudySort", "mobileStudyOrder",
+      "humanSpeciesTab", "mouseSpeciesTab", "mobileStudySort", "mobileStudyOrder", "resultFilter",
     ];
     // Controls the render pass already computes: only ever force these off.
     const BUSY_FORCED_CONTROLS = [
@@ -1975,7 +1996,17 @@ INDEX_HTML = """<!doctype html>
             + ` (${state.selected.size - state.studies.reduce((total, study) => total + (state.selected.has(publicationKey(study)) ? 1 : 0), 0)} of them on other pages).`
             + ` Untick a row or press Clear to choose different ones here.</div>`
           : "";
-        $("discoveryResults").innerHTML = limitBanner + `<div class="mobile-study-tools"><label>Sort persisted records<select id="mobileStudySort">${sortOptions}</select></label><button id="mobileStudyOrder" type="button" aria-label="Reverse global sort order">${state.sort.order === "asc" ? "Ascending" : "Descending"}</button></div><div class="results-scroll"><table class="study-table">
+        // Narrowing a thousand-record snapshot used to mean running the whole
+        // search again against live providers. This filters what is already here.
+        const filterCount = state.textFilter
+          ? `<span class="filter-count">${state.totalHits.toLocaleString()} of ${state.totalUnfiltered.toLocaleString()} match</span>`
+          : "";
+        const filterBar = `<div class="result-filter"><label for="resultFilter">Narrow these results</label>`
+          + `<input id="resultFilter" type="search" placeholder="title, author, journal or year" `
+          + `maxlength="100" value="${esc(state.textFilter)}" `
+          + `data-tip="Filters the records already found. It does not run a new search.">`
+          + `${filterCount}</div>`;
+        $("discoveryResults").innerHTML = limitBanner + filterBar + `<div class="mobile-study-tools"><label>Sort persisted records<select id="mobileStudySort">${sortOptions}</select></label><button id="mobileStudyOrder" type="button" aria-label="Reverse global sort order">${state.sort.order === "asc" ? "Ascending" : "Descending"}</button></div><div class="results-scroll"><table class="study-table">
           <thead><tr>
             <th><input id="selectPageStudies" type="checkbox" aria-label="Select all studies on this page"></th>
             <th class="sortable" aria-sort="${studyAriaSort("title")}">${studySortHead("Publication", "title")}</th>
@@ -2029,12 +2060,14 @@ INDEX_HTML = """<!doctype html>
         sort_by: state.sort.key,
         sort_order: state.sort.order
       });
+      if (state.textFilter) params.set("filter", state.textFilter);
       const data = await getJson(`/api/discovery/searches/${state.searchId}/records?${params.toString()}`);
       if (requestId !== state.searchRequest) return;
       state.studies = data.records || [];
       state.totalHits = Number(data.total || data.search?.total || 0);
       state.totalPages = Number(data.total_pages || 0);
-      state.evaluatedStudies = state.totalHits;
+      state.totalUnfiltered = Number(data.total_unfiltered || data.total || 0);
+      state.evaluatedStudies = state.totalUnfiltered;
       state.rankingLimit = Number(data.search?.limit || DISCOVERY_GLOBAL_RANK_LIMIT);
       state.rankingTruncated = state.totalHits > state.rankingLimit;
       state.cacheHit = true;
@@ -2165,7 +2198,25 @@ INDEX_HTML = """<!doctype html>
       }
     }
 
-    async function reloadSearchRecords({ resetPage = false } = {}) {
+    let resultFilterTimer = 0;
+
+    // The panel re-renders by replacing innerHTML, which destroys the element the
+    // reader is typing into. Put the caret back where it was, or the filter loses
+    // focus on the first keystroke and every one after it.
+    function restoreFocus(elementId) {
+      if (!elementId) return;
+      const control = $(elementId);
+      if (!control) return;
+      const end = control.value.length;
+      control.focus();
+      try {
+        control.setSelectionRange(end, end);
+      } catch (_) {
+        // Some input types refuse a selection range; focus alone is enough.
+      }
+    }
+
+    async function reloadSearchRecords({ resetPage = false, keepFocus = "" } = {}) {
       const state = activeDiscoveryState();
       if (resetPage) state.page = 1;
       if (!state.searchId) {
@@ -2182,6 +2233,7 @@ INDEX_HTML = """<!doctype html>
       state.jobStartedAt = Date.now();
       const requestId = ++state.searchRequest;
       renderDiscoveryResults();
+      restoreFocus(keepFocus);
       try {
         await refreshSearchPage(activeSpecies, requestId);
       } catch (error) {
@@ -2191,6 +2243,7 @@ INDEX_HTML = """<!doctype html>
         if (requestId !== state.searchRequest) return;
         state.loading = false;
         renderDiscoveryResults();
+        restoreFocus(keepFocus);
       }
     }
 
@@ -3636,6 +3689,19 @@ INDEX_HTML = """<!doctype html>
     });
     $("discoveryResults").addEventListener("change", (event) => {
       const state = activeDiscoveryState();
+      if (event.target.id === "resultFilter") {
+        const wanted = event.target.value.trim().slice(0, 100);
+        if (wanted === state.textFilter) return;
+        state.textFilter = wanted;
+        // Debounced: the snapshot is already on the server, but each keystroke
+        // would otherwise be a request and the results would flicker under a
+        // reader who is still typing.
+        window.clearTimeout(resultFilterTimer);
+        resultFilterTimer = window.setTimeout(() => {
+          void reloadSearchRecords({ resetPage: true, keepFocus: "resultFilter" });
+        }, 250);
+        return;
+      }
       if (event.target.id === "mobileStudySort") {
         const key = event.target.value;
         state.sort = {
@@ -4101,6 +4167,7 @@ def _call_page_publication_snapshot(
     page_size: int,
     sort_by: str,
     sort_order: str,
+    text_filter: str = "",
 ) -> dict[str, Any]:
     try:
         from .discovery_federated import page_publication_snapshot
@@ -4112,16 +4179,33 @@ def _call_page_publication_snapshot(
             sort_by=sort_by,
             sort_order=sort_order,
         )
-    result = page_publication_snapshot(
-        snapshot,
-        page=page,
-        page_size=page_size,
-        sort_by=sort_by,
-        sort_order=sort_order,
-    )
+    arguments: dict[str, Any] = {
+        "page": page,
+        "page_size": page_size,
+        "sort_by": sort_by,
+        "sort_order": sort_order,
+    }
+    # An implementation without the filter parameter still pages correctly; passing
+    # it unconditionally would turn "cannot narrow the results" into a 500.
+    if _accepts_keyword(page_publication_snapshot, "text_filter"):
+        arguments["text_filter"] = text_filter
+    result = page_publication_snapshot(snapshot, **arguments)
     if isinstance(result, dict):
         return result
     raise ValueError("page_publication_snapshot must return a dictionary")
+
+
+def _accepts_keyword(func: Any, name: str) -> bool:
+    """Whether ``func`` will accept ``name`` as a keyword argument."""
+
+    try:
+        signature = inspect.signature(func)
+    except (TypeError, ValueError):
+        return False
+    parameters = signature.parameters
+    if any(parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in parameters.values()):
+        return True
+    return name in parameters
 
 
 def _accepts_progress_callback(func: Any) -> bool:
@@ -4759,6 +4843,7 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
         sort_order = _text_param(params, "sort_order", "desc", maximum=8).lower()
         if sort_order not in {"asc", "desc"}:
             raise ValueError("sort_order must be asc or desc")
+        text_filter = _text_param(params, "filter", "", maximum=100)
         snapshot = search.get("snapshot") if isinstance(search.get("snapshot"), dict) else {}
         page_data = _call_page_publication_snapshot(
             snapshot,
@@ -4766,6 +4851,7 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
             page_size=page_size,
             sort_by=sort_by,
             sort_order=sort_order,
+            text_filter=text_filter,
         )
         page_data.setdefault("records", [])
         page_data.setdefault("total", len(_search_result_records(snapshot)))

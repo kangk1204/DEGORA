@@ -413,3 +413,63 @@ def test_discovery_dashboard_author_activation_contract_is_exposed_and_serialize
     assert "pColumn && padjColumn && pColumn === padjColumn" in INDEX_HTML
     assert "rowFilterPairValid" in INDEX_HTML
     assert 'duplicateGenePolicy?.value !== "keep_first"' in INDEX_HTML
+
+
+def test_the_records_endpoint_accepts_a_filter(tmp_path, monkeypatch) -> None:
+    """The filter has to survive the query string, not just exist in the module."""
+
+    import degora.api as api
+
+    snapshot = {
+        "records": [
+            {"paper_title": "Hypoxia in renal cells", "canonical_id": "pmid:1"},
+            {"paper_title": "Unrelated cardiac study", "canonical_id": "pmid:2"},
+        ]
+    }
+
+    captured: dict = {}
+    real = api._call_page_publication_snapshot
+
+    def spy(snapshot_arg, **kwargs):
+        captured.update(kwargs)
+        return real(snapshot_arg, **kwargs)
+
+    monkeypatch.setattr(api, "_call_page_publication_snapshot", spy)
+
+    handler = api.DegoraRequestHandler.__new__(api.DegoraRequestHandler)
+    store = type(
+        "Store",
+        (),
+        {"get_search": staticmethod(lambda _id: {"id": _id, "query": "q", "species": "human",
+                                                 "limit": 10, "status": "complete", "snapshot": snapshot})},
+    )()
+    handler.server = type("S", (), {"discovery_search_store": store, "server_address": ("127.0.0.1", 0)})()
+
+    page = handler._discovery_publication_records("a" * 16, {"filter": ["renal"]})
+
+    assert captured["text_filter"] == "renal"
+    assert [record["canonical_id"] for record in page["records"]] == ["pmid:1"]
+    assert page["total"] == 1
+    assert page["total_unfiltered"] == 2
+
+    # An over-long filter is refused rather than passed to the snapshot.
+    with pytest.raises(ValueError, match="too long"):
+        handler._discovery_publication_records("a" * 16, {"filter": ["x" * 200]})
+
+
+def test_the_browser_sends_the_filter_and_keeps_the_caret() -> None:
+    """Re-rendering by innerHTML destroys the input the reader is typing into."""
+
+    from degora.api import INDEX_HTML
+
+    assert 'id="resultFilter"' in INDEX_HTML
+    assert 'if (state.textFilter) params.set("filter", state.textFilter);' in INDEX_HTML
+    # Debounced, so a keystroke is not a request.
+    assert "resultFilterTimer" in INDEX_HTML
+    # And the caret goes back, or the filter loses focus on the first keystroke.
+    assert 'keepFocus: "resultFilter"' in INDEX_HTML
+    assert "function restoreFocus(elementId)" in INDEX_HTML
+    # The control has to stay usable while a search is not running.
+    assert '"resultFilter",' in INDEX_HTML
+    # And it must say it does not re-run the search.
+    assert "It does not run a new search." in INDEX_HTML

@@ -92,9 +92,20 @@ def _install_federated_module(monkeypatch, *, calls: list[dict]) -> None:
             "provider_events": [{"provider": "fake", "event": "search", "status": "ok", "message": "+neutralize"}],
         }
 
-    def page_publication_snapshot(snapshot, *, page, page_size, sort_by, sort_order):
-        calls.append({"page": page, "page_size": page_size, "sort_by": sort_by, "sort_order": sort_order})
+    def page_publication_snapshot(snapshot, *, page, page_size, sort_by, sort_order, text_filter=""):
+        calls.append(
+            {
+                "page": page,
+                "page_size": page_size,
+                "sort_by": sort_by,
+                "sort_order": sort_order,
+                "text_filter": text_filter,
+            }
+        )
         records = list(snapshot["records"])
+        if text_filter:
+            wanted = text_filter.lower()
+            records = [record for record in records if wanted in str(record.get("title", "")).lower()]
         reverse = sort_order == "desc"
         if sort_by == "year":
             records.sort(key=lambda record: record["year"], reverse=reverse)
@@ -156,9 +167,14 @@ def test_federated_search_async_pagination_sort_restart_and_export(tmp_path: Pat
     assert search_payload["search"]["total"] == 120
     assert len(first_page["records"]) == 20
     assert first_page["records"][0]["publication_id"] == "human-000"
-    assert {"page": 1, "page_size": 20, "sort_by": "readiness", "sort_order": "desc"} in page_calls
+    def paged_with(**expected):
+        return any(all(call.get(key) == value for key, value in expected.items()) for call in page_calls)
+
+    assert paged_with(page=1, page_size=20, sort_by="readiness", sort_order="desc")
     assert sorted_page["records"][0]["year"] == 2000
-    assert {"page": 1, "page_size": 20, "sort_by": "year", "sort_order": "asc"} in page_calls
+    assert paged_with(page=1, page_size=20, sort_by="year", sort_order="asc")
+    # An unfiltered request must not invent a filter on the way through.
+    assert all(call.get("text_filter", "") == "" for call in page_calls)
     assert status == 200
     assert headers["Content-Type"] == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 

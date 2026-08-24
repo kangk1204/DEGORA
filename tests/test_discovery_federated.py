@@ -726,3 +726,58 @@ def test_a_query_constrained_record_stays_preparable() -> None:
 
     assert record["species_decision"] == "query_constrained"
     assert _species_exclusion_reason(record, human) == ""
+
+
+def test_a_filter_narrows_the_snapshot_before_it_is_paged() -> None:
+    """A thousand records is a hundred pages, and narrowing meant searching again.
+
+    The snapshot is already on disk; re-running the query to change one word cost
+    minutes against live providers. The filter applies to the whole snapshot before
+    paging, so page one of a filtered view is page one of the matches - not the
+    matches that happened to fall on page one.
+    """
+
+    from degora.discovery_federated import page_publication_snapshot
+
+    snapshot = {
+        "records": [
+            {"paper_title": "Hypoxia in renal epithelial cells", "journal": "Nature", "year": 2021, "canonical_id": "pmid:1"},
+            {"paper_title": "HIF1 signalling in cancer", "journal": "Cell", "year": 2020, "canonical_id": "pmid:2"},
+            {"paper_title": "Renal fibrosis review", "journal": "JASN", "year": 2019, "canonical_id": "pmid:3"},
+        ]
+    }
+
+    unfiltered = page_publication_snapshot(snapshot, page_size=10)
+    assert unfiltered["total"] == 3
+    assert unfiltered["total_unfiltered"] == 3
+    assert unfiltered["text_filter"] == ""
+
+    one_term = page_publication_snapshot(snapshot, page_size=10, text_filter="renal")
+    assert [record["canonical_id"] for record in one_term["records"]] == ["pmid:1", "pmid:3"]
+    # The unfiltered size is reported too, so the panel can say what is hidden
+    # rather than looking like the search returned fewer records.
+    assert one_term["total"] == 2
+    assert one_term["total_unfiltered"] == 3
+
+    # Every term must match, so a second word narrows rather than widens.
+    assert page_publication_snapshot(snapshot, page_size=10, text_filter="renal hypoxia")["total"] == 1
+    # Fields a reader can actually see are searched, not just the title.
+    assert page_publication_snapshot(snapshot, page_size=10, text_filter="nature")["total"] == 1
+    assert page_publication_snapshot(snapshot, page_size=10, text_filter="zzz")["total"] == 0
+
+
+def test_the_filter_pages_the_matches_not_the_page() -> None:
+    """Filtering after paging would show only the matches inside one page."""
+
+    from degora.discovery_federated import page_publication_snapshot
+
+    records = [
+        {"paper_title": ("hypoxia" if index % 10 == 0 else "unrelated") + f" study {index}", "canonical_id": f"pmid:{index}"}
+        for index in range(100)
+    ]
+
+    page = page_publication_snapshot({"records": records}, page=1, page_size=5, text_filter="hypoxia")
+
+    assert page["total"] == 10
+    assert len(page["records"]) == 5
+    assert all("hypoxia" in record["paper_title"] for record in page["records"])
