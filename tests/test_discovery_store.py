@@ -89,6 +89,24 @@ def test_manager_records_worker_failure(tmp_path) -> None:
     assert failed["error"] == {"message": "boom", "type": "RuntimeError"}
 
 
+def test_manager_records_worker_base_exception_failure(tmp_path) -> None:
+    store = DiscoveryStateStore(tmp_path)
+    manager = DiscoveryJobManager(store, max_workers=1)
+
+    def worker(job_id, payload, progress):
+        progress(0.2, "before failure")
+        raise KeyboardInterrupt("operator interrupt")
+
+    job = manager.submit("search", {"query": "x"}, worker)
+    manager.shutdown()
+
+    failed = store.get_job(job["job_id"])
+    assert failed is not None
+    assert failed["status"] == "failed"
+    assert failed["progress"] == 0.2
+    assert failed["error"] == {"message": "operator interrupt", "type": "KeyboardInterrupt"}
+
+
 def test_worker_failure_message_redacts_secret_and_absolute_path(tmp_path) -> None:
     store = DiscoveryStateStore(tmp_path)
     manager = DiscoveryJobManager(store, max_workers=1)
@@ -193,6 +211,28 @@ def test_recover_interrupted_jobs_preserves_completed_and_artifacts(tmp_path) ->
     assert "interrupted before completion" in running_after["message"]
     assert store.get_job(completed["job_id"])["status"] == "completed"
     assert store.get_artifact("bundle", "aaaaaaaaaaaaaaaa") == {"path": "bundle.json"}
+
+
+def test_interrupt_active_jobs_projects_linked_publication_search(tmp_path) -> None:
+    store = DiscoveryStateStore(tmp_path)
+    active_search_id = "1111111111111111"
+    complete_search_id = "2222222222222222"
+    store.save_search(active_search_id, {"id": active_search_id, "status": "running", "error": ""})
+    store.save_search(complete_search_id, {"id": complete_search_id, "status": "complete", "error": ""})
+    active = store.create_job("publication_search", {"search_id": active_search_id})
+    complete = store.create_job("publication_search", {"search_id": complete_search_id})
+    store.update_job(active["job_id"], status="running", progress=0.5)
+    store.update_job(complete["job_id"], status="running", progress=0.5)
+    store.update_job(complete["job_id"], status="completed", result={"search_id": complete_search_id})
+
+    interrupted = store.interrupt_active_jobs("server stopped")
+
+    assert [job["job_id"] for job in interrupted] == [active["job_id"]]
+    assert store.get_job(active["job_id"])["status"] == "interrupted"
+    active_search = store.get_search(active_search_id)
+    assert active_search["status"] == "interrupted"
+    assert active_search["error"] == "server stopped"
+    assert store.get_search(complete_search_id)["status"] == "complete"
 
 
 def test_search_and_artifact_roundtrip(tmp_path) -> None:

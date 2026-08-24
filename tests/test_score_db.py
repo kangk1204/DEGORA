@@ -120,6 +120,33 @@ def test_vectorized_quality_helpers_match_scalar_contract() -> None:
     pd.testing.assert_series_equal(_quality_label_frame(labels), expected_labels)
 
 
+@pytest.mark.parametrize(
+    "weights",
+    [
+        {"support_score": 2.0, "direction_score": -1.0},
+        {"support_score": 1.0, "direction_score": 0.0},
+        {"support_score": np.nan},
+        {"support_score": np.inf},
+        {"support_score": True},
+        {"support_score": "not-a-number"},
+    ],
+)
+def test_score_ablation_rejects_non_positive_or_non_finite_component_weights(weights) -> None:
+    with pytest.raises(ValueError, match="weights must be finite positive numbers"):
+        score_db.ScoreAblation(component_weights=weights)
+
+
+def test_score_ablation_snapshots_the_validated_weight_mapping() -> None:
+    weights = {"support_score": 1.0}
+    ablation = score_db.ScoreAblation(component_weights=weights)
+
+    weights["support_score"] = -1.0
+
+    assert ablation.weights == {"support_score": 1.0}
+    with pytest.raises(TypeError):
+        ablation.component_weights["support_score"] = -1.0
+
+
 def test_write_sqlite_preserves_existing_db_on_failed_rebuild(tmp_path) -> None:
     db = tmp_path / "degora_scores.db"
     genes = pd.DataFrame({"gene_symbol": ["A", "B"], "degora_rank": [1, 2], "degora_score": [0.9, 0.8]})

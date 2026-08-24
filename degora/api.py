@@ -5009,6 +5009,20 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
         store.save_search(search_id, search_payload)
 
         def worker(_job_id: str, payload: dict[str, Any], progress: Any) -> dict[str, Any]:
+            from .discovery_store import DiscoveryJobCancelled
+
+            def mark_search_failed(exc: BaseException) -> None:
+                try:
+                    current = store.get_search(search_id)
+                except BaseException:  # noqa: BLE001 - the job failure is still recorded by the manager.
+                    current = None
+                failed = dict(current) if isinstance(current, dict) else dict(search_payload)
+                failed.update({"status": "failed", "error": str(exc), "updated_at": time.time()})
+                try:
+                    store.save_search(search_id, failed)
+                except BaseException:  # noqa: BLE001 - best-effort projection must not mask the real failure.
+                    return
+
             progress(0.02, "Starting publication search.")
 
             def stage(fraction: float, message: str) -> None:
@@ -5023,10 +5037,10 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
                     limit=int(payload["limit"]),
                     progress=stage,
                 )
-            except Exception as exc:  # noqa: BLE001 - persist search failure before the manager records job failure.
-                failed = dict(search_payload)
-                failed.update({"status": "failed", "error": str(exc), "updated_at": time.time()})
-                store.save_search(search_id, failed)
+            except DiscoveryJobCancelled:
+                raise
+            except BaseException as exc:  # noqa: BLE001 - keep search projection terminal for provider hard failures.
+                mark_search_failed(exc)
                 raise
             complete = dict(search_payload)
             complete.update(
@@ -5040,7 +5054,13 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
             )
             progress(0.97, "Saving the publication snapshot.")
             _commit_discovery_job(manager, _job_id)
-            store.save_search(search_id, complete)
+            try:
+                store.save_search(search_id, complete)
+            except DiscoveryJobCancelled:
+                raise
+            except Exception as exc:
+                mark_search_failed(exc)
+                raise
             progress(1.0, "Publication snapshot persisted.")
             return {"search_id": search_id}
 

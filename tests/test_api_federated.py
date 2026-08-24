@@ -801,6 +801,77 @@ def test_search_cancel_after_commit_keeps_the_snapshot_and_completes(tmp_path: P
         _stop_server(server, thread)
 
 
+def test_search_snapshot_save_failure_marks_search_failed(tmp_path: Path, monkeypatch) -> None:
+    calls: list[dict] = []
+    _install_federated_module(monkeypatch, calls=calls)
+    server, thread, base = _start_server(tmp_path)
+    original_save_search = server.discovery_search_store.save_search
+    failed_once = False
+
+    def failing_complete_save(search_id, payload):
+        nonlocal failed_once
+        if isinstance(payload, dict) and payload.get("status") == "complete" and not failed_once:
+            failed_once = True
+            raise OSError("snapshot fsync failed")
+        return original_save_search(search_id, payload)
+
+    server.discovery_search_store.save_search = failing_complete_save
+    try:
+        status, created = _request_json(
+            f"{base}/api/discovery/searches",
+            payload={"query": "hypoxia", "species": "human", "limit": 120},
+            action=True,
+        )
+        assert status == 202
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            _, payload = _request_json(f"{base}/api/discovery/jobs/{created['job_id']}")
+            if payload["job"]["status"] == "failed":
+                break
+            time.sleep(0.02)
+        else:
+            raise AssertionError("search job did not fail after snapshot save failure")
+
+        _, search = _request_json(f"{base}/api/discovery/searches/{created['search_id']}")
+        assert search["search"]["status"] == "failed"
+        assert "snapshot fsync failed" in search["search"]["error"]
+    finally:
+        _stop_server(server, thread)
+
+
+def test_search_provider_base_exception_marks_search_failed(tmp_path: Path, monkeypatch) -> None:
+    calls: list[dict] = []
+    _install_federated_module(monkeypatch, calls=calls)
+
+    def interrupted_search_publications(*, query, species, limit, progress=None):
+        raise KeyboardInterrupt("provider interrupted")
+
+    sys.modules["degora.discovery_federated"].search_publications = interrupted_search_publications
+    server, thread, base = _start_server(tmp_path)
+    try:
+        status, created = _request_json(
+            f"{base}/api/discovery/searches",
+            payload={"query": "hypoxia", "species": "human", "limit": 120},
+            action=True,
+        )
+        assert status == 202
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            _, payload = _request_json(f"{base}/api/discovery/jobs/{created['job_id']}")
+            if payload["job"]["status"] == "failed":
+                assert payload["job"]["error"] == "provider interrupted"
+                break
+            time.sleep(0.02)
+        else:
+            raise AssertionError("search job did not fail after provider hard failure")
+
+        _, search = _request_json(f"{base}/api/discovery/searches/{created['search_id']}")
+        assert search["search"]["status"] == "failed"
+        assert search["search"]["error"] == "provider interrupted"
+    finally:
+        _stop_server(server, thread)
+
+
 def test_prepare_cancel_after_commit_keeps_the_bundle_and_completes(tmp_path: Path, monkeypatch) -> None:
     calls: list[dict] = []
     _install_federated_module(monkeypatch, calls=calls)

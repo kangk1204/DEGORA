@@ -22,6 +22,7 @@ DEFAULT_DB_NAME = "discovery_state.sqlite3"
 # person decided it should not finish, and re-running it is their call to make.
 TERMINAL_STATUSES = frozenset({"completed", "failed", "interrupted", "cancelled"})
 VALID_STATUSES = frozenset({"queued", "running", *TERMINAL_STATUSES})
+SEARCH_TERMINAL_STATUSES = frozenset({"complete", "failed", "interrupted", "cancelled"})
 ALLOWED_TRANSITIONS = {
     "queued": frozenset({"running", "interrupted", "cancelled"}),
     "running": frozenset({"completed", "failed", "interrupted", "cancelled"}),
@@ -428,6 +429,37 @@ class DiscoveryStateStore:
                         """,
                         (message, now, now, row["job_id"]),
                     )
+                    if row["kind"] == "publication_search":
+                        payload = _json_loads(row["payload_json"])
+                        if isinstance(payload, dict):
+                            search_id = payload.get("search_id")
+                            if isinstance(search_id, str) and search_id:
+                                try:
+                                    search_id = _validate_id(search_id, field="search_id")
+                                except DiscoveryStoreError:
+                                    continue
+                                search_row = connection.execute(
+                                    "SELECT payload_json FROM searches WHERE search_id=?",
+                                    (search_id,),
+                                ).fetchone()
+                                if search_row is not None:
+                                    search = _json_loads(search_row["payload_json"])
+                                    if (
+                                        isinstance(search, dict)
+                                        and search.get("status") not in SEARCH_TERMINAL_STATUSES
+                                    ):
+                                        interrupted = dict(search)
+                                        interrupted.update(
+                                            {"status": "interrupted", "error": message, "updated_at": now}
+                                        )
+                                        connection.execute(
+                                            """
+                                            UPDATE searches
+                                            SET payload_json=?, updated_at=?
+                                            WHERE search_id=?
+                                            """,
+                                            (_json_dumps(interrupted), now, search_id),
+                                        )
                 recovered = connection.execute(
                     "SELECT * FROM jobs WHERE job_id IN (%s) ORDER BY created_at"
                     % ",".join("?" for _ in rows),
@@ -584,7 +616,7 @@ class DiscoveryJobManager:
                     return
                 raise
 
-        def fail_job(exc: Exception) -> None:
+        def fail_job(exc: BaseException) -> None:
             try:
                 self.store.update_job(
                     job["job_id"],
@@ -615,7 +647,7 @@ class DiscoveryJobManager:
                 # anything this worker would have written next is exactly what the
                 # cancellation exists to prevent.
                 return
-            except Exception as exc:  # noqa: BLE001 - persist arbitrary worker failures.
+            except BaseException as exc:  # noqa: BLE001 - persist arbitrary worker failures.
                 if should_stop_without_terminal_write():
                     return
                 fail_job(exc)

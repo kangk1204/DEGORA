@@ -9,6 +9,7 @@ import sqlite3
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Callable, Mapping
 
 import numpy as np
@@ -101,17 +102,39 @@ class ScoreAblation:
     def __post_init__(self) -> None:
         if self.component_weights is None:
             return
-        unknown = sorted(set(self.component_weights).difference(SCORE_WEIGHTS))
+        weights = dict(self.component_weights)
+        unknown = sorted(set(weights).difference(SCORE_WEIGHTS), key=str)
         if unknown:
             raise ValueError(
                 f"ablation {self.name!r} names unknown score components {unknown}; "
                 f"valid components are {sorted(SCORE_WEIGHTS)}"
             )
-        if not self.component_weights:
+        if not weights:
             raise ValueError(f"ablation {self.name!r} must keep at least one score component")
-        total = float(sum(self.component_weights.values()))
+        invalid: list[str] = []
+        for component, raw_weight in weights.items():
+            if isinstance(raw_weight, (bool, np.bool_)):
+                invalid.append(f"{component}={raw_weight!r}")
+                continue
+            try:
+                weight = float(raw_weight)
+            except (TypeError, ValueError):
+                invalid.append(f"{component}={raw_weight!r}")
+                continue
+            if not np.isfinite(weight) or weight <= 0:
+                invalid.append(f"{component}={raw_weight!r}")
+        if invalid:
+            raise ValueError(
+                f"ablation {self.name!r} weights must be finite positive numbers; invalid: "
+                + ", ".join(invalid)
+            )
+        total = float(sum(float(weight) for weight in weights.values()))
         if not np.isfinite(total) or total <= 0:
             raise ValueError(f"ablation {self.name!r} has non-positive total weight {total!r}")
+        # A frozen dataclass does not freeze a caller-owned dict. Snapshot the
+        # mapping so post-construction mutation cannot bypass the validation above
+        # and silently redefine an already-recorded ablation.
+        object.__setattr__(self, "component_weights", MappingProxyType(weights))
 
     @property
     def weights(self) -> dict[str, float]:
