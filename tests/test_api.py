@@ -178,7 +178,9 @@ def test_local_api_serves_health_gene_list_and_detail(tmp_path) -> None:
     assert "positive whole-number biological group sizes" in html
     assert "Choose confirmed scale" in html
     assert "biological-replicates-confirmed" in html
-    assert "independent biological replicates" in html
+    # The assertion still has to be made; it is phrased for a reader who does not
+    # already know what "independent biological replicate" rules out.
+    assert "a separate biological sample, not a repeat measurement of the same one" in html
     assert "Enter exact contrasts, mappings, positive whole-number biological group sizes" in html
     assert "fallback matrices also require scale, biological-replicate attestation, and 2 + 2 sample assignment" in html
     assert "data-source-unit" in html
@@ -1309,3 +1311,95 @@ def test_changing_the_analysis_context_clears_the_gene_filters() -> None:
     # The reset values have to be the control's own defaults.
     assert '<option value="">All directions</option>' in INDEX_HTML
     assert 'id="minUnits" type="number" min="1" max="10000" step="1" value="1"' in INDEX_HTML
+
+
+def test_a_confirmation_is_only_shown_where_it_gates() -> None:
+    """Six assertions on every row made the one that mattered read like the rest.
+
+    The activation gate already asks for each confirmation only where it applies -
+    a mapping confirmation when the mapping was edited, a log2 confirmation only
+    for a table whose effect column does not say it is log2, and so on. The review
+    panel rendered all six on every row regardless, so a table needing one
+    assertion presented six bioinformatics judgements.
+
+    Direction is deliberately not in this list: it gates every row, always.
+    """
+
+    from degora.api import INDEX_HTML
+
+    assert ".confirm-line.not-required { display: none !important; }" in INDEX_HTML
+    assert "const showWhenRequired" in INDEX_HTML
+
+    # Each conditional confirmation is toggled by the same condition the gate uses.
+    for control, condition in (
+        ("mappingConfirmed", "needsMapping"),
+        ("adjustedPConfirmed", 'Boolean(pValue && padjValue && pValue === padjValue)'),
+        ("lfcScaleConfirmed", 'row.dataset.authorStatus === "requires_lfc_confirmation"'),
+        ("rowFilterConfirmed", 'Boolean(textValue(row, ".row-filter-column"))'),
+        ("duplicateGenePolicyConfirmed", 'duplicateGenePolicy?.value === "keep_first"'),
+    ):
+        assert f"showWhenRequired({control}, {condition})" in INDEX_HTML, control
+
+    # A hidden confirmation must not carry a stale tick into the gate.
+    assert "if (!required && control.checked) control.checked = false;" in INDEX_HTML
+
+    # Direction is never hidden, and says what it means without naming log2FC.
+    assert "showWhenRequired(direction" not in INDEX_HTML
+    assert "A positive value here means the gene went UP in the treated group" in INDEX_HTML
+
+
+def test_the_review_confirmations_are_written_for_a_non_specialist() -> None:
+    """The wording is the interface here: an unread assertion is an unmade one."""
+
+    from degora.api import INDEX_HTML
+
+    for phrase in (
+        "The gene, effect and p-value columns chosen above are the right ones",
+        "This table has no separate raw p-value, so its adjusted p-value is being used as one",
+        "The effect column is already a log2 fold change, not a plain ratio",
+        "The filter above picks one comparison and does not mix several together",
+        "Keeping the first row for each repeated gene reproduces how this table was originally read",
+    ):
+        assert phrase in INDEX_HTML, phrase
+
+    # The jargon these replaced must be gone, not merely joined.
+    for jargon in (
+        "Sheet and gene/log2FC/p mappings are intentionally confirmed",
+        "Adjusted-p/FDR column may be used as p-value for this activation",
+        "documented source-order workflow",
+    ):
+        assert jargon not in INDEX_HTML, jargon
+
+
+def test_every_hidden_confirmation_sits_in_something_that_can_be_hidden() -> None:
+    """The toggle finds its row with closest(".confirm-line"), so each must have one.
+
+    A control rendered outside that wrapper would be toggled by a call that
+    silently does nothing, and the row would keep asking a question that does not
+    gate it - the exact failure this change exists to remove, reintroduced quietly.
+    """
+
+    import re
+
+    from degora.api import INDEX_HTML
+
+    wrapped = set(
+        re.findall(r'<label class="confirm-line"><input class="([a-z0-9-]+)"', INDEX_HTML)
+    )
+    toggled = re.findall(r"showWhenRequired\((\w+),", INDEX_HTML)
+    control_classes = {
+        "mappingConfirmed": "column-mapping-confirmed",
+        "adjustedPConfirmed": "adjusted-p-as-pvalue-confirmed",
+        "lfcScaleConfirmed": "lfc-scale-confirmed-log2",
+        "rowFilterConfirmed": "row-filter-confirmed",
+        "duplicateGenePolicyConfirmed": "duplicate-gene-policy-confirmed",
+    }
+
+    assert set(toggled) == set(control_classes), toggled
+    for name in toggled:
+        assert control_classes[name] in wrapped, name
+
+    # The helper still looks for that wrapper, so the two halves cannot drift apart.
+    helper = re.search(r"const showWhenRequired = \(control, required\) => \{(.*?)\};", INDEX_HTML, re.S)
+    assert helper is not None
+    assert 'closest(".confirm-line")' in helper.group(1)

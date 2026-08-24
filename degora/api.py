@@ -355,6 +355,8 @@ INDEX_HTML = """<!doctype html>
     .candidate-fields [aria-invalid="true"], .sample-groups[aria-invalid="true"] { outline: 2px solid #fda4af; outline-offset: 1px; }
     .confirm-line { display: flex !important; grid-template-columns: none !important; align-items: center; gap: 7px !important; color: var(--ink) !important; }
     .confirm-line input { width: 16px; height: 16px; }
+    /* A confirmation that does not gate this row is not a question for this row. */
+    .confirm-line.not-required { display: none !important; }
     .candidate-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
     .candidate-tools button { width: auto; min-width: 0; height: 30px; padding: 0 10px; border-radius: 6px; font-size: 11px; }
     .sample-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 5px; max-height: 300px; overflow: auto; }
@@ -2404,12 +2406,12 @@ INDEX_HTML = """<!doctype html>
           <label>Platform (optional)<input class="platform" value="${esc(platform)}" maxlength="80" autocomplete="off"></label>
         </div>
         <div class="candidate-fields candidate-confirms">
-          <label class="confirm-line"><input class="direction-confirmed" type="checkbox" ${draft.direction ? "checked" : ""}> Positive log2FC is treatment/case minus control</label>
-          <label class="confirm-line"><input class="column-mapping-confirmed" type="checkbox" ${draft.columnMappingConfirmed ? "checked" : ""}> Sheet and gene/log2FC/p mappings are intentionally confirmed</label>
-          <label class="confirm-line"><input class="adjusted-p-as-pvalue-confirmed" type="checkbox" ${draft.adjustedPAsPvalueConfirmed ? "checked" : ""}> Adjusted-p/FDR column may be used as p-value for this activation</label>
-          <label class="confirm-line"><input class="lfc-scale-confirmed-log2" type="checkbox" ${draft.lfcScaleConfirmedLog2 ? "checked" : ""}> Effect-size column is already log2 fold-change</label>
-          <label class="confirm-line"><input class="row-filter-confirmed" type="checkbox" ${draft.rowFilterConfirmed ? "checked" : ""}> Row filter selects the intended cohort/contrast and does not mix contrasts</label>
-          <label class="confirm-line"><input class="duplicate-gene-policy-confirmed" type="checkbox" ${draft.duplicateGenePolicyConfirmed ? "checked" : ""}> Keep-first duplicate handling intentionally reproduces a documented source-order workflow</label>
+          <label class="confirm-line"><input class="direction-confirmed" type="checkbox" ${draft.direction ? "checked" : ""}> A positive value here means the gene went UP in the treated group, not the control group</label>
+          <label class="confirm-line"><input class="column-mapping-confirmed" type="checkbox" ${draft.columnMappingConfirmed ? "checked" : ""}> The gene, effect and p-value columns chosen above are the right ones</label>
+          <label class="confirm-line"><input class="adjusted-p-as-pvalue-confirmed" type="checkbox" ${draft.adjustedPAsPvalueConfirmed ? "checked" : ""}> This table has no separate raw p-value, so its adjusted p-value is being used as one</label>
+          <label class="confirm-line"><input class="lfc-scale-confirmed-log2" type="checkbox" ${draft.lfcScaleConfirmedLog2 ? "checked" : ""}> The effect column is already a log2 fold change, not a plain ratio</label>
+          <label class="confirm-line"><input class="row-filter-confirmed" type="checkbox" ${draft.rowFilterConfirmed ? "checked" : ""}> The filter above picks one comparison and does not mix several together</label>
+          <label class="confirm-line"><input class="duplicate-gene-policy-confirmed" type="checkbox" ${draft.duplicateGenePolicyConfirmed ? "checked" : ""}> Keeping the first row for each repeated gene reproduces how this table was originally read</label>
         </div>
       </div>`;
     }
@@ -2530,8 +2532,8 @@ INDEX_HTML = """<!doctype html>
           ${matrixTypeControl}
           ${normalizedScaleControl}
           <label>Gene column<input class="gene-column" value="${esc(draft.geneColumn === undefined ? (inspection.gene_column || "") : draft.geneColumn)}"></label>
-          <label class="confirm-line"><input class="direction-confirmed" type="checkbox" ${draft.direction ? "checked" : ""}> Groups and treatment-minus-control direction verified</label>
-          <label class="confirm-line"><input class="biological-replicates-confirmed" type="checkbox" ${draft.biologicalReplicates ? "checked" : ""}> Selected columns are independent biological replicates, not lanes, technical repeats, paired/repeated samples, or cells</label>
+          <label class="confirm-line"><input class="direction-confirmed" type="checkbox" ${draft.direction ? "checked" : ""}> The control and treated groups above are correct, and the comparison runs treated minus control</label>
+          <label class="confirm-line"><input class="biological-replicates-confirmed" type="checkbox" ${draft.biologicalReplicates ? "checked" : ""}> Each selected column is a separate biological sample, not a repeat measurement of the same one</label>
         </div>
         <div class="sample-groups" role="group" aria-label="Assign independent biological control and treatment samples"><div class="sample-counts" aria-live="polite"><span>Control <strong data-control-count>0</strong></span><span>Treatment <strong data-treatment-count>0</strong></span><span>Required: 2 + 2</span>${columns.length && !labelledCount ? `<span class="sample-labels-missing">GEO returned no matching sample labels for these columns — check the series page before assigning.</span>` : ""}</div>${columns.length > 4 ? sampleBulkHtml() : ""}${samples || `<span class="candidate-note">No numeric sample columns detected.</span>`}</div>
       </div>`;
@@ -2858,6 +2860,15 @@ INDEX_HTML = """<!doctype html>
         if (invalid) control.setAttribute("aria-invalid", "true");
         else control.removeAttribute("aria-invalid");
       };
+      // The activation gate already asks for each confirmation only where it
+      // applies. The panel asked for all of them on every row, so a table needing
+      // one assertion presented six, and the one that mattered read like the rest.
+      const showWhenRequired = (control, required) => {
+        const line = control?.closest(".confirm-line");
+        if (!line) return;
+        line.classList.toggle("not-required", !required);
+        if (!required && control.checked) control.checked = false;
+      };
       $("preparedCandidates").querySelectorAll(".candidate-row").forEach((row) => {
         const enabled = Boolean(row.querySelector(".candidate-enable")?.checked);
         const contrast = row.querySelector(".contrast-label");
@@ -2897,6 +2908,11 @@ INDEX_HTML = """<!doctype html>
           markInvalid(gene, enabled && !textValue(row, ".gene-column"));
           markInvalid(lfc, enabled && !textValue(row, ".lfc-column"));
           markInvalid(pColumn, enabled && !pValue);
+          showWhenRequired(mappingConfirmed, needsMapping);
+          showWhenRequired(adjustedPConfirmed, Boolean(pValue && padjValue && pValue === padjValue));
+          showWhenRequired(lfcScaleConfirmed, row.dataset.authorStatus === "requires_lfc_confirmation");
+          showWhenRequired(rowFilterConfirmed, Boolean(textValue(row, ".row-filter-column")));
+          showWhenRequired(duplicateGenePolicyConfirmed, duplicateGenePolicy?.value === "keep_first");
           markInvalid(mappingConfirmed, enabled && needsMapping && !mappingConfirmed?.checked);
           markInvalid(adjustedPConfirmed, enabled && !adjustedPValid);
           markInvalid(lfcScaleConfirmed, enabled && !lfcScaleValid);
