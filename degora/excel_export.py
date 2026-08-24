@@ -237,8 +237,8 @@ COLUMN_DEFINITIONS: dict[str, tuple[str, str, str]] = {
     "duration_h": ("Treatment or exposure duration in hours when available.", "number or text", "blank means unavailable"),
     "time_course_mode": (
         "How related time-course rows were preselected before collapse: mean keeps all, early/late keep "
-        "the smallest/largest duration_h, peak_mean keeps the strongest half by p-value-derived |signed_z| "
-        "rather than by fold change.",
+        "the globally smallest/largest duration_h, peak_mean keeps each gene's strongest half by "
+        "p-value-derived |signed_z| rather than by fold change.",
         "text label",
         "blank means not a time-course source",
     ),

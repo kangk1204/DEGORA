@@ -342,8 +342,8 @@ def _guide_rows() -> pd.DataFrame:
                 "checked_where": "validated setting if filled",
                 "meaning": (
                     "How rows sharing one source_unit_id are preselected: mean keeps all; early/late keep "
-                    "the smallest/largest duration_h; peak_mean keeps the strongest half by p-value-derived "
-                    "|signed_z|, not by fold change."
+                    "the globally smallest/largest duration_h; peak_mean keeps each gene's strongest half "
+                    "by p-value-derived |signed_z|, not by fold change."
                 ),
             },
             {
