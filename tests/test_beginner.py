@@ -301,3 +301,89 @@ def test_a_real_gene_column_still_outranks_the_recovered_row_label(tmp_path) -> 
         classify_header(["row_name", "gene_symbol", "log2FoldChange", "pvalue"])["mapping"]["gene_column"]
         == "gene_symbol"
     )
+
+
+def test_the_fallback_option_list_is_not_the_whole_spreadsheet(tmp_path) -> None:
+    """A real table had 43 columns, 32 of them per-sample expression values.
+
+    When the header classifier recognises no gene column, the reader used to be
+    offered every column in the file on one line. Values narrow that honestly:
+    a column of CPM numbers cannot be a gene name.
+    """
+
+    path = tmp_path / "wide.csv"
+    frame = pd.DataFrame({"NAME": [f"G{i}" for i in range(300)], "Feature ID": [f"F{i}" for i in range(300)]})
+    for sample in range(32):
+        frame[f"T{sample} - CPM"] = [float(sample + i) for i in range(300)]
+    frame["logFC_T1"] = [0.5] * 300
+    frame["P-value_T1"] = [0.01] * 300
+    frame.to_csv(path, index=False)
+
+    inference = infer_source_table(path)
+
+    assert inference.plausible["gene_column"] == ("NAME", "Feature ID")
+    # The expression columns are numeric, so they are offered for a fold change
+    # but never for a gene name.
+    assert "T0 - CPM" in inference.plausible["lfc_column"]
+    assert "T0 - CPM" not in inference.plausible["gene_column"]
+
+
+def test_only_columns_inside_zero_and_one_are_offered_as_a_p_value(tmp_path) -> None:
+    """Offering baseMean as a p-value candidate is offering nonsense."""
+
+    path = tmp_path / "deseq_no_pvalue.tsv"
+    pd.DataFrame(
+        {
+            "row_name": [f"G{i}" for i in range(120)],
+            "baseMean": [100.0 + i for i in range(120)],
+            "log2 fold change": [2.0 - i * 0.01 for i in range(120)],
+            "padj": [i / 200.0 for i in range(120)],
+        }
+    ).to_csv(path, sep="\t", index=False)
+
+    inference = infer_source_table(path)
+
+    assert inference.plausible["p_column"] == ("padj",)
+
+
+def test_a_table_with_only_adjusted_p_values_says_so(tmp_path) -> None:
+    """The reader should choose that knowingly, not discover it later."""
+
+    path = tmp_path / "padj_only.tsv"
+    pd.DataFrame(
+        {
+            "row_name": [f"G{i}" for i in range(120)],
+            "baseMean": [100.0 + i for i in range(120)],
+            "log2 fold change": [2.0 - i * 0.01 for i in range(120)],
+            "padj": [i / 200.0 for i in range(120)],
+        }
+    ).to_csv(path, sep="\t", index=False)
+
+    notes = [choice.note for choice in infer_source_table(path).needs_a_question]
+
+    assert any("no unadjusted p-value" in note for note in notes)
+    assert any("already adjusted" in note for note in notes)
+
+
+def test_a_long_option_list_is_truncated_with_a_way_out(tmp_path) -> None:
+    from degora.beginner import MAX_OPTIONS_SHOWN
+
+    deg = tmp_path / "deg"
+    deg.mkdir()
+    frame = pd.DataFrame({f"label_{index}": [f"V{index}_{row}" for row in range(200)] for index in range(30)})
+    frame["logFC"] = [1.0] * 200
+    frame["PValue"] = [0.01] * 200
+    frame.to_csv(deg / "many_labels.csv", index=False)
+
+    lines: list[str] = []
+    answers = iter(["human", "label_0", "yes", "x vs y", "P1", "3", "3"])
+    run_init(
+        tmp_path / "config.csv",
+        deg,
+        ask=lambda question, default="": next(answers),
+        echo=lines.append,
+    )
+
+    options_line = next(line for line in lines if line.strip().startswith("Options:"))
+    assert options_line.count(",") <= MAX_OPTIONS_SHOWN
+    assert "type the exact column name" in options_line

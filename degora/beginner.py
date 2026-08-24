@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Iterable, Sequence
 
+import numpy as np
 import pandas as pd
 
 from .discovery import classify_header
@@ -72,6 +73,7 @@ class SourceInference:
     choices: tuple[ColumnChoice, ...] = ()
     table_scope: str = "auto"
     table_scope_reason: str = ""
+    plausible: dict[str, tuple[str, ...]] = field(default_factory=dict)
     readable: bool = True
     problem: str = ""
 
@@ -139,6 +141,48 @@ def _read_header(path: Path) -> tuple[pd.DataFrame, str]:
     return frame, ""
 
 
+# Enough rows to tell a p-value column from a fold change, few enough that a
+# 58,000-row table costs nothing to inspect.
+PLAUSIBILITY_SAMPLE_ROWS = 2000
+# A list longer than this stops being a choice and becomes something to scroll past.
+MAX_OPTIONS_SHOWN = 12
+
+
+def _plausible_columns(frame: pd.DataFrame) -> dict[str, tuple[str, ...]]:
+    """Which columns could hold each role, judged by their values, not their names.
+
+    When the header classifier recognises nothing, the reader used to be offered
+    every column in the file - 43 of them for one real table, 32 being per-sample
+    expression values that could not be a gene name under any reading. A list
+    that long is not a choice, it is a wall. Values narrow it honestly: a p-value
+    lies in [0, 1], a fold change is numeric, and a gene name is not a number.
+    """
+
+    sample = frame.head(PLAUSIBILITY_SAMPLE_ROWS)
+    probability: list[str] = []
+    numeric: list[str] = []
+    labels: list[str] = []
+    for name in frame.columns:
+        column = pd.to_numeric(sample[name], errors="coerce")
+        finite = column[np.isfinite(column)] if len(column) else column
+        share_numeric = (len(finite) / len(sample)) if len(sample) else 0.0
+        if share_numeric >= 0.5:
+            numeric.append(str(name))
+            if len(finite) and float(finite.min()) >= 0.0 and float(finite.max()) <= 1.0:
+                probability.append(str(name))
+        else:
+            # A gene column has to distinguish rows; a constant text column cannot.
+            distinct = sample[name].astype(str).nunique(dropna=True)
+            if distinct > max(1, len(sample) // 100):
+                labels.append(str(name))
+    return {
+        "gene_column": tuple(labels),
+        "lfc_column": tuple(numeric),
+        "p_column": tuple(probability),
+        "padj_column": tuple(probability),
+    }
+
+
 def _column_choices(header: dict[str, Any]) -> tuple[ColumnChoice, ...]:
     mapping = header["mapping"]
     choices: list[ColumnChoice] = []
@@ -156,6 +200,15 @@ def _column_choices(header: dict[str, Any]) -> tuple[ColumnChoice, ...]:
         if not chosen:
             if required:
                 note = "no column in this file looks like it"
+                if role == "p_column" and mapping.get("padj_column"):
+                    # Worth saying rather than leaving to be discovered: the table
+                    # has adjusted p-values only, which is a usable answer and a
+                    # consequence the reader should choose knowingly.
+                    note = (
+                        f"this table has no unadjusted p-value; only "
+                        f"{mapping['padj_column']} is available, and using it "
+                        f"means every p-value DEGORA reads is already adjusted"
+                    )
                 confident = False
             # An absent optional column is an answer, not a question: DEGORA runs
             # without an adjusted p-value and asking for one it cannot see wastes
@@ -215,6 +268,7 @@ def infer_source_table(path: str | Path) -> SourceInference:
         choices=choices,
         table_scope=scope_label,
         table_scope_reason=scope_reason,
+        plausible=_plausible_columns(frame),
     )
 
 
@@ -410,12 +464,20 @@ def run_init(
 
         overrides: dict[str, str] = {}
         for choice in inference.needs_a_question:
+            role_label = choice.role.replace("_", " ")
             options = [name for name in (choice.chosen, *choice.alternatives) if name]
             if not options:
-                options = list(inference.columns)
-            echo(f"  DEGORA is not sure which column holds the {choice.role.replace('_', ' ')}.")
-            echo(f"  Options: {', '.join(options)}")
-            picked = ask(f"  Which column is the {choice.role.replace('_', ' ')}?", choice.chosen)
+                # Nothing matched by name. Fall back to what the values allow
+                # rather than to every column in the file.
+                options = list(inference.plausible.get(choice.role) or inference.columns)
+            echo(f"  DEGORA is not sure which column holds the {role_label}.")
+            if choice.note:
+                echo(f"  {choice.note}.")
+            shown = options[:MAX_OPTIONS_SHOWN]
+            hidden = len(options) - len(shown)
+            suffix = f", and {hidden} more (type the exact column name)" if hidden > 0 else ""
+            echo(f"  Options: {', '.join(shown)}{suffix}")
+            picked = ask(f"  Which column is the {role_label}?", choice.chosen)
             if picked:
                 overrides[choice.role] = picked
 
