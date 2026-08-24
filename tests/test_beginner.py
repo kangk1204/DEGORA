@@ -461,3 +461,82 @@ def test_identifier_space_names_the_common_conventions() -> None:
     # Too mixed to name is reported as such rather than guessed at.
     assert identifier_space(["TP53", "ENSG00000141510", "1007_s_at", "7157"]) == UNKNOWN_IDENTIFIER_SPACE
     assert identifier_space([]) == UNKNOWN_IDENTIFIER_SPACE
+
+
+def test_the_identifier_space_follows_the_column_the_reader_picked(tmp_path) -> None:
+    """The reader overrides the gene column; the space must describe that column.
+
+    The check read the auto-detected column instead. A table offering both an
+    Ensembl column and a symbol column reported whichever DEGORA guessed, and a
+    table where nothing was auto-detected reported nothing at all - so the one
+    case that most needs the mixed-space check was silently left out of it.
+    """
+
+    deg = tmp_path / "deg"
+    deg.mkdir()
+    # Two candidate gene columns in different spaces, so the pick decides the answer.
+    pd.DataFrame(
+        {
+            "gene_id": [f"ENSG{index:011d}" for index in range(150)],
+            "gene_symbol": [f"GENE{index}" for index in range(150)],
+            "log2FoldChange": [1.0] * 150,
+            "pvalue": [0.001] * 150,
+        }
+    ).to_csv(deg / "both_spaces.csv", index=False)
+    # A second study in symbols, so picking Ensembl above makes the pair mixed.
+    _clean_table(deg / "symbols.csv")
+
+    def build(gene_pick: str) -> dict:
+        answers = iter(["human", gene_pick, "yes", "a vs b", "P1", "3", "3", "yes", "a vs b", "P2", "3", "3"])
+        config = tmp_path / f"config_{gene_pick}.csv"
+        return run_init(
+            config, deg, ask=lambda question, default="": next(answers), echo=lambda _line: None
+        )
+
+    picked_ensembl = build("gene_id")
+    assert "both_spaces.csv" in picked_ensembl["identifier_spaces"]["Ensembl ID"]
+    assert picked_ensembl["identifier_warning"], "mixing Ensembl with symbols must be flagged"
+
+    picked_symbol = build("gene_symbol")
+    assert "both_spaces.csv" in picked_symbol["identifier_spaces"]["gene symbol"]
+    assert picked_symbol["identifier_warning"] == "", "both tables are symbols; nothing to warn about"
+
+
+def test_tables_from_one_study_cannot_meet_the_replication_rule(tmp_path) -> None:
+    """Five tables from one GEO series is a config that scores nothing."""
+
+    deg = tmp_path / "deg"
+    deg.mkdir()
+    for name in ("first.csv", "second.csv"):
+        _clean_table(deg / name)
+
+    lines: list[str] = []
+    # Same answer to "which paper or dataset" for both: one source unit.
+    answers = iter(["human", "yes", "a vs b", "GSE1", "3", "3", "yes", "a vs b", "GSE1", "3", "3"])
+    summary = run_init(
+        tmp_path / "config.csv",
+        deg,
+        ask=lambda question, default="": next(answers),
+        echo=lines.append,
+    )
+
+    assert summary["n_source_units"] == 1
+    assert "scores zero genes" in summary["replication_warning"]
+    assert any("WARNING" in line and "independent source unit" in line for line in lines)
+
+
+def test_two_source_units_raise_no_replication_warning(tmp_path) -> None:
+    deg = tmp_path / "deg"
+    deg.mkdir()
+    for name in ("first.csv", "second.csv"):
+        _clean_table(deg / name)
+
+    answers = iter(["human", "yes", "a vs b", "GSE1", "3", "3", "yes", "a vs b", "GSE2", "3", "3"])
+    summary = run_init(
+        tmp_path / "config.csv",
+        deg,
+        ask=lambda question, default="": next(answers),
+        echo=lambda _line: None,
+    )
+
+    assert summary["replication_warning"] == ""

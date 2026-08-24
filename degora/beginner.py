@@ -76,7 +76,18 @@ class SourceInference:
     table_scope: str = "auto"
     table_scope_reason: str = ""
     plausible: dict[str, tuple[str, ...]] = field(default_factory=dict)
-    identifier_space: str = ""
+    # Keyed by column name, because the reader may override the gene column and
+    # the identifier space has to describe the column actually being used.
+    identifier_space_by_column: dict[str, str] = field(default_factory=dict)
+
+    @property
+    def identifier_space(self) -> str:
+        """The space of the auto-detected gene column, for the walkthrough line."""
+
+        return self.identifier_space_by_column.get(self.mapping.get("gene_column", ""), "")
+
+    def identifier_space_for(self, column: str) -> str:
+        return self.identifier_space_by_column.get(column, "")
     readable: bool = True
     problem: str = ""
 
@@ -149,6 +160,8 @@ def _read_header(path: Path) -> tuple[pd.DataFrame, str]:
 PLAUSIBILITY_SAMPLE_ROWS = 2000
 # A list longer than this stops being a choice and becomes something to scroll past.
 MAX_OPTIONS_SHOWN = 12
+# Mirrors the CLI's default Project.min_studies; a config below it scores nothing.
+DEFAULT_MIN_SOURCE_UNITS = 2
 
 
 IDENTIFIER_PATTERNS = (
@@ -312,11 +325,9 @@ def infer_source_table(path: str | Path) -> SourceInference:
         table_scope=scope_label,
         table_scope_reason=scope_reason,
         plausible=_plausible_columns(frame),
-        identifier_space=(
-            identifier_space(frame[mapping["gene_column"]])
-            if mapping.get("gene_column") and mapping["gene_column"] in frame.columns
-            else ""
-        ),
+        identifier_space_by_column={
+            str(name): identifier_space(frame[name]) for name in frame.columns
+        },
     )
 
 
@@ -553,7 +564,10 @@ def run_init(
             overrides=overrides,
         )
         rows.append(catalog_row(inference, answers, study_id=study_id, catalog_dir=output.parent))
-        spaces.setdefault(inference.identifier_space or UNKNOWN_IDENTIFIER_SPACE, []).append(path.name)
+        chosen_gene_column = overrides.get("gene_column") or inference.mapping.get("gene_column", "")
+        spaces.setdefault(
+            inference.identifier_space_for(chosen_gene_column) or UNKNOWN_IDENTIFIER_SPACE, []
+        ).append(path.name)
         echo("")
 
     if not rows:
@@ -590,8 +604,24 @@ def run_init(
         echo("")
         echo(f"WARNING: {identifier_warning}")
 
+    # The replication rule needs two independent source units. Five tables from one
+    # study is a config that cannot score a gene, and the reader is standing right
+    # here - after the run is the expensive place to learn it.
+    active_units = {row["source_unit_id"] for row in rows if row["include_in_analysis"] == "yes"}
+    replication_warning = ""
+    if len(active_units) < DEFAULT_MIN_SOURCE_UNITS:
+        replication_warning = (
+            f"These tables come from {len(active_units)} independent source unit(s). DEGORA's "
+            f"default replication rule needs {DEFAULT_MIN_SOURCE_UNITS}, so a run over this "
+            "config scores zero genes. Add a table from another study, or give each independent "
+            "study its own answer to the 'which paper or dataset' question."
+        )
+        echo("")
+        echo(f"WARNING: {replication_warning}")
+
     reversed_rows = [row for row in rows if row["include_in_analysis"] == "no"]
     return {
+        "replication_warning": replication_warning,
         "identifier_spaces": {space: sorted(names) for space, names in spaces.items()},
         "identifier_warning": identifier_warning,
         "config_path": str(output),
