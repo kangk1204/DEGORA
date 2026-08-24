@@ -34,7 +34,7 @@ GitHub names those folders `DEGORA-main` and `DEGORA-<version>`, respectively:
 
 ```bash
 cd DEGORA-main       # main-branch ZIP
-# or: cd DEGORA-0.4.12  # v0.4.12 release ZIP
+# or: cd DEGORA-0.4.13  # v0.4.13 release ZIP
 ```
 
 Confirm that the interpreter you will use is supported:
@@ -155,7 +155,7 @@ Useful options:
 ```
 
 Use `--ref` to review a specific branch or release tag in one command, for
-example `bash degora_quickstart.sh --ref v0.4.12`. It fetches the name from
+example `bash degora_quickstart.sh --ref v0.4.13`. It fetches the name from
 `origin`, fast-forwards a local copy that is behind, and stops rather than
 serving stale code when a local branch of the same name has diverged.
 
@@ -370,6 +370,34 @@ make smoke
 ```
 
 ## Release notes
+
+### 0.4.13
+
+The score contract is unchanged, and nothing about an existing config or run
+behaves differently. This release adds one command.
+
+**`degora init` builds a config by asking questions instead of handing you a
+spreadsheet.** Point it at a folder of DEG result tables and it reads each one:
+which column holds the gene names, the effect size, the p-value and the adjusted
+p-value, and whether the table lists every gene tested or only the significant
+ones. It shows what it found and what else each column could have been, and asks
+only where a file is genuinely ambiguous - two plausible effect columns, or an
+effect column whose name does not say it is on a log2 scale. A file that is not a
+DEG results table, such as a sample sheet in the same folder, is recognised and
+skipped rather than walked through question by question.
+
+The column and scope inference reuses the classifier and the scope assessment the
+discovery path already applies to the same kind of file, rather than growing a
+second opinion about it.
+
+**Contrast direction is asked for every table and never inferred.** Reversing it
+inverts every up/down call in the results while leaving them looking entirely
+reasonable, so there is nothing downstream to catch it. Answer that a positive
+value means up in the *control* group and the table is written into the config
+excluded, with the reason recorded on the row: DEGORA does not reverse an effect
+column here any more than it does anywhere else, because that is a correction it
+cannot verify. Answer that you are unsure and the table is skipped - pressing
+enter never stands in for yes on that question.
 
 ### 0.4.12
 
