@@ -15,14 +15,19 @@ from typing import Any
 
 SCHEMA_VERSION = "1"
 DEFAULT_DB_NAME = "discovery_state.sqlite3"
-TERMINAL_STATUSES = frozenset({"completed", "failed", "interrupted"})
+# "cancelled" is kept apart from "interrupted" because they answer different
+# questions about a job that did not finish. "interrupted" means the server
+# stopped underneath it and the work is worth resuming; "cancelled" means a
+# person decided it should not finish, and re-running it is their call to make.
+TERMINAL_STATUSES = frozenset({"completed", "failed", "interrupted", "cancelled"})
 VALID_STATUSES = frozenset({"queued", "running", *TERMINAL_STATUSES})
 ALLOWED_TRANSITIONS = {
-    "queued": frozenset({"running", "interrupted"}),
-    "running": frozenset({"completed", "failed", "interrupted"}),
+    "queued": frozenset({"running", "interrupted", "cancelled"}),
+    "running": frozenset({"completed", "failed", "interrupted", "cancelled"}),
     "completed": frozenset(),
     "failed": frozenset(),
     "interrupted": frozenset(),
+    "cancelled": frozenset(),
 }
 SENSITIVE_KEY_PARTS = (
     "api_key",
@@ -399,6 +404,46 @@ class DiscoveryStateStore:
                 raise
         return [self._job_dict(row) for row in recovered]
 
+    def cancel_job(self, job_id: str, message: str) -> dict[str, Any] | None:
+        """Move a queued or running job to cancelled, or report that it is too late.
+
+        Returns the cancelled job, or None when the job had already reached a
+        terminal state. The read and the write share one transaction because the
+        worker may be completing in the same instant, and a cancel that silently
+        overwrote a completed result would discard work the reader can already see.
+        """
+
+        _validate_id(job_id, field="job_id")
+        now = _utc_now()
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                row = connection.execute(
+                    "SELECT * FROM jobs WHERE job_id=?", (job_id,)
+                ).fetchone()
+                if row is None:
+                    # The outer handler rolls back; doing it here too would leave
+                    # it rolling back a transaction that is no longer open.
+                    raise DiscoveryStoreError(f"unknown job: {job_id}")
+                if row["status"] in TERMINAL_STATUSES:
+                    connection.execute("ROLLBACK")
+                    return None
+                connection.execute(
+                    """
+                    UPDATE jobs
+                    SET status='cancelled', message=?, updated_at=?,
+                        completed_at=COALESCE(completed_at, ?)
+                    WHERE job_id=?
+                    """,
+                    (message, now, now, job_id),
+                )
+                cancelled = self._read_job_in_transaction(connection, job_id)
+                connection.execute("COMMIT")
+            except Exception:
+                connection.execute("ROLLBACK")
+                raise
+        return self._job_dict(cancelled)
+
     def recover_interrupted_jobs(self) -> list[dict[str, Any]]:
         return self.interrupt_active_jobs(
             "Job was interrupted before completion and marked interrupted during store recovery."
@@ -406,7 +451,7 @@ class DiscoveryStateStore:
 
 
 class DiscoveryJobCancelled(BaseException):
-    """Raised inside a worker when the server it belongs to is stopping.
+    """Raised inside a worker when its job must stop: a shutdown, or a person.
 
     It derives from BaseException, not Exception, for the same reason
     KeyboardInterrupt does: the discovery workers wrap progress reporting in
@@ -424,6 +469,7 @@ class DiscoveryJobManager:
         self._futures: set[concurrent.futures.Future[Any]] = set()
         self._lock = threading.Lock()
         self._closing = threading.Event()
+        self._cancelled: set[str] = set()
 
     def submit(
         self,
@@ -435,13 +481,17 @@ class DiscoveryJobManager:
         job = self.store.create_job(kind, payload, job_id=job_id)
 
         def progress_callback(progress: float, message: str | None = None) -> dict[str, Any]:
+            # Cancellation point. cancel_futures only drops work that has not
+            # started; a worker already downloading or writing needs somewhere to
+            # notice, and every stage already reports here.
             if self._closing.is_set():
-                # Cancellation point. cancel_futures only drops work that has not
-                # started; a worker already downloading or writing needs somewhere
-                # to notice the shutdown, and every stage already reports here.
                 raise DiscoveryJobCancelled(
                     "discovery job was cancelled because the local DEGORA server is stopping"
                 )
+            with self._lock:
+                stopped_by_reader = job["job_id"] in self._cancelled
+            if stopped_by_reader:
+                raise DiscoveryJobCancelled("discovery job was cancelled by the reader")
             return self.store.update_job(job["job_id"], progress=progress, message=message)
 
         def run() -> None:
@@ -452,6 +502,13 @@ class DiscoveryJobManager:
                 result = worker(job["job_id"], payload, progress_callback)
                 if self._closing.is_set():
                     return
+                with self._lock:
+                    if job["job_id"] in self._cancelled:
+                        # The worker finished between its last progress report and
+                        # here. The store already holds the cancelled state, and
+                        # writing the result now would transition out of a terminal
+                        # status - which the store refuses - so stop quietly.
+                        return
                 self.store.update_job(job["job_id"], status="completed", result=result, message="Job completed.")
             except DiscoveryJobCancelled:
                 # interrupt_active_jobs has already written the terminal state, and
@@ -461,6 +518,11 @@ class DiscoveryJobManager:
             except Exception as exc:  # noqa: BLE001 - persist arbitrary worker failures.
                 if self._closing.is_set():
                     return
+                with self._lock:
+                    if job["job_id"] in self._cancelled:
+                        # A cancelled download usually fails on the way out. That
+                        # failure is the cancellation, not something to report.
+                        return
                 self.store.update_job(
                     job["job_id"],
                     status="failed",
@@ -473,6 +535,24 @@ class DiscoveryJobManager:
             self._futures.add(future)
         future.add_done_callback(self._discard_future)
         return job
+
+    def cancel(self, job_id: str) -> dict[str, Any] | None:
+        """Stop a job at the reader's request.
+
+        Returns the cancelled job, or None if it had already finished - the
+        caller needs that difference, because "too late" and "stopped" are
+        different things to tell someone who just pressed a button.
+
+        Files already downloaded are left where they are. They are valid inputs
+        that cost a download to fetch, and a later run finds them cached. What
+        cancelling guarantees is narrower and more important: a cancelled job
+        never records a result, so partial work cannot be read as a finished
+        search.
+        """
+
+        with self._lock:
+            self._cancelled.add(job_id)
+        return self.store.cancel_job(job_id, "Job was cancelled by the reader.")
 
     def _discard_future(self, future: concurrent.futures.Future[Any]) -> None:
         with self._lock:

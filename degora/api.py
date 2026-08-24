@@ -743,6 +743,22 @@ INDEX_HTML = """<!doctype html>
       text-align: left;
     }
     .search-progress .loading-note + .loading-note { margin-top: 4px; }
+    .job-cancel {
+      width: auto;
+      min-width: 0;
+      height: 30px;
+      margin-top: 14px;
+      padding: 0 12px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: transparent;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .job-cancel:hover:not(:disabled) { color: var(--ink); border-color: var(--ink); }
+    .job-cancel:disabled { cursor: default; opacity: 0.6; }
     @media (prefers-reduced-motion: reduce) {
       .loading-bar::before { animation: none; width: 100%; opacity: 0.55; }
       .loading-bar.is-determinate > span { transition: none; }
@@ -1520,9 +1536,13 @@ INDEX_HTML = """<!doctype html>
       jobId: "",
       jobStatus: "",
       jobProgress: null,
+      jobCancelled: false,
+      cancelling: false,
       jobMessage: "",
       jobStartedAt: 0,
       prepareProgress: null,
+      prepareCancelled: false,
+      prepareJobId: "",
       prepareMessage: "",
       prepareJobStartedAt: 0,
       providerStatus: "",
@@ -1905,6 +1925,8 @@ INDEX_HTML = """<!doctype html>
           + bar
           + `<span class="loading-note">${esc(stage)}${esc(percentText)}${esc(elapsedText)}</span>`
           + `<span class="loading-note">Human and Mouse searches run as independent jobs and are never pooled.</span>`
+          + `<button type="button" class="job-cancel" id="cancelSearchJob"${state.cancelling ? " disabled" : ""}>`
+          + `${state.cancelling ? "Stopping..." : "Stop this search"}</button>`
           + `</div></div>`;
         $("discoveryActions").hidden = true;
         $("discoveryFooter").hidden = true;
@@ -1925,6 +1947,20 @@ INDEX_HTML = """<!doctype html>
         $("discoveryActions").hidden = state.selected.size === 0;
         if (!$("discoveryActions").hidden) updateSelectedStatus();
         $("discoveryFooter").hidden = true;
+        return;
+      }
+      // A stopped search and a search that found nothing look identical once the
+      // progress bar is gone, and only one of them means the query has no matches.
+      if (state.jobCancelled && !state.studies.length) {
+        $("resultsSubtitle").textContent = `Search stopped for \u201c${state.query}\u201d`;
+        $("discoveryResults").innerHTML = `<div class="discovery-empty">`
+          + `<strong>You stopped this search, so it has no results.</strong><br>`
+          + `This is not a finding about the query. Anything already downloaded is kept `
+          + `and a later run reuses it.<br>`
+          + `<button class="action-secondary study-inspect" type="button" data-retry-search>Search again</button></div>`;
+        $("discoveryActions").hidden = true;
+        $("discoveryFooter").hidden = true;
+        updateSelectedStatus();
         return;
       }
       const verification = state.providerStatus === "partial"
@@ -2085,6 +2121,51 @@ INDEX_HTML = """<!doctype html>
       state.error = "";
     }
 
+    // Stopping a job is a request to the server, not just a client-side give-up:
+    // the worker is mid-download and would otherwise keep fetching from public
+    // repositories after the reader has walked away from the answer.
+    async function cancelDiscoveryJob(kind) {
+      const species = activeSpecies;
+      const state = discoveryStates[species];
+      const jobId = kind === "prepare" ? state.prepareJobId : state.jobId;
+      if (!jobId || state.cancelling) return;
+      state.cancelling = true;
+      if (activeSpecies === species) {
+        kind === "prepare" ? renderPreparedState() : renderDiscoveryResults();
+      }
+      let outcome = null;
+      try {
+        outcome = await postJson(`/api/discovery/jobs/${jobId}/cancel`, {});
+      } catch (error) {
+        state.cancelling = false;
+        state.notice = `Could not stop the job: ${error.message}`;
+        state.noticeLevel = "error";
+        if (activeSpecies === species) renderDiscoveryResults();
+        return;
+      }
+      state.cancelling = false;
+      // Retire the in-flight work client-side too. The poll loop reads the
+      // cancelled status on its next tick, but the reader should not watch a
+      // progress bar keep moving for another 650ms after pressing stop.
+      if (kind === "prepare") {
+        state.prepareRequest += 1;
+        state.preparing = false;
+        state.prepareCancelled = true;
+      } else {
+        state.searchRequest += 1;
+        state.loading = false;
+        state.jobCancelled = true;
+      }
+      state.notice = outcome && outcome.cancelled === false
+        ? "The job finished before it could be stopped."
+        : (outcome && outcome.reason) || "Stopped.";
+      state.noticeLevel = outcome && outcome.cancelled === false ? "info" : "info";
+      if (activeSpecies === species) {
+        renderDiscoveryResults();
+        renderPreparedState();
+      }
+    }
+
     async function pollSearchJob(species, requestId) {
       const state = discoveryStates[species];
       while (requestId === state.searchRequest && state.jobId) {
@@ -2100,6 +2181,13 @@ INDEX_HTML = """<!doctype html>
         }
         if (job.status === "complete") {
           await refreshSearchPage(species, requestId);
+          return;
+        }
+        // Cancelled is not a failure: someone asked for this. It can also arrive
+        // from another tab, so the loop recognises the state rather than relying
+        // on the button that usually causes it.
+        if (job.status === "cancelled") {
+          state.jobCancelled = true;
           return;
         }
         if (job.status === "failed" || job.status === "interrupted") {
@@ -2133,6 +2221,8 @@ INDEX_HTML = """<!doctype html>
       state.analysisRequest += 1;
       state.preparing = false;
       state.analyzing = false;
+      state.jobCancelled = false;
+      state.prepareCancelled = false;
       state.selected.clear();
       state.prepared = null;
       state.bundleId = "";
@@ -2660,6 +2750,8 @@ INDEX_HTML = """<!doctype html>
             + bar
             + `<span class="loading-note">${esc(stage)}${esc(percentText)}${esc(elapsedText)}</span>`
             + `<span class="loading-note">Public repositories are queried at a paced rate, so this takes longer for larger selections.</span>`
+            + `<button type="button" class="job-cancel" id="cancelPrepareJob"${state.cancelling ? " disabled" : ""}>`
+            + `${state.cancelling ? "Stopping..." : "Stop preparing"}</button>`
             + `</div></div>`;
           $("analysisEligibility").textContent = "Preparation in progress.";
           $("runDiscoveryAnalysis").disabled = true;
@@ -2732,6 +2824,10 @@ INDEX_HTML = """<!doctype html>
         state.prepareProgress = typeof job.progress === "number" ? job.progress : null;
         state.prepareMessage = typeof job.message === "string" ? job.message : "";
         if (job.status === "complete") return job.result || {};
+        if (job.status === "cancelled") {
+          state.prepareCancelled = true;
+          return null;
+        }
         if (job.status === "failed" || job.status === "interrupted") {
           throw new Error(job.error || "preparation failed");
         }
@@ -2795,6 +2891,7 @@ INDEX_HTML = """<!doctype html>
           record_ids: recordIds
         });
         if (requestId !== state.prepareRequest) return;
+        state.prepareJobId = started.job_id;
         const data = await pollPrepareJob(requestSpecies, requestId, started.job_id);
         if (requestId !== state.prepareRequest || data === null) return;
         state.prepared = data;
@@ -3725,6 +3822,10 @@ INDEX_HTML = """<!doctype html>
       if (state.hasNext) { state.page += 1; void reloadSearchRecords(); }
     });
     $("discoveryResults").addEventListener("click", (event) => {
+      if (event.target.closest("#cancelSearchJob")) {
+        void cancelDiscoveryJob("search");
+        return;
+      }
       const retry = event.target.closest("[data-retry-search]");
       if (retry) {
         void searchStudies({ resetPage: true });
@@ -3853,6 +3954,10 @@ INDEX_HTML = """<!doctype html>
       updateAnalysisEligibility();
     });
     $("preparedCandidates").addEventListener("click", (event) => {
+      if (event.target.closest("#cancelPrepareJob")) {
+        void cancelDiscoveryJob("prepare");
+        return;
+      }
       const bulk = event.target.closest(".sample-bulk-apply");
       if (bulk) {
         const bulkRow = bulk.closest(".candidate-row");
@@ -4616,6 +4721,8 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
                 self._send_json(self._discovery_prepare_job(payload), status=HTTPStatus.ACCEPTED)
             elif parsed.path == "/api/discovery/analyze":
                 self._send_json(self._discovery_analyze(payload), status=HTTPStatus.CREATED)
+            elif re.fullmatch(r"/api/discovery/jobs/[a-f0-9]{16}/cancel", parsed.path):
+                self._send_json(self._discovery_cancel_job(parsed.path.split("/")[4]))
             else:
                 self._send_json({"error": "not found"}, status=HTTPStatus.NOT_FOUND)
         except FileNotFoundError as exc:
@@ -4861,6 +4968,70 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
             worker,
         )
         return {"job_id": job["job_id"], "search_id": search_id, "status": "queued"}
+
+    @staticmethod
+    def _mark_search_cancelled(store: Any, payload: dict[str, Any]) -> None:
+        search_id = str(payload.get("search_id") or "")
+        if not search_id:
+            return
+        try:
+            search = store.get_search(search_id)
+        except Exception:  # noqa: BLE001 - the job is cancelled either way.
+            return
+        if not isinstance(search, dict) or search.get("status") not in {"queued", "running"}:
+            return
+        stopped = dict(search)
+        stopped.update({"status": "cancelled", "error": "", "updated_at": time.time()})
+        try:
+            store.save_search(search_id, stopped)
+        except Exception:  # noqa: BLE001 - reporting the cancellation matters more.
+            return
+
+    def _discovery_cancel_job(self, job_id: str) -> dict[str, Any]:
+        """Stop a running search or preparation at the reader's request.
+
+        A job that has already finished is not an error to report - the reader
+        pressed a button a moment too late, and the honest answer is that the
+        work is done, along with the state it actually reached.
+        """
+
+        store = self.server.discovery_search_store
+        if store is None:
+            raise RuntimeError("discovery is not available on this server")
+        if store.get_job(job_id) is None:
+            raise FileNotFoundError("discovery search job was not found")
+
+        manager = self.server.discovery_job_manager
+        cancel = getattr(manager, "cancel", None) if manager is not None else None
+        if cancel is None:
+            # A manager without cancellation cannot stop the worker thread, and
+            # marking the job cancelled while it kept running and writing would be
+            # a worse answer than saying plainly that it cannot be stopped.
+            raise RuntimeError("this server cannot cancel a running job")
+
+        cancelled = cancel(job_id)
+        if cancelled is not None:
+            # A search job persists its snapshot record separately, and that
+            # record is what /searches/{id} answers from. Left alone it would
+            # report "queued" for the rest of the server's life.
+            self._mark_search_cancelled(store, cancelled.get("payload") or {})
+        job = self._discovery_job(job_id)
+        if cancelled is None:
+            return {
+                "cancelled": False,
+                "reason": "The job had already finished before it could be cancelled.",
+                "job": job,
+            }
+        return {
+            "cancelled": True,
+            # Said here rather than left for the reader to wonder about: stopping
+            # does not undo downloads, and it does guarantee no partial result.
+            "reason": (
+                "Stopped. Files already downloaded are kept and a later run reuses "
+                "them; no partial result was recorded for this job."
+            ),
+            "job": job,
+        }
 
     def _discovery_job(self, job_id: str) -> dict[str, Any]:
         job = self.server.discovery_search_store.get_job(job_id)

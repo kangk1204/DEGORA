@@ -1508,3 +1508,55 @@ def test_group_sizes_are_bounded_by_the_series_rather_than_guessed() -> None:
 
     # And nothing prefills them: a guessed group size is not an improvement.
     assert 'class="n-ctrl" type="number" min="1" step="1" inputmode="numeric" value="${esc(nCtrl)}"' in INDEX_HTML
+
+
+def test_the_stop_button_is_wired_to_something_that_exists() -> None:
+    """A button rendered into innerHTML has no handler until delegation finds it.
+
+    Both progress cards are rebuilt on every poll tick, so the buttons cannot
+    carry their own listener; they are reached through the container delegation.
+    A mismatch between the rendered id and the delegated selector would produce a
+    button that looks live and does nothing, which is worse than no button.
+    """
+
+    from degora.api import INDEX_HTML
+
+    for button_id, container in (
+        ("cancelSearchJob", '$("discoveryResults").addEventListener("click"'),
+        ("cancelPrepareJob", '$("preparedCandidates").addEventListener("click"'),
+    ):
+        assert f'id="{button_id}"' in INDEX_HTML, f"{button_id} is never rendered"
+        assert f'closest("#{button_id}")' in INDEX_HTML, f"{button_id} has no delegated handler"
+        # The handler must be inside the container that actually holds the button.
+        handler_at = INDEX_HTML.index(container)
+        delegated_at = INDEX_HTML.index(f'closest("#{button_id}")')
+        assert 0 < delegated_at - handler_at < 400, f"{button_id} is delegated from the wrong container"
+
+    # Both call the one cancel function, and it is defined.
+    assert "async function cancelDiscoveryJob(kind)" in INDEX_HTML
+    assert INDEX_HTML.count('cancelDiscoveryJob("search")') == 1
+    assert INDEX_HTML.count('cancelDiscoveryJob("prepare")') == 1
+
+
+def test_a_cancelled_job_ends_both_poll_loops() -> None:
+    """Neither loop may treat "cancelled" as a failure or keep polling forever."""
+
+    from degora.api import INDEX_HTML
+
+    assert INDEX_HTML.count('job.status === "cancelled"') == 2
+    # The cancelled check precedes the failure check in both loops, so a
+    # cancellation is never reported to the reader as an error.
+    for failure in ('throw new Error(job.error || "publication search failed")',
+                    'throw new Error(job.error || "preparation failed")'):
+        failure_at = INDEX_HTML.index(failure)
+        cancelled_at = INDEX_HTML.rindex('job.status === "cancelled"', 0, failure_at)
+        assert failure_at - cancelled_at < 400
+
+
+def test_a_stopped_search_is_not_reported_as_an_empty_one() -> None:
+    """"No records were returned" is a claim about the query, not about stopping."""
+
+    from degora.api import INDEX_HTML
+
+    assert "You stopped this search, so it has no results." in INDEX_HTML
+    assert "This is not a finding about the query." in INDEX_HTML

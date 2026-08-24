@@ -619,3 +619,115 @@ def test_job_result_is_withheld_until_the_job_completes(tmp_path: Path, monkeypa
             assert job["result"] is None
     finally:
         _stop_server(server, thread)
+
+
+def _install_blocking_federated_module(monkeypatch, *, started, release) -> None:
+    """A search that reports progress, then waits until the test lets it go."""
+
+    module = types.ModuleType("degora.discovery_federated")
+
+    def search_publications(*, query, species, limit, progress=None):
+        if progress:
+            progress(0.1, "Querying public repositories.")
+        started.set()
+        release.wait(timeout=10)
+        if progress:
+            progress(0.9, "Ranking candidates.")  # must raise once cancelled
+        return {"records": [], "total": 0, "provider_status": "complete", "provider_errors": []}
+
+    module.search_publications = search_publications
+    module.page_publication_snapshot = lambda **kwargs: {"records": [], "total": 0}
+    module.filter_publication_records = lambda records, text_filter="": list(records)
+    monkeypatch.setitem(sys.modules, "degora.discovery_federated", module)
+
+
+def test_a_running_search_can_be_stopped_from_the_browser(tmp_path: Path, monkeypatch) -> None:
+    """The reader pressed stop while the search was querying public repositories."""
+
+    started = threading.Event()
+    release = threading.Event()
+    _install_blocking_federated_module(monkeypatch, started=started, release=release)
+    server, thread, base = _start_server(tmp_path)
+    try:
+        _, created = _request_json(
+            f"{base}/api/discovery/searches",
+            payload={"query": "hypoxia", "species": "human", "limit": 20},
+            action=True,
+        )
+        assert started.wait(timeout=10)
+
+        status, cancelled = _request_json(
+            f"{base}/api/discovery/jobs/{created['job_id']}/cancel", payload={}, action=True
+        )
+        release.set()
+
+        assert status == 200
+        assert cancelled["cancelled"] is True
+        assert cancelled["job"]["status"] == "cancelled"
+        # The reader is told what stopping did and did not undo.
+        assert "downloaded" in cancelled["reason"]
+
+        # The job stays cancelled, and never acquires a result.
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            _, polled = _request_json(f"{base}/api/discovery/jobs/{created['job_id']}")
+            if polled["job"]["result"] is not None:
+                raise AssertionError("a cancelled job recorded a result")
+            if polled["job"]["status"] != "cancelled":
+                raise AssertionError(f"status drifted to {polled['job']['status']}")
+            time.sleep(0.05)
+
+        # And the snapshot record does not claim to still be queued.
+        _, search = _request_json(f"{base}/api/discovery/searches/{created['search_id']}")
+        assert search["search"]["status"] == "cancelled"
+    finally:
+        release.set()
+        _stop_server(server, thread)
+
+
+def test_stopping_a_finished_search_says_it_was_too_late(tmp_path: Path, monkeypatch) -> None:
+    page_calls: list[dict] = []
+    _install_federated_module(monkeypatch, calls=page_calls)
+    server, thread, base = _start_server(tmp_path)
+    try:
+        created = _create_search(base, "human")
+        status, outcome = _request_json(
+            f"{base}/api/discovery/jobs/{created['job_id']}/cancel", payload={}, action=True
+        )
+
+        assert status == 200
+        assert outcome["cancelled"] is False
+        assert "already finished" in outcome["reason"]
+        # The completed result is untouched: the reader can still read it.
+        assert outcome["job"]["status"] == "complete"
+        _, search = _request_json(f"{base}/api/discovery/searches/{created['search_id']}")
+        assert search["search"]["status"] == "complete"
+    finally:
+        _stop_server(server, thread)
+
+
+def test_cancelling_an_unknown_job_is_a_not_found(tmp_path: Path, monkeypatch) -> None:
+    page_calls: list[dict] = []
+    _install_federated_module(monkeypatch, calls=page_calls)
+    server, thread, base = _start_server(tmp_path)
+    try:
+        with pytest.raises(urllib.error.HTTPError) as excinfo:
+            _request_json(f"{base}/api/discovery/jobs/{'0' * 16}/cancel", payload={}, action=True)
+        assert excinfo.value.code == 404
+    finally:
+        _stop_server(server, thread)
+
+
+def test_the_cancel_route_requires_an_action_header(tmp_path: Path, monkeypatch) -> None:
+    """Cancelling changes server state, so it carries the same guard as the rest."""
+
+    page_calls: list[dict] = []
+    _install_federated_module(monkeypatch, calls=page_calls)
+    server, thread, base = _start_server(tmp_path)
+    try:
+        created = _create_search(base, "human")
+        with pytest.raises(urllib.error.HTTPError) as excinfo:
+            _request_json(f"{base}/api/discovery/jobs/{created['job_id']}/cancel", payload={})
+        assert excinfo.value.code in {400, 401, 403}
+    finally:
+        _stop_server(server, thread)

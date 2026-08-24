@@ -756,7 +756,12 @@ GENE_EXACT_RE = re.compile(
     r"^(gene|gene[_. ]?id|gene[_. ]?name|gene[_. ]?symbol|symbol|hgnc.*|hugo.*|ensembl.*|geneid)$",
     re.I,
 )
-GENE_LOOSE_RE = re.compile(r"gene|symbol|hgnc|hugo|ensembl|entrez|probe|transcript|(?:^|_)id$", re.I)
+# row_name is DEGORA's own name for the identifier column it recovers from an R
+# write.csv export, where the gene names arrive as an unnamed index. Leaving it
+# out meant DEGORA could not recognise a column it had just created itself.
+GENE_LOOSE_RE = re.compile(
+    r"gene|symbol|hgnc|hugo|ensembl|entrez|probe|transcript|^row_name(_\d+)?$|(?:^|_)id$", re.I
+)
 LFC_HIGH_RE = re.compile(r"log2[\W_]*fold[\W_]*change|log2fc|log[_. ]?fc|log2ratio", re.I)
 LFC_AMBIGUOUS_RE = re.compile(r"fold[_. ]?change|foldchange|(?:^|_)beta$|effect[_. ]?size", re.I)
 PADJ_RE = re.compile(r"padj|adj[_. ]?p|adjusted[_. ]?p|fdr|q[_. ]?value|qvalue|qval", re.I)

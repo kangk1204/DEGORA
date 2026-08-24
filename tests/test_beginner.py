@@ -265,3 +265,39 @@ def test_build_catalog_keeps_a_stable_column_order() -> None:
 
     assert list(frame.columns)[:3] == ["study_id", "source_unit_id", "source_path"]
     assert "sign_convention" in frame.columns
+
+
+def test_r_row_labels_are_recognised_as_the_gene_column(tmp_path) -> None:
+    """DEGORA renames R's unnamed index to row_name, then did not know that name.
+
+    `write.csv(results, file)` writes the gene identifiers as an unnamed index.
+    read_deg_table recovers them under `row_name`, which is DEGORA's own
+    convention - and the header classifier had no entry for it, so the guided flow
+    asked which column held the gene names for a file whose gene column it had
+    just built. Nine contrasts in a real corpus were affected.
+    """
+
+    path = tmp_path / "r_export.csv"
+    # An R write.csv export: one fewer header field than the data rows.
+    path.write_text(
+        "log2FoldChange,pvalue,padj\n"
+        + "".join(f"GENE{index},{2.0 - index * 0.1},{0.001 * index},{0.01 * index}\n" for index in range(1, 8)),
+        encoding="utf-8",
+    )
+
+    inference = infer_source_table(path)
+
+    assert inference.mapping["gene_column"] == "row_name"
+    assert "gene_column" not in {choice.role for choice in inference.needs_a_question}
+
+
+def test_a_real_gene_column_still_outranks_the_recovered_row_label(tmp_path) -> None:
+    """row_name is a fallback identifier, not a preferred one."""
+
+    from degora.discovery import classify_header
+
+    assert classify_header(["row_name", "log2FoldChange", "pvalue"])["mapping"]["gene_column"] == "row_name"
+    assert (
+        classify_header(["row_name", "gene_symbol", "log2FoldChange", "pvalue"])["mapping"]["gene_column"]
+        == "gene_symbol"
+    )
