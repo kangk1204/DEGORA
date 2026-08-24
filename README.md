@@ -377,9 +377,9 @@ make smoke
 
 ## Release notes
 
-### 0.4.15 (release candidate)
+### 0.4.15
 
-The score contract is unchanged. This release candidate tightens the v0.4.14
+The score contract is unchanged. This patch release tightens the v0.4.14
 beginner, discovery, cancellation, privacy, and provenance paths that reviewers
 exercised after the cancellation and guided-init features landed.
 
@@ -420,7 +420,7 @@ revision or dirty state of an unrelated parent Git repository.
 Known issue: the cancellation guarantee described below was not linearizable at
 the final search/bundle publication boundary in the published v0.4.14 tag. A
 narrow race could expose a completed side effect after the job endpoint reported
-`cancelled`. The 0.4.15 release candidate fixes that boundary and adds
+`cancelled`. Version 0.4.15 fixes that boundary and adds
 deterministic race and failure-path tests.
 
 The score contract is unchanged, and nothing about an existing config or run
