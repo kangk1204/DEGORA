@@ -36,7 +36,7 @@ from typing import Any, Callable, Iterable
 
 from . import runtime_version_info
 from .formula_safety import formula_guard_metadata, neutralize_formula_cell
-from .provenance import artifact_provenance_path, artifact_source_path, write_source_sidecar
+from .provenance import apply_default_file_mode, artifact_provenance_path, artifact_source_path, write_source_sidecar
 
 
 EUTILS_BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
@@ -846,8 +846,18 @@ LFC_HIGH_RE = re.compile(r"log2[\W_]*fold[\W_]*change|log2fc|log[_. ]?fc|log2rat
 LFC_AMBIGUOUS_RE = re.compile(
     r"fold[_. -]?change|foldchange|(?:^|_)beta$|effect[_. -]?size", re.IGNORECASE
 )
-PADJ_RE = re.compile(r"padj|adj[_. -]?p|adjusted[_. -]?p|fdr|q[_. -]?value|qvalue|qval", re.IGNORECASE)
-P_RE = re.compile(r"p[_. -]?value|pvalue|pval|p_val|^p$", re.IGNORECASE)
+PADJ_RE = re.compile(
+    r"padj|adj[_. -]?p|adjusted[_. -]?p|fdr|q[_. -]?value|qvalue|qval|"
+    # Seurat (p_val_adj), scanpy (pvals_adj), R's p.adjust() and a hand-typed
+    # Benjamini-Hochberg column are adjusted p-values too; they used to be offered
+    # as a second nominal p-value, which made every marker table a question.
+    r"p[_. -]?vals?[_. -]?adj|p[_. -]?adjust|benjamini|(?:^|[_. -])bh(?:$|[_. -])",
+    re.IGNORECASE,
+)
+P_RE = re.compile(r"p[_. -]?value|pvalue|pvals?(?:$|[_. -])|p_val|^p$", re.IGNORECASE)
+# Seurat's pct.1 / pct.2 (fraction of cells expressing) live in [0, 1] and are
+# not probabilities of anything DEGORA scores.
+NON_PROBABILITY_COLUMN_RE = re.compile(r"^pct[._ -]?\d+$|^(?:pct|percent|fraction|frac)(?:[._ -]|$)", re.IGNORECASE)
 NON_SAMPLE_RE = re.compile(
     r"^(?:gene[_. ]?)?(?:start|stop|end|length|strand|chrom(?:osome)?|chr)|"
     r"^(?:description|annotation|biotype|entrez|transcript|feature|base[_. ]?mean|mean|average|avg|"
@@ -1183,7 +1193,13 @@ def _matrix_rows_from_text(text: str) -> list[list[str]]:
     data_lines = [line for line in lines if line.strip() and not line.startswith("!")][:40]
     candidates: list[tuple[int, list[list[str]]]] = []
     for separator in ("\t", ",", ";"):
-        parsed = list(csv.reader(data_lines, delimiter=separator))
+        try:
+            parsed = list(csv.reader(data_lines, delimiter=separator))
+        except csv.Error:
+            # Same guard as _delimited_rows: a field past csv's 128 KiB limit in
+            # a supplementary file is "no usable table here", not a traceback
+            # that ends the preparation of every other selected study.
+            continue
         width = max((len(row) for row in parsed[:10]), default=0)
         candidates.append((width, parsed))
     return max(candidates, key=lambda item: item[0])[1] if candidates else []
@@ -1314,7 +1330,15 @@ def parse_geo_soft(text: str) -> dict[str, Any]:
             metadata["design"] = (metadata["design"] + " " + value).strip()
         elif key == "!Series_pubmed_id":
             metadata["pubmed_ids"].append(value)
-        elif key.endswith("_organism_ch1") and value:
+        elif value and (
+            # The Series record GEO returns for targ=self lists organisms as
+            # !Series_sample_organism and !Series_platform_organism; the
+            # per-channel !Sample_organism_ch1/_ch2 keys appear only in the
+            # per-sample (targ=gsm) record. Reading the per-channel keys alone
+            # meant every real Series record parsed to no taxa at all.
+            key in {"!Series_sample_organism", "!Series_platform_organism", "!Series_organism"}
+            or re.fullmatch(r"!Sample_organism_ch\d+", key)
+        ):
             taxa.add(value)
     metadata["supplementary_files"] = list(dict.fromkeys(supplementary))
     metadata["pubmed_ids"] = list(dict.fromkeys(metadata["pubmed_ids"]))
@@ -1909,6 +1933,7 @@ def _atomic_write_bytes(path: Path, payload: bytes) -> None:
     try:
         with os.fdopen(fd, "wb") as handle:
             handle.write(payload)
+        apply_default_file_mode(temporary)
         os.replace(temporary, path)
     finally:
         temporary.unlink(missing_ok=True)

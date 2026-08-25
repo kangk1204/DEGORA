@@ -11,6 +11,7 @@ import os
 import re
 import secrets
 import shutil
+import socket
 import sqlite3
 import sys
 import threading
@@ -1918,16 +1919,32 @@ INDEX_HTML = """<!doctype html>
         const bar = percent === null
           ? `<div class="loading-bar" aria-hidden="true"></div>`
           : `<div class="loading-bar is-determinate" aria-hidden="true"><span style="width: ${percent}%"></span></div>`;
-        $("discoveryResults").innerHTML = `<div class="discovery-loading">`
-          + `<div class="loading-card search-progress" aria-busy="true"`
-          + `${percent === null ? "" : ` role="progressbar" aria-valuenow="${percent}" aria-valuemin="0" aria-valuemax="100"`}>`
-          + `<strong class="loading-title">Building the ${esc(speciesLabel(activeSpecies))} publication snapshot</strong>`
-          + bar
-          + `<span class="loading-note">${esc(stage)}${esc(percentText)}${esc(elapsedText)}</span>`
-          + `<span class="loading-note">Human and Mouse searches run as independent jobs and are never pooled.</span>`
-          + `<button type="button" class="job-cancel" id="cancelSearchJob"${state.cancelling ? " disabled" : ""}>`
-          + `${state.cancelling ? "Stopping..." : "Stop this search"}</button>`
-          + `</div></div>`;
+        // The card is built once and then updated in place: rebuilding it on every
+        // 650 ms poll replaced the Stop button under the reader's pointer, so a
+        // press whose mousedown and mouseup landed on different instances was lost.
+        const existingCard = $("discoveryResults").querySelector(".search-progress");
+        if (existingCard && existingCard.dataset.species === activeSpecies) {
+          existingCard.querySelector(".loading-stage").textContent = `${stage}${percentText}${elapsedText}`;
+          const fill = existingCard.querySelector(".loading-bar span");
+          if (fill && percent !== null) fill.style.width = `${percent}%`;
+          if (percent !== null) existingCard.setAttribute("aria-valuenow", String(percent));
+          const stopButton = existingCard.querySelector("#cancelSearchJob");
+          if (stopButton) {
+            stopButton.disabled = Boolean(state.cancelling);
+            stopButton.textContent = state.cancelling ? "Stopping..." : "Stop this search";
+          }
+        } else {
+          $("discoveryResults").innerHTML = `<div class="discovery-loading">`
+            + `<div class="loading-card search-progress" data-species="${esc(activeSpecies)}" aria-busy="true"`
+            + `${percent === null ? "" : ` role="progressbar" aria-valuenow="${percent}" aria-valuemin="0" aria-valuemax="100"`}>`
+            + `<strong class="loading-title">Building the ${esc(speciesLabel(activeSpecies))} publication snapshot</strong>`
+            + bar
+            + `<span class="loading-note loading-stage">${esc(stage)}${esc(percentText)}${esc(elapsedText)}</span>`
+            + `<span class="loading-note">Human and Mouse searches run as independent jobs and are never pooled.</span>`
+            + `<button type="button" class="job-cancel" id="cancelSearchJob"${state.cancelling ? " disabled" : ""}>`
+            + `${state.cancelling ? "Stopping..." : "Stop this search"}</button>`
+            + `</div></div>`;
+        }
         $("discoveryActions").hidden = true;
         $("discoveryFooter").hidden = true;
         updateSelectedStatus();
@@ -2291,6 +2308,18 @@ INDEX_HTML = """<!doctype html>
         renderPreparedState();
       }
       state.query = query;
+      if (resetPage || queryChanged) {
+        // The rows of the previous snapshot must not outlive it: when a re-run
+        // search was stopped, they came back under the new search id, looked
+        // like an answer to the query in the box, and could not be prepared.
+        state.studies = [];
+        state.totalHits = 0;
+        state.totalPages = 0;
+        state.hasNext = false;
+        state.evaluatedStudies = 0;
+        state.rankingTruncated = false;
+        state.cacheHit = false;
+      }
       state.loading = true;
       state.error = "";
       state.notice = "";
@@ -3920,7 +3949,9 @@ INDEX_HTML = """<!doctype html>
         : { key, order: ["relevance", "readiness", "year"].includes(key) ? "desc" : "asc" };
       void reloadSearchRecords({ resetPage: true });
     });
-    $("discoveryResults").addEventListener("change", (event) => {
+    // `input` fires per keystroke, which is what the debounce below was written
+    // for; `change` alone waited for Enter or blur and left the box looking inert.
+    const applyResultFilter = (event) => {
       const state = activeDiscoveryState();
       if (event.target.id === "resultFilter") {
         const wanted = event.target.value.trim().slice(0, 100);
@@ -3983,6 +4014,10 @@ INDEX_HTML = """<!doctype html>
         // silently rejecting the next click, without losing keyboard focus.
         renderDiscoveryResultsKeepingFocus();
       }
+    };
+    $("discoveryResults").addEventListener("change", applyResultFilter);
+    $("discoveryResults").addEventListener("input", (event) => {
+      if (event.target.id === "resultFilter") applyResultFilter(event);
     });
     $("clearSelected").addEventListener("click", () => {
       const state = activeDiscoveryState();
@@ -3999,6 +4034,10 @@ INDEX_HTML = """<!doctype html>
     $("downloadSearchExcel").addEventListener("click", downloadSearchExcel);
     $("prepareSelected").addEventListener("click", prepareSelectedStudies);
     $("preparedCandidates").addEventListener("change", () => { capturePreparedDraft(); updateAnalysisEligibility(); });
+    // The species attestation lives in the card footer, outside #preparedCandidates,
+    // so the listener above never saw it: ticking the box left Run disabled until
+    // some other field was touched, and unticking it left Run enabled.
+    $("speciesConfirmed").addEventListener("change", updateAnalysisEligibility);
     $("preparedCandidates").addEventListener("input", (event) => {
       const filter = event.target.closest(".sample-filter");
       if (filter) {
@@ -4122,6 +4161,10 @@ INDEX_HTML = """<!doctype html>
       } catch (_) {
         scored = 0;
       }
+      // The demo's pre-filled search lives in the workspace of the species the
+      // demo was built for; `degora demo --species mouse` used to open on Human
+      // with an empty box and the keyword parked in an invisible state object.
+      if (preferredDiscoverySpecies !== activeSpecies) setSpecies(preferredDiscoverySpecies);
       showView(Number.isFinite(scored) && scored > 0 ? "atlas" : "discover");
     })();
   </script>
@@ -4130,12 +4173,30 @@ INDEX_HTML = """<!doctype html>
 """
 
 
+def _iso_timestamp(value: Any) -> Any:
+    """Render an epoch-seconds float as ISO-8601 UTC; pass strings and None through."""
+
+    if value is None or isinstance(value, str):
+        return value
+    try:
+        seconds = float(value)
+    except (TypeError, ValueError):
+        return value
+    if not math.isfinite(seconds):
+        return None
+    from datetime import datetime, timezone
+
+    return datetime.fromtimestamp(seconds, tz=timezone.utc).isoformat().replace("+00:00", "Z")
+
+
 def _jsonable(value: Any) -> Any:
     if isinstance(value, float) and not math.isfinite(value):
         return None
     if isinstance(value, dict):
         return {key: _jsonable(item) for key, item in value.items()}
-    if isinstance(value, list):
+    if isinstance(value, (list, tuple, set, frozenset)):
+        # json.dumps serialises a tuple as an array but a NaN inside it as the bare
+        # token NaN, which JSON.parse in the browser refuses.
         return [_jsonable(item) for item in value]
     return value
 
@@ -4172,11 +4233,16 @@ def _looks_like_local_path(value: Any) -> bool:
 
 
 LOCAL_PATH_REDACTION = "[redacted: local path]"
+# A POSIX path worth redacting descends ("/etc/passwd"), names a file
+# ("/catalog.csv") or starts at a known root. The looser "anything after a
+# slash" rule this used to be turned "1%/21% O2", "ratio (A)/(B)" and
+# "log2FC>1 &/or padj<0.05" - ordinary experimental metadata - into
+# "[redacted: local path]" on a network-shared browser. discovery_store learned
+# the same lesson first; its rule is reused here rather than copied loosely.
 _LOCAL_PATH_TOKEN_RE = re.compile(
     r"(?i)(?:"
     r"file:///[^\s,;\"')\]]+|"
     r"file:/[^\s,;\"')\]]+|"
-    r"(?<![A-Za-z0-9+.\-:/])/(?!/)[^\s,;\"')\]]+|"
     r"(?<![A-Za-z0-9])[A-Z]:[\\/][^\s,;\"')\]]+|"
     r"\\\\[^\s,;\"')\]]+\\[^\s,;\"')\]]+"
     r")"
@@ -4184,6 +4250,8 @@ _LOCAL_PATH_TOKEN_RE = re.compile(
 
 
 def _contains_local_path(value: Any) -> bool:
+    from .discovery_store import _POSIX_ABSOLUTE_PATH_RE
+
     text = str(value).strip()
     if not text:
         return False
@@ -4191,7 +4259,9 @@ def _contains_local_path(value: Any) -> bool:
         return True
     if any(_looks_like_local_path(part) for part in text.replace("\n", ";").split(";")):
         return True
-    return _LOCAL_PATH_TOKEN_RE.search(text) is not None
+    if _LOCAL_PATH_TOKEN_RE.search(text) is not None:
+        return True
+    return _POSIX_ABSOLUTE_PATH_RE.search(text) is not None
 
 
 # Redact by VALUE, not by key suffix: free-text fields such as source_url,
@@ -4675,7 +4745,12 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
         supplied = self.headers.get("X-DEGORA-Token", "")
         if not supplied:
             supplied = parse_qs(parsed.query).get("token", [""])[0]
-        return secrets.compare_digest(str(supplied), expected)
+        # compare_digest refuses non-ASCII str; a mistyped or mangled token used to
+        # raise TypeError out of the handler and drop the connection instead of 401.
+        return secrets.compare_digest(
+            str(supplied).encode("utf-8", "surrogateescape"),
+            str(expected).encode("utf-8", "surrogateescape"),
+        )
 
     def _host_header_authorized(self) -> bool:
         """Reject DNS-rebinding Host headers when the server is loopback-only."""
@@ -4751,7 +4826,7 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
                 symbol = unquote(parts[6]).upper()
                 self._send_json(self._gene_detail(symbol, db_path=self._discovery_run_db(run_id)))
             elif re.fullmatch(r"/api/discovery/runs/[a-f0-9]{16}/export\.xlsx", parsed.path):
-                if self.server.server_address[0] not in LOOPBACK_HOSTS:
+                if not _is_loopback_host(self.server.server_address[0]):
                     self._send_json(
                         {"error": "discovery artifact downloads are available only on a loopback server"},
                         status=HTTPStatus.FORBIDDEN,
@@ -4783,6 +4858,12 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
             raise
         except sqlite3.Error as exc:
             self._send_json({"error": f"database error: {exc}"}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+        except (ConnectionError, socket.timeout, TimeoutError):
+            # The peer went away (a closed tab, an aborted download) or a body
+            # stopped arriving. There is nobody to answer and nothing on disk to
+            # blame; writing a second response here used to raise inside the
+            # handler and print a nested traceback for every closed tab.
+            return
         except OSError as exc:
             detail = exc.strerror or exc.__class__.__name__
             self._send_json({"error": f"discovery filesystem error: {detail}"}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
@@ -4799,7 +4880,7 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
             if not self._token_authorized(parsed):
                 self._send_json({"error": "missing or invalid DEGORA access token"}, status=HTTPStatus.UNAUTHORIZED)
                 return
-            if self.server.server_address[0] not in LOOPBACK_HOSTS:
+            if not _is_loopback_host(self.server.server_address[0]):
                 self._send_json(
                     {"error": "discovery download and analysis actions are available only on a loopback server"},
                     status=HTTPStatus.FORBIDDEN,
@@ -4835,6 +4916,12 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
             raise
         except sqlite3.Error as exc:
             self._send_json({"error": f"database error: {exc}"}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+        except (ConnectionError, socket.timeout, TimeoutError):
+            # The peer went away (a closed tab, an aborted download) or a body
+            # stopped arriving. There is nobody to answer and nothing on disk to
+            # blame; writing a second response here used to raise inside the
+            # handler and print a nested traceback for every closed tab.
+            return
         except OSError as exc:
             detail = exc.strerror or exc.__class__.__name__
             self._send_json({"error": f"discovery filesystem error: {detail}"}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
@@ -4864,7 +4951,7 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
             raise ValueError("discovery actions require the X-DEGORA-Action: 1 header")
 
     def _require_loopback_discovery(self) -> None:
-        if self.server.server_address[0] not in LOOPBACK_HOSTS:
+        if not _is_loopback_host(self.server.server_address[0]):
             raise PermissionError("persistent discovery actions are available only on a loopback server")
 
     def _send_html(self, html: str) -> None:
@@ -4887,14 +4974,21 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
         self.wfile.write(encoded)
 
     def _send_json(self, payload: dict[str, Any], *, status: HTTPStatus = HTTPStatus.OK) -> None:
-        encoded = json.dumps(_jsonable(payload), sort_keys=True).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("Content-Length", str(len(encoded)))
-        self.end_headers()
-        self.wfile.write(encoded)
+        # allow_nan=False: a non-finite float that escaped _jsonable would be
+        # written as the bare token NaN, which no browser JSON parser accepts.
+        # Failing loudly here beats shipping a response the page cannot read.
+        encoded = json.dumps(_jsonable(payload), sort_keys=True, allow_nan=False).encode("utf-8")
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(encoded)))
+            self.end_headers()
+            self.wfile.write(encoded)
+        except ConnectionError:
+            # The client closed the socket first; there is nobody left to tell.
+            return
 
     def _send_file_download(self, path: Path, *, content_type: str, filename: str) -> None:
         size = path.stat().st_size
@@ -4957,14 +5051,14 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
         with closing(_connect(self.server.db_path)) as connection:
             rows = _row_dicts(connection.execute("SELECT key, value FROM meta ORDER BY key"))
         meta = {row["key"]: row["value"] for row in rows}
-        if self.server.server_address[0] not in LOOPBACK_HOSTS:
+        if not _is_loopback_host(self.server.server_address[0]):
             return _redact_meta_for_network(meta)
         return meta
 
     def _studies(self) -> list[dict[str, Any]]:
         with closing(_connect(self.server.db_path)) as connection:
             rows = _row_dicts(connection.execute("SELECT * FROM studies ORDER BY source_unit_id, study_id"))
-        if self.server.server_address[0] not in LOOPBACK_HOSTS:
+        if not _is_loopback_host(self.server.server_address[0]):
             return _redact_records_paths_for_network(rows)
         return rows
 
@@ -5000,7 +5094,7 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
             raise ValueError("limit must be an integer")
         try:
             limit = int(raw_limit)
-        except (TypeError, ValueError) as exc:
+        except (TypeError, ValueError, OverflowError) as exc:
             raise ValueError("limit must be an integer") from exc
         if not 1 <= limit <= 1000:
             raise ValueError("limit must be between 1 and 1000")
@@ -5216,8 +5310,10 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
             "status": search["status"],
             "error": search.get("error", ""),
             "total": search.get("total", snapshot.get("total", len(_search_result_records(snapshot)))),
-            "created_at": search.get("created_at"),
-            "updated_at": search.get("updated_at"),
+            # Job records carry ISO-8601 UTC timestamps; the search record stores
+            # epoch floats internally. One field name, one type, on the wire.
+            "created_at": _iso_timestamp(search.get("created_at")),
+            "updated_at": _iso_timestamp(search.get("updated_at")),
         }
 
     def _discovery_publication_records(self, search_id: str, params: dict[str, list[str]]) -> dict[str, Any]:
@@ -5440,7 +5536,12 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
         # per-record species evidence. The reader is asked to confirm it; the answer
         # is recorded with the run, so an audit can see it was confirmed rather than
         # assumed - which is what the documentation already promised.
-        pending_species = int(payload.get("species_confirmation_required_for") or 0)
+        raw_pending = payload.get("species_confirmation_required_for") or 0
+        if isinstance(raw_pending, bool) or not isinstance(raw_pending, (int, float)) or not math.isfinite(raw_pending):
+            raise ValueError("species_confirmation_required_for must be a whole number")
+        pending_species = int(raw_pending)
+        if pending_species < 0 or pending_species > 10_000:
+            raise ValueError("species_confirmation_required_for is out of range")
         species_confirmed = bool(payload.get("species_confirmed"))
         if pending_species and not species_confirmed:
             raise ValueError(
@@ -5481,7 +5582,7 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
 
     def _discovery_run_summary(self, run_id: str) -> dict[str, Any]:
         result = self._load_discovery_run_summary(run_id)
-        if self.server.server_address[0] not in LOOPBACK_HOSTS:
+        if not _is_loopback_host(self.server.server_address[0]):
             return _redact_local_paths_for_network(result)
         return result
 
@@ -5581,7 +5682,7 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
                     [matched],
                 )
             )
-        if self.server.server_address[0] not in LOOPBACK_HOSTS:
+        if not _is_loopback_host(self.server.server_address[0]):
             evidence = _redact_records_paths_for_network(evidence)
         payload: dict[str, Any] = {"gene": gene, "evidence": evidence}
         if matched != symbol:
@@ -5670,9 +5771,12 @@ class _DiscoveryRootProcessLock:
 class DegoraHttpServer(ThreadingHTTPServer):
     """HTTP server carrying the database path for request handlers."""
 
-    # Keep auto-port fallback deterministic on Windows too: SO_REUSEADDR there
-    # can allow two listeners on the same port, so a busy-port probe would lie.
-    allow_reuse_address = False
+    # On Windows SO_REUSEADDR lets two listeners share a port, so a busy-port
+    # probe would lie there and the flag stays off. On POSIX it only lets a new
+    # listener bind while the previous run's connections sit in TIME_WAIT;
+    # without it, Ctrl-C and restart moved the server to the next port for a
+    # minute and blamed a second DEGORA that did not exist.
+    allow_reuse_address = os.name != "nt"
     # Per-connection worker threads must not outlive the process, so a stuck
     # handler cannot keep the interpreter alive after Ctrl-C / shutdown.
     daemon_threads = True
@@ -5687,6 +5791,29 @@ class DegoraHttpServer(ThreadingHTTPServer):
         access_token: str | None = None,
         discovery_root: str | Path | None = None,
     ) -> None:
+        # ::1 is in LOOPBACK_HOSTS, so it has to bind as IPv6 rather than fail
+        # inside socket.getaddrinfo with an address-family traceback.
+        try:
+            if ipaddress.ip_address(str(server_address[0]).strip()).version == 6:
+                self.address_family = socket.AF_INET6
+        except ValueError:
+            pass
+        # The discovery workspace is created before the socket is bound: a
+        # permissions problem here is a filesystem error, and used to be swallowed
+        # by the port-retry loop as "port is already in use".
+        root = (
+            Path(discovery_root).resolve()
+            if discovery_root is not None
+            else (Path(db_path).resolve().parent / "degora_discovery").resolve()
+        )
+        try:
+            root.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise DiscoveryWorkspaceError(
+                f"DEGORA cannot create its discovery workspace {root} ({exc.strerror or exc}). "
+                "The results folder has to be writable by the user running `degora serve`; "
+                "move or copy the results, or fix the folder permissions."
+            ) from exc
         super().__init__(server_address, DegoraRequestHandler)
         self._degora_closed = False
         self._discovery_process_lock: _DiscoveryRootProcessLock | None = None
@@ -5807,6 +5934,8 @@ def create_server(
                 access_token=access_token,
                 discovery_root=discovery_root,
             )
+        except DiscoveryWorkspaceError:
+            raise
         except OSError as exc:
             if exc.errno not in (errno.EADDRINUSE, errno.EACCES):
                 raise
@@ -5845,7 +5974,20 @@ class ScoreDatabaseError(ValueError):
     """The path given to `degora serve` is not a DEGORA score database."""
 
 
-REQUIRED_SCORE_DB_TABLES = ("genes", "gene_evidence", "meta")
+class DiscoveryWorkspaceError(ValueError):
+    """The discovery workspace beside the database cannot be created."""
+
+
+REQUIRED_SCORE_DB_TABLES = ("genes", "gene_evidence", "studies", "meta")
+# The columns the dashboard's first requests read, per table. /api/health counts
+# studies and /api/genes orders by the primary rank, so a database that has the
+# tables but not these columns still fails behind a page that loaded normally.
+REQUIRED_SCORE_DB_COLUMNS = {
+    "genes": ("gene_symbol", "degora_rank", "degora_score"),
+    "gene_evidence": ("gene_symbol", "source_unit_id", "study_id"),
+    "studies": ("study_id", "source_unit_id"),
+    "meta": ("key", "value"),
+}
 
 
 def _require_degora_score_database(db_path: Path) -> None:
@@ -5863,22 +6005,36 @@ def _require_degora_score_database(db_path: Path) -> None:
     )
     if db_path.is_dir():
         raise ScoreDatabaseError(f"DEGORA database path is a directory, not a database file: {db_path}\n{fix}")
+    # The same read-only connection every request uses. Building the URI by hand
+    # from the raw path let SQLite read `#`, `?` and `%XX` as URI syntax: it opened
+    # a *different* file, read-write, created it when it did not exist, and then
+    # reported the reader's perfectly good database as not a DEGORA database.
     try:
-        with closing(sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)) as connection:
+        with closing(_connect(db_path)) as connection:
             names = {
                 str(row[0])
                 for row in connection.execute("SELECT name FROM sqlite_master WHERE type IN ('table', 'view')")
             }
+            missing = [table for table in REQUIRED_SCORE_DB_TABLES if table not in names]
+            if missing:
+                raise ScoreDatabaseError(
+                    f"{db_path} is a SQLite file but not a DEGORA score database; it is missing "
+                    f"{', '.join(missing)}.\n{fix}"
+                )
+            missing_columns: list[str] = []
+            for table, columns in REQUIRED_SCORE_DB_COLUMNS.items():
+                present = {str(row[1]) for row in connection.execute(f"PRAGMA table_info({table})")}
+                missing_columns.extend(f"{table}.{column}" for column in columns if column not in present)
+            if missing_columns:
+                raise ScoreDatabaseError(
+                    f"{db_path} is a DEGORA score database with missing column(s): "
+                    f"{', '.join(missing_columns)}. It was probably written by a different DEGORA version "
+                    f"or edited by hand; rerun `degora run` to rebuild it.\n{fix}"
+                )
     except sqlite3.DatabaseError as exc:
         raise ScoreDatabaseError(
             f"{db_path} is not a DEGORA score database (SQLite could not read it: {exc}).\n{fix}"
         ) from exc
-    missing = [table for table in REQUIRED_SCORE_DB_TABLES if table not in names]
-    if missing:
-        raise ScoreDatabaseError(
-            f"{db_path} is a SQLite file but not a DEGORA score database; it is missing "
-            f"{', '.join(missing)}.\n{fix}"
-        )
 
 
 def serve(
@@ -5896,7 +6052,7 @@ def serve(
         raise FileNotFoundError(f"DEGORA database does not exist: {db_path}")
     _require_degora_score_database(db_path)
     token = access_token
-    if host not in LOOPBACK_HOSTS:
+    if not _is_loopback_host(host):
         if not allow_network:
             raise PermissionError(
                 f"Refusing to serve DEGORA on non-loopback host {host!r} without --allow-network. "
@@ -5910,8 +6066,9 @@ def serve(
             file=sys.stderr,
         )
     server = create_server(db_path, host=host, port=port, quiet=quiet, access_token=token)
-    address, bound_port = server.server_address
-    url = f"http://{address}:{bound_port}"
+    address, bound_port = server.server_address[:2]
+    host_text = f"[{address}]" if ":" in str(address) else str(address)
+    url = f"http://{host_text}:{bound_port}"
     if token:
         url = f"{url}#token={quote(token, safe='')}"
     print(f"DEGORA browser/API: {url}", flush=True)

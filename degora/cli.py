@@ -94,7 +94,7 @@ def _validate_score_version(settings: dict[str, str]) -> None:
     )
 
 
-def _int_setting(value: Any | None, default: int) -> int:
+def _int_setting(value: Any | None, default: int, *, source: str = "the Project or AdvancedSettings sheet") -> int:
     if value is None or value == "":
         return default
     try:
@@ -106,8 +106,11 @@ def _int_setting(value: Any | None, default: int) -> int:
 
         raise DegoraConfigError(
             "numeric setting is invalid",
-            problems=[f"Expected a whole number, but got {value!r}."],
-            fixes=["Open the Project or AdvancedSettings sheet and enter a number such as 2."],
+            problems=[f"min_studies: expected a whole number of 1 or more, but got {value!r} from {source}."],
+            fixes=[
+                "Use 2 (the default) so a gene needs evidence from two independent source units, "
+                "or 1 to rank a single source without replication."
+            ],
         ) from exc
 
 
@@ -236,6 +239,31 @@ def _run_warning_messages(metrics: dict[str, Any]) -> list[str]:
             metrics.get("gold_panel_reason")
             or "GoldPanel rows were found but none are locked; curated recall was not calculated"
         )
+
+    # Rows dropped for a missing or unparsable gene, effect or p-value used to be
+    # reported only past a 10% share. Eight '<1E-16' rows in a 300-row table are
+    # under that share and are the eight most significant genes in the table, so
+    # every non-zero count is named here, compactly, whatever its share.
+    dropped_counts = metrics.get("unusable_row_counts") or {}
+    input_counts = metrics.get("input_row_counts") or {}
+    already_detailed = " ".join(str(value) for value in warning_values)
+    if isinstance(dropped_counts, dict):
+        compact: list[str] = []
+        for study_id, count in dropped_counts.items():
+            try:
+                dropped = int(count)
+            except (TypeError, ValueError):
+                continue
+            if not dropped or f"{study_id}: {dropped:,} of" in already_detailed:
+                continue
+            total = input_counts.get(study_id) if isinstance(input_counts, dict) else None
+            of_total = f" of {int(total):,}" if isinstance(total, (int, float)) and total else ""
+            compact.append(f"{study_id}: {dropped:,}{of_total} row(s)")
+        if compact:
+            warning_values.append(
+                "Rows without a usable gene identifier, numeric log2 fold change or numeric p-value were "
+                "dropped before ranking - " + "; ".join(compact) + ". See unusable_row_counts in slice_metrics.json."
+            )
 
     try:
         clipped_rows = int(metrics.get("pvalue_clipped_rows", 0) or 0)
@@ -415,9 +443,10 @@ def _run_from_config(args: argparse.Namespace, *, serve_after: bool = False) -> 
     config_base = config.resolve().parent
     settings = read_excel_settings(config)
     _validate_score_version(settings)
-    min_studies = _int_setting(
-        args.min_studies if args.min_studies is not None else settings.get("min_studies"),
-        2,
+    min_studies = (
+        _int_setting(args.min_studies, 2, source="the --min-studies option")
+        if args.min_studies is not None
+        else _int_setting(settings.get("min_studies"), 2)
     )
     output_dir = (
         Path(args.output_dir)
@@ -431,31 +460,23 @@ def _run_from_config(args: argparse.Namespace, *, serve_after: bool = False) -> 
     )
     db_path = Path(args.db) if args.db else _path_setting(settings.get("score_db"), output_dir / "degora_scores.db", base=config_base)
 
+    # Validate before claiming the output directory: a config that fails its
+    # preflight should not leave an empty results folder and a lock file behind.
+    progress = _RunProgress(enabled=not getattr(args, "quiet", False))
+    validation = _validate_for_run(config, min_studies, progress)
+
     # One claim for the whole pipeline. Harmonization and the database are written
     # tens of seconds apart, so two runs sharing an output directory could each
     # succeed and leave one run's contrast table beside the other's gene scores.
     with output_directory_lock(output_dir):
-        return _run_pipeline(args, serve_after, config, settings, min_studies, output_dir, harmonized_dir, db_path)
+        return _run_pipeline(
+            args, serve_after, config, settings, min_studies, output_dir, harmonized_dir, db_path,
+            progress=progress, validation=validation,
+        )
 
 
-def _run_pipeline(
-    args: argparse.Namespace,
-    serve_after: bool,
-    config: Path,
-    settings: dict[str, str],
-    min_studies: int,
-    output_dir: Path,
-    harmonized_dir: Path,
-    db_path: Path,
-) -> int:
-    from .api import serve as serve_db
-    from .excel_export import DEFAULT_WORKBOOK_NAME, export_run_workbook
-    from .provenance import shell_command
-    from .score_db import write_score_database
-    from .slice_runner import run_slice, validate_catalog_inputs
-
-    version_info = runtime_version_info()
-    progress = _RunProgress(enabled=not getattr(args, "quiet", False))
+def _validate_for_run(config: Path, min_studies: int, progress: "_RunProgress") -> dict[str, Any]:
+    from .slice_runner import validate_catalog_inputs
 
     def validation_progress(done: int, total: int, study_id: str) -> None:
         if total <= 0:
@@ -477,6 +498,33 @@ def _run_pipeline(
             f"{source_units} independent source unit(s). A run would score zero genes. "
             "Give each independent study its own source_unit_id, add another study, or lower Project.min_studies."
         )
+    return validation
+
+
+def _run_pipeline(
+    args: argparse.Namespace,
+    serve_after: bool,
+    config: Path,
+    settings: dict[str, str],
+    min_studies: int,
+    output_dir: Path,
+    harmonized_dir: Path,
+    db_path: Path,
+    *,
+    progress: "_RunProgress | None" = None,
+    validation: dict[str, Any] | None = None,
+) -> int:
+    from .api import serve as serve_db
+    from .excel_export import DEFAULT_WORKBOOK_NAME, export_run_workbook
+    from .provenance import shell_command
+    from .score_db import write_score_database
+    from .slice_runner import run_slice
+
+    version_info = runtime_version_info()
+    if progress is None:
+        progress = _RunProgress(enabled=not getattr(args, "quiet", False))
+    if validation is None:
+        validation = _validate_for_run(config, min_studies, progress)
 
     progress.start("Harmonizing source tables")
     metrics = run_slice(config, output_dir, harmonized_dir, min_studies=min_studies)
@@ -514,7 +562,12 @@ def _run_pipeline(
     )
     progress.done(f"{int(summary.get('n_gene_scores', 0) or 0):,} genes scored")
     _print_run_warnings(
-        {"warnings": summary.get("significance_warnings", [])},
+        {
+            "warnings": [
+                *summary.get("direction_conflict_warnings", []),
+                *summary.get("significance_warnings", []),
+            ]
+        },
         metrics_path=output_dir / "degora_score_db_summary.json",
     )
     if int(summary.get("n_gene_scores", 0) or 0) == 0:
@@ -975,13 +1028,23 @@ def main(argv: list[str] | None = None) -> int:
         print("Stopped. Nothing was written for the interrupted step.", file=sys.stderr)
         return 130
     except BrokenPipeError:
-        # `degora ... | head` closes the pipe; that is the caller's choice.
-        return 0
-    except (FileExistsError, FileNotFoundError, PermissionError) as exc:
+        # `degora ... | head` closes the pipe; that is the caller's choice, but the
+        # run it interrupted did not finish, so the exit status must say so - a
+        # `set -o pipefail` script used to read a run with no database as success.
+        # 141 is what the shell reports for SIGPIPE.
+        try:
+            sys.stderr.write("Stopped: the output pipe was closed before the command finished.\n")
+        except OSError:
+            pass
+        return 141
+    except (FileExistsError, FileNotFoundError, PermissionError, IsADirectoryError, NotADirectoryError) as exc:
         print(str(exc), file=sys.stderr)
         return 2
     except Exception as exc:
         if exc.__class__.__name__ == "DegoraConfigError" and exc.__class__.__module__.endswith(".slice_runner"):
+            print(str(exc), file=sys.stderr)
+            return 2
+        if args.command in {"template", "demo"} and isinstance(exc, ValueError):
             print(str(exc), file=sys.stderr)
             return 2
         if isinstance(exc, CliUsageError) or exc.__class__.__name__ in {

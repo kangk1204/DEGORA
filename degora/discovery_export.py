@@ -15,6 +15,7 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 from .formula_safety import neutralize_formula_cell
+from .provenance import apply_default_file_mode
 
 
 SEARCH_JSON_NAME = "publication_search.json"
@@ -45,6 +46,7 @@ def _atomic_bytes(path: Path, payload: bytes) -> None:
     try:
         with os.fdopen(descriptor, "wb") as handle:
             handle.write(payload)
+        apply_default_file_mode(temporary)
         os.replace(temporary, path)
     finally:
         temporary.unlink(missing_ok=True)

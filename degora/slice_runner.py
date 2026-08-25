@@ -4,23 +4,28 @@ from __future__ import annotations
 
 import argparse
 import difflib
+import hashlib
 import json
+import os
 import re
+import stat
 import zipfile
 from pathlib import Path
 from typing import Any, Callable
 
+import numpy as np
 import pandas as pd
 
 from .aggregate import (
     TIME_COURSE_RETENTION_WARNING_FRACTION,
     _source_unit_series,
+    duration_hours,
     slice_consensus,
     time_course_selection_report,
     time_course_selection_warnings,
     validate_min_studies,
 )
-from .excel_io import read_config_sheet
+from .excel_io import locked_panel_mask, read_config_sheet
 from .formula_safety import (
     formula_guard_metadata,
     neutralize_formula_text,
@@ -28,8 +33,11 @@ from .formula_safety import (
 )
 from .harmonize import (
     TableMapping,
+    bounded_value_examples,
     canonical_gene_symbol,
+    duplicate_source_headers,
     harmonize_frame,
+    normalize_header_row,
     normalize_table_scope,
     read_deg_table,
     resolve_column_name,
@@ -58,6 +66,7 @@ CATALOG_COLUMNS = [
     "padj_column",
     "sep",
     "sheet_name",
+    "header_row",
     "gene_type_column",
     "gene_type_keep",
     "assay_type",
@@ -147,6 +156,7 @@ CATALOG_COLUMN_HELP = {
         "p-value-derived |signed_z| (not by fold change)"
     ),
     "include_in_analysis": "yes/no flag; blank means yes",
+    "header_row": "optional 1-based row number of the line holding the column names; blank means the first row",
 }
 
 OPTIONAL_CATALOG_DEFAULTS = {
@@ -162,6 +172,7 @@ OPTIONAL_CATALOG_DEFAULTS = {
     "padj_column": "",
     "sep": "",
     "sheet_name": "",
+    "header_row": "",
     "gene_type_column": "",
     "gene_type_keep": "",
     "assay_type": "",
@@ -415,7 +426,38 @@ def _readable_read_failure(path: Path, exc: Exception) -> str:
                 f"(it contains {sample}). Save the config from Excel or a spreadsheet tool as .xlsx, "
                 "or use a CSV config instead."
             )
+    encoding_hint = _text_encoding_hint(path, exc)
+    if encoding_hint:
+        return encoding_hint
     return str(exc)
+
+
+def _text_encoding_hint(path: Path, exc: Exception) -> str:
+    """Name the encoding problem behind a raw codec error, when it can be seen.
+
+    A UTF-16 export (Excel's "Unicode Text") starts with a byte-order mark and
+    used to surface as "'utf-8' codec can't decode byte 0xff", which says nothing
+    a reader can act on.
+    """
+
+    if not isinstance(exc, UnicodeDecodeError) and "codec can't decode" not in str(exc):
+        return ""
+    header = b""
+    try:
+        with path.open("rb") as handle:
+            header = handle.read(4)
+    except OSError:
+        return ""
+    if header.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return (
+            f"{path.name} is UTF-16 encoded (it starts with a UTF-16 byte-order mark), and DEGORA reads "
+            "text tables as UTF-8. Open it in a spreadsheet tool and save it as CSV UTF-8, or convert it "
+            "with `iconv -f UTF-16 -t UTF-8`."
+        )
+    return (
+        f"{path.name} is not UTF-8 encoded text ({exc}). Save it as CSV UTF-8 from a spreadsheet tool, "
+        "or convert it with iconv, and try again."
+    )
 
 
 def _read_catalog_frame(path: Path) -> pd.DataFrame:
@@ -527,8 +569,7 @@ def _read_locked_gold_panel(path: Path) -> dict[str, Any]:
     gold = gold.copy()
     named_rows = int(gold["gene_symbol"].astype("string").fillna("").str.strip().ne("").sum())
     if "locked" in gold.columns:
-        locked = gold["locked"].astype("string").fillna("").str.strip().str.lower()
-        gold = gold.loc[locked.isin({"1", "true", "t", "yes", "y", "locked"}) | locked.eq("")]
+        gold = gold.loc[locked_panel_mask(gold["locked"])]
     # Resolve panel symbols the same way source tables are resolved. A panel written
     # with legacy symbols (SEPT9, MARCH1, DEC1) previously reported every one of its
     # genes as absent, because the scored output holds the current symbol instead.
@@ -689,6 +730,17 @@ def _validate_catalog_columns(
             "source_path inside the config; create the config with `degora template <name>.xlsx` or "
             "`degora init <name>.csv --deg-dir <folder>`.",
         )
+    if len(available) == 1 and any(delimiter in str(available[0]) for delimiter in (";", "\t", "|")):
+        # A European Excel "Save as CSV" writes semicolons; the whole header then
+        # arrived as one column name and the message said study_id was missing.
+        delimiter = next(d for d in (";", "\t", "|") if d in str(available[0]))
+        label = {";": "semicolon", "\t": "tab", "|": "pipe"}[delimiter]
+        fixes.insert(
+            0,
+            f"The file has a single column whose name contains the {label} character, so it is "
+            f"{label}-delimited rather than comma-delimited. Save the config as a comma-separated CSV "
+            "(or as .xlsx) and try again.",
+        )
     raise DegoraConfigError(
         "catalog is missing required column(s)",
         context=f"config file: {path}; available columns: {_format_columns(available)}",
@@ -771,6 +823,12 @@ def _validate_optional_scope_values(catalog: pd.DataFrame, include_mask: pd.Seri
                 "Use time_course_mode=mean unless you predeclare that the source unit should use early, late, or peak_mean time points."
             )
 
+        try:
+            normalize_header_row(row.get("header_row"))
+        except ValueError as exc:
+            problems.append(f"Row {_user_row_number(index)}: {exc}")
+            fixes.append("Use header_row only when the column names are not on the first line of the file.")
+
         raw_universe = row.get("rank_universe_size", "")
         if _nonempty(raw_universe) is not None:
             universe = pd.to_numeric(pd.Series([raw_universe]), errors="coerce").iloc[0]
@@ -837,6 +895,174 @@ def _validate_source_unit_time_course_modes(
                 "duration_h, or peak_mean for the documented gene-specific strongest-window summary.",
             ],
         )
+
+
+def _validate_time_course_durations(catalog: pd.DataFrame, include_mask: pd.Series, path: Path) -> None:
+    """Require a plain numeric duration_h on every row an early/late unit selects from.
+
+    `early` and `late` keep the contrast at the unit's smallest or largest
+    duration_h. A duration written as "30min" used to parse as 30, "4h" as 4, and
+    a blank one was silently discarded once any sibling had a number - so the
+    unit's earliest point could be the wrong contrast, with every direction that
+    changed between the two time points inverted and nothing said.
+    """
+
+    active = catalog.loc[include_mask].copy()
+    if active.empty:
+        return
+    active["_source_unit_id"] = _source_unit_series(active)
+    active["_mode"] = active["time_course_mode"].map(_normalize_time_course_setting)
+    problems: list[str] = []
+    for source_unit_id, group in active.groupby("_source_unit_id", sort=True):
+        modes = set(group["_mode"].dropna().astype(str))
+        if not modes & {"early", "late"}:
+            continue
+        for index, row in group.iterrows():
+            raw = row.get("duration_h")
+            if not np.isfinite(duration_hours(raw)):
+                shown = "" if _nonempty(raw) is None else str(raw).strip()
+                problems.append(
+                    f"Row {_user_row_number(index)} (source_unit_id={source_unit_id!r}, time_course_mode="
+                    f"{sorted(modes)[0]}) has duration_h={shown!r}; early/late need a plain number of hours "
+                    "on every row of the unit."
+                )
+    if problems:
+        raise DegoraConfigError(
+            "time-course durations are not numeric",
+            context=f"config file: {path}",
+            problems=problems,
+            fixes=[
+                "Write duration_h as a number of hours (0.5, 4, 24), without units or text.",
+                "Fill duration_h on every active row that shares the source_unit_id, or switch that unit to "
+                "time_course_mode=mean, which does not select by duration.",
+            ],
+        )
+
+
+def _source_table_identity(row: dict[str, Any], catalog_path: Path) -> tuple[str, str, str]:
+    """(resolved path, sheet, header row) - what a source table is, before column mapping."""
+
+    source_path = _resolve_source_path(row["source_path"], catalog_path)
+    try:
+        resolved = str(source_path.resolve())
+    except OSError:
+        resolved = str(source_path)
+    sheet = _nonempty(row.get("sheet_name")) or ""
+    header = _nonempty(row.get("header_row")) or ""
+    return resolved, sheet, header
+
+
+def _source_mapping_identity(row: dict[str, Any]) -> tuple[str, str, str, str]:
+    return tuple(  # type: ignore[return-value]
+        (_nonempty(row.get(column)) or "") for column in ("gene_column", "lfc_column", "p_column", "padj_column")
+    )
+
+
+def _file_digest(path: Path) -> str:
+    # Only a regular file is hashed: opening a FIFO here would wait for a writer
+    # that never comes, which is the hang _require_readable_source_file exists to
+    # refuse a few lines later.
+    try:
+        if not stat.S_ISREG(os.stat(path).st_mode):
+            return ""
+    except OSError:
+        return ""
+    digest = hashlib.sha256()
+    try:
+        with open(path, "rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+    except OSError:
+        return ""
+    return digest.hexdigest()
+
+
+def _reject_duplicate_source_tables(catalog: pd.DataFrame, catalog_path: Path) -> list[str]:
+    """Refuse one result table counted as two independent source units.
+
+    DEGORA's replication rule counts independent source units, and nothing in the
+    scoring can tell that two units were the same file: the same table declared
+    under U1 and U2 validated, ran, and gave every gene "2 / 2 source units" with
+    perfect concordance. The same table mapped twice inside one unit (two
+    contrasts read from two column sets of one workbook) is ordinary and is left
+    alone. Returns advisory warnings for the borderline case - one file, two
+    units, but different column mappings - which can be a workbook that really
+    does carry two studies side by side.
+    """
+
+    rows = catalog.to_dict(orient="records")
+    units = _source_unit_series(catalog).tolist()
+    by_table: dict[tuple[str, str, str], list[tuple[Any, ...]]] = {}
+    digests: dict[str, str] = {}
+    by_digest: dict[tuple[str, str, str], list[tuple[Any, ...]]] = {}
+    for index, (row, unit) in enumerate(zip(rows, units)):
+        identity = _source_table_identity(row, catalog_path)
+        mapping = _source_mapping_identity(row)
+        study_id = str(row.get("study_id", ""))
+        by_table.setdefault(identity, []).append((study_id, unit, mapping, catalog.index[index]))
+        path = identity[0]
+        if path not in digests:
+            digests[path] = _file_digest(Path(path))
+        if digests[path]:
+            # Reported as the catalog wrote it: an absolute path outside the config
+            # folder is private, and the existing readers hide it for that reason.
+            by_digest.setdefault((digests[path], identity[1], identity[2]), []).append(
+                (study_id, unit, mapping, catalog.index[index], str(row.get("source_path", "")), path)
+            )
+
+    problems: list[str] = []
+    warnings: list[str] = []
+    seen_pairs: set[tuple[str, str]] = set()
+
+    def _report(entries: list[tuple], *, same_bytes_only: bool) -> None:
+        for left_index, left in enumerate(entries):
+            for right in entries[left_index + 1 :]:
+                left_study, left_unit, left_mapping, left_row = left[:4]
+                right_study, right_unit, right_mapping, right_row = right[:4]
+                if left_unit == right_unit:
+                    continue
+                pair = tuple(sorted((left_study, right_study)))
+                if pair in seen_pairs:
+                    continue
+                seen_pairs.add(pair)
+                if same_bytes_only:
+                    what = (
+                        f"{left_study} ({left[4]}) and {right_study} ({right[4]}) are byte-identical files "
+                        f"declared under different source units ({left_unit!r} and {right_unit!r})"
+                    )
+                else:
+                    what = (
+                        f"{left_study} and {right_study} read the same table (rows {_user_row_number(left_row)} and "
+                        f"{_user_row_number(right_row)}) under different source units "
+                        f"({left_unit!r} and {right_unit!r})"
+                    )
+                if left_mapping == right_mapping:
+                    problems.append(what + " with identical column mappings, so one result table would count twice.")
+                else:
+                    warnings.append(
+                        what + " with different column mappings. That is fine only if the file really carries two "
+                        "independent studies side by side; if both column sets describe one experiment, give the "
+                        "rows one source_unit_id."
+                    )
+
+    for entries in by_table.values():
+        if len(entries) > 1:
+            _report(entries, same_bytes_only=False)
+    for entries in by_digest.values():
+        if len(entries) > 1 and len({entry[5] for entry in entries}) > 1:
+            _report(entries, same_bytes_only=True)
+    if problems:
+        raise DegoraConfigError(
+            "one result table is declared as two independent source units",
+            context=f"config file: {catalog_path}",
+            problems=problems,
+            fixes=[
+                "Give the rows that come from one experiment the same source_unit_id; DEGORA counts independent "
+                "source units, and one table cannot replicate itself.",
+                "If the second row was meant to be a different file, fix its source_path.",
+            ],
+        )
+    return warnings
 
 
 def _validate_optional_replicate_counts(catalog: pd.DataFrame, include_mask: pd.Series, path: Path) -> None:
@@ -1182,6 +1408,54 @@ def _validate_source_columns(
                 "Column names are case-sensitive.",
             ],
         )
+    _reject_ambiguous_source_headers(frame, mapping, row, source_path, catalog_path)
+
+
+def _reject_ambiguous_source_headers(
+    frame: pd.DataFrame,
+    mapping: TableMapping,
+    row: dict[str, Any],
+    source_path: Path,
+    catalog_path: Path,
+) -> None:
+    """Refuse a mapping onto a header the source table carries more than once.
+
+    A supplementary table with two contrasts side by side is written
+    `gene, logFC, P.Value, logFC, P.Value`. pandas renames the second block to
+    `logFC.1` before anyone sees it, so a catalog that says `logFC` bound to the
+    first block in silence - and when the intended contrast was the second one,
+    every direction in the results was inverted with nothing to notice.
+    """
+
+    duplicates = duplicate_source_headers(frame)
+    if not duplicates:
+        return
+    problems: list[str] = []
+    for catalog_column in ("gene_column", "lfc_column", "p_column", "padj_column"):
+        source_column = getattr(mapping, catalog_column)
+        if not source_column:
+            continue
+        count = duplicates.get(str(source_column))
+        if count:
+            mangled = ", ".join(f"'{source_column}.{index}'" for index in range(1, count))
+            problems.append(
+                f"{row['study_id']}: {catalog_column}={source_column!r} names a header that appears {count} times "
+                f"in the table; pandas exposes the later copies as {mangled}, and DEGORA cannot tell which block "
+                "you mean."
+            )
+    if not problems:
+        return
+    raise DegoraConfigError(
+        "source table has repeated column headers",
+        context=_source_context(row, source_path, catalog_path, list(map(str, frame.columns))),
+        problems=problems,
+        fixes=[
+            "Rename the repeated headers in the source table so each contrast has its own column names, "
+            "or split the table into one file per contrast.",
+            "To use a later block deliberately, set the mapping to the pandas name of that copy "
+            "(for example lfc_column=logFC.1), which selects it explicitly.",
+        ],
+    )
 
 
 # A handful of unparsable cells is ordinary in a published table; a column that is
@@ -1280,34 +1554,138 @@ def _require_readable_source_file(source_path: Path, row: dict[str, Any], catalo
     )
 
 
+# Effect-scale sanity checks. Direction is the sign of the effect, so a linear
+# fold change (2.5 = up, 0.4 = down) makes every gene "up" and nothing downstream
+# can notice. A column with no negative values and values on both sides of 1 -
+# below 0.5 as well as above 1 - is that signature; a log2 table would carry
+# negatives. |log2FC| beyond 30 is a 10^9-fold change and is not a log2 value.
+LINEAR_FOLD_CHANGE_MIN_ROWS = 10
+LOG2_FOLD_CHANGE_ABSURD = 30.0
+
+
+def _effect_scale_problems(
+    raw: pd.Series,
+    numeric: pd.Series,
+    *,
+    study_id: str,
+    source_column: str,
+) -> tuple[list[str], list[str]]:
+    """Return (problems, warnings) about whether an effect column is log2-scaled."""
+
+    values = numeric[np.isfinite(numeric.to_numpy(dtype=float))]
+    if values.empty:
+        return [], []
+    header_says_log = bool(re.search(r"log", str(source_column), re.IGNORECASE))
+    problems: list[str] = []
+    warnings: list[str] = []
+    n_negative = int((values < 0).sum())
+    n_below_half = int(((values > 0) & (values < 0.5)).sum())
+    n_above_one = int((values > 1.0).sum())
+    if (
+        len(values) >= LINEAR_FOLD_CHANGE_MIN_ROWS
+        and n_negative == 0
+        and n_below_half > 0
+        and n_above_one > 0
+    ):
+        message = (
+            f"{study_id}: lfc_column={source_column!r} has no negative values but {n_below_half:,} value(s) "
+            f"between 0 and 0.5 and {n_above_one:,} value(s) above 1 (range {float(values.min()):g} to "
+            f"{float(values.max()):g}). That is the shape of a linear fold change (0.4 = 2.5-fold down), not a "
+            "log2 fold change. DEGORA reads direction from the sign, so every gene in this table would be "
+            "called up."
+        )
+        # A header that says log2 is an explicit claim; a table of up-regulated
+        # genes only can look like this. Without that claim the shape decides.
+        if header_says_log:
+            warnings.append(message + " The column name says log2, so this is reported, not refused; check it.")
+        else:
+            problems.append(message)
+    elif n_negative == 0 and len(values) >= LINEAR_FOLD_CHANGE_MIN_ROWS and not header_says_log:
+        warnings.append(
+            f"{study_id}: lfc_column={source_column!r} has no negative values and its name does not say log2. "
+            "If it holds a linear fold change, convert it to log2 before running; if this is a table of "
+            "up-regulated genes only, no action is needed."
+        )
+    elif n_negative and not header_says_log and float(values.abs().min()) >= 1.0 and len(values) >= LINEAR_FOLD_CHANGE_MIN_ROWS:
+        warnings.append(
+            f"{study_id}: lfc_column={source_column!r} is not named as a log2 value and every |value| is >= 1. "
+            "A signed linear fold change (-2.5 = 2.5-fold down) has that shape; so does a log2 table filtered at "
+            "|log2FC| >= 1. Confirm the scale - a linear value inflates every effect size DEGORA reports."
+        )
+    absurd = values.abs().max()
+    if float(absurd) > LOG2_FOLD_CHANGE_ABSURD:
+        n_absurd = int((values.abs() > LOG2_FOLD_CHANGE_ABSURD).sum())
+        warnings.append(
+            f"{study_id}: lfc_column={source_column!r} has {n_absurd:,} value(s) with |log2FC| > "
+            f"{LOG2_FOLD_CHANGE_ABSURD:g} (largest {float(absurd):g}). A log2 fold change that large is a "
+            "10^9-fold change or more; check that the column is on a log2 scale and not a ratio, a count or a statistic."
+        )
+    return problems, warnings
+
+
 def _validate_numeric_source_columns(
     frame: pd.DataFrame,
     mapping: TableMapping,
     row: dict[str, Any],
     source_path: Path,
     catalog_path: Path,
-) -> None:
-    """Reject an effect or p-value column that does not hold numbers.
+) -> list[str]:
+    """Reject an effect or p-value column that does not hold usable numbers.
 
     The p-value column was already checked for being inside [0, 1], which is a
     range check on values that parsed. A column of 'UP'/'n/a'/'#DIV/0!' parses to
     nothing at all, passed validate, and then lost its rows silently during the
     run - so the mistake that costs the most rows was the one validate could not
-    see.
+    see. A p-value written as a bound ('<1E-16') is rejected outright whatever its
+    share: those rows are the most significant genes in the table, and dropping
+    them as unparsable removed exactly the genes the table was published for.
+    Returns non-fatal warnings about the effect column's scale.
     """
 
     problems: list[str] = []
-    for catalog_column, meaning in (("lfc_column", "log2 fold change"), ("p_column", "p-value")):
+    scale_problem_seen = False
+    fixes: list[str] = []
+    warnings: list[str] = []
+    for catalog_column, meaning in (("lfc_column", "log2 fold change"), ("p_column", "p-value"), ("padj_column", "adjusted p-value")):
         source_column = getattr(mapping, catalog_column)
+        if not source_column:
+            continue
         resolved = resolve_column_name(frame, source_column)
         if resolved not in frame.columns:
             continue
         raw = frame[resolved]
         numeric = pd.to_numeric(raw, errors="coerce")
+        if catalog_column == "lfc_column":
+            scale_problems, scale_warnings = _effect_scale_problems(
+                raw, numeric, study_id=str(row["study_id"]), source_column=str(source_column)
+            )
+            problems.extend(scale_problems)
+            warnings.extend(scale_warnings)
+            if scale_problems:
+                scale_problem_seen = True
+                fixes.append(
+                    f"{row['study_id']}: convert {source_column!r} to log2 (log2 of the ratio, or sign x log2|value| "
+                    "for a signed linear fold change) and save the table, or map a log2 column instead."
+                )
         unparsed = numeric.isna() & raw.notna()
         n_unparsed = int(unparsed.sum())
         n_present = int(raw.notna().sum())
         if not n_unparsed or not n_present:
+            continue
+        bounded = bounded_value_examples(raw.loc[unparsed]) if catalog_column != "lfc_column" else []
+        if bounded:
+            n_bounded = int(
+                sum(1 for value in raw.loc[unparsed] if str(value).strip() and bounded_value_examples(pd.Series([value])))
+            )
+            problems.append(
+                f"{row['study_id']}: {catalog_column}={source_column!r} has {n_bounded:,} {meaning}(s) written as a "
+                f"bound (examples: {', '.join(repr(text) for text in bounded[:3])}). Those are the most "
+                "significant rows in the table, and DEGORA would drop them as unreadable."
+            )
+            fixes.append(
+                f"{row['study_id']}: replace each bound with its numeric value (for example '<1E-16' -> 1E-16) so "
+                "the row keeps a conservative p-value, or clear the cell to drop the row deliberately."
+            )
             continue
         share = n_unparsed / n_present
         examples = ", ".join(
@@ -1322,12 +1700,15 @@ def _validate_numeric_source_columns(
                 f"(examples: {examples[:160]})."
             )
     if not problems:
-        return
+        return warnings
     raise DegoraConfigError(
-        "source table effect or p-value column is not numeric",
+        "source table effect column is not on a log2 scale"
+        if scale_problem_seen
+        else "source table effect or p-value column is not numeric",
         context=_source_context(row, source_path, catalog_path),
         problems=problems,
-        fixes=[
+        fixes=fixes
+        + [
             "Point lfc_column and p_column at the numeric columns of the DEG table.",
             "Replace placeholder text such as 'UP', 'NA' or a spreadsheet error value with an empty cell.",
             "Rows without a numeric effect and p-value cannot be ranked and are dropped during the run.",
@@ -1451,6 +1832,7 @@ def validate_catalog_inputs(
     _validate_catalog_required_values(full_catalog, include_mask, catalog_path)
     _validate_optional_scope_values(full_catalog, include_mask, catalog_path)
     _validate_source_unit_time_course_modes(full_catalog, include_mask, catalog_path)
+    _validate_time_course_durations(full_catalog, include_mask, catalog_path)
     _validate_optional_replicate_counts(full_catalog, include_mask, catalog_path)
     _reject_duplicate_active_study_ids(full_catalog, include_mask, catalog_path)
     _reject_delimiter_in_identifiers(full_catalog, include_mask, catalog_path)
@@ -1463,6 +1845,7 @@ def validate_catalog_inputs(
         )
     _validate_generated_replicate_provenance(catalog, catalog_path)
     _report_all_missing_source_files(catalog, catalog_path)
+    source_warnings: list[str] = _reject_duplicate_source_tables(catalog, catalog_path)
 
     checked_sources: list[str] = []
     rows = catalog.to_dict(orient="records")
@@ -1480,6 +1863,7 @@ def validate_catalog_inputs(
             padj_column=_nonempty(row.get("padj_column")),
             sep=_nonempty(row.get("sep")),
             sheet_name=_nonempty(row.get("sheet_name")),
+            header_row=normalize_header_row(row.get("header_row")),
         )
         try:
             raw_frame = read_deg_table(source_path, mapping)
@@ -1495,7 +1879,7 @@ def validate_catalog_inputs(
                 ],
             ) from exc
         _validate_source_columns(raw_frame, mapping, row, source_path, catalog_path)
-        _validate_numeric_source_columns(raw_frame, mapping, row, source_path, catalog_path)
+        source_warnings.extend(_validate_numeric_source_columns(raw_frame, mapping, row, source_path, catalog_path))
         filtered_frame, _ = apply_gene_type_filter(
             raw_frame,
             _nonempty(row.get("gene_type_column")),
@@ -1541,6 +1925,7 @@ def validate_catalog_inputs(
         *catalog.attrs.get("promoted_alias_warnings", []),
         *_microarray_warnings(catalog),
         *_mixed_species_warnings(catalog),
+        *source_warnings,
     ]
     if gold_panel["status"] in {"invalid", "read_error"}:
         warnings.append(gold_panel["reason"])
@@ -1564,6 +1949,42 @@ def validate_catalog_inputs(
         # `degora validate` preflight flags them before a full run rather than after.
         "warnings": list(dict.fromkeys(str(message) for message in warnings if str(message).strip())),
     }
+
+
+def _harmonized_copy_stem(output_dir: Path, harmonized_dir: Path) -> str:
+    """Name the harmonized copy after the output directory without clobbering another run's.
+
+    The copy is `<output_dir.name>_harmonized`, so two runs whose output folders
+    are both called `results` shared one copy and the second overwrote the first.
+    The sidecar beside an existing copy records the `--output-dir` that wrote it;
+    when that is a different directory, this run's copy gets a short suffix
+    derived from its own output path instead.
+    """
+
+    stem = f"{output_dir.name}_harmonized"
+    existing = harmonized_dir / f"{stem}.csv"
+    sidecar = existing.with_suffix(existing.suffix + ".source")
+    if not existing.exists() or not sidecar.exists():
+        return stem
+    try:
+        command = sidecar.read_text(encoding="utf-8").splitlines()[0]
+    except (OSError, IndexError, UnicodeDecodeError):
+        return stem
+    match = re.search(r"--output-dir\s+(\S+)", command)
+    if not match:
+        return stem
+    recorded = match.group(1)
+    recorded_path = Path(recorded)
+    if not recorded_path.is_absolute():
+        recorded_path = harmonized_dir.resolve() / recorded_path
+    try:
+        same = recorded_path.resolve() == output_dir.resolve()
+    except OSError:
+        same = False
+    if same:
+        return stem
+    digest = hashlib.sha256(str(output_dir.resolve()).encode("utf-8")).hexdigest()[:8]
+    return f"{output_dir.name}_{digest}_harmonized"
 
 
 def run_slice(catalog_path: Path, output_dir: Path, harmonized_dir: Path, min_studies: int) -> dict[str, Any]:
@@ -1609,6 +2030,7 @@ def _run_slice_locked(catalog_path: Path, output_dir: Path, harmonized_dir: Path
     _validate_catalog_required_values(full_catalog, include_mask, catalog_path)
     _validate_optional_scope_values(full_catalog, include_mask, catalog_path)
     _validate_source_unit_time_course_modes(full_catalog, include_mask, catalog_path)
+    _validate_time_course_durations(full_catalog, include_mask, catalog_path)
     _validate_optional_replicate_counts(full_catalog, include_mask, catalog_path)
     _reject_duplicate_active_study_ids(full_catalog, include_mask, catalog_path)
     _reject_delimiter_in_identifiers(full_catalog, include_mask, catalog_path)
@@ -1630,6 +2052,7 @@ def _run_slice_locked(catalog_path: Path, output_dir: Path, harmonized_dir: Path
         *catalog.attrs.get("promoted_alias_warnings", []),
         *_microarray_warnings(catalog),
         *_mixed_species_warnings(catalog),
+        *_reject_duplicate_source_tables(catalog, catalog_path),
     ]
     filter_summaries: dict[str, dict[str, Any]] = {}
 
@@ -1645,6 +2068,7 @@ def _run_slice_locked(catalog_path: Path, output_dir: Path, harmonized_dir: Path
             padj_column=_nonempty(row.get("padj_column")),
             sep=_nonempty(row.get("sep")),
             sheet_name=_nonempty(row.get("sheet_name")),
+            header_row=normalize_header_row(row.get("header_row")),
         )
         try:
             raw_frame = read_deg_table(source_path, mapping)
@@ -1660,7 +2084,7 @@ def _run_slice_locked(catalog_path: Path, output_dir: Path, harmonized_dir: Path
                 ],
             ) from exc
         _validate_source_columns(raw_frame, mapping, row, source_path, catalog_path)
-        _validate_numeric_source_columns(raw_frame, mapping, row, source_path, catalog_path)
+        input_warnings.extend(_validate_numeric_source_columns(raw_frame, mapping, row, source_path, catalog_path))
         filtered_frame, filter_summary = apply_gene_type_filter(
             raw_frame,
             _nonempty(row.get("gene_type_column")),
@@ -1689,7 +2113,7 @@ def _run_slice_locked(catalog_path: Path, output_dir: Path, harmonized_dir: Path
         raise ValueError("Catalog contains no usable studies")
 
     all_harmonized = pd.concat(harmonized_tables, ignore_index=True)
-    harmonized_stem = f"{output_dir.name}_harmonized"
+    harmonized_stem = _harmonized_copy_stem(output_dir, harmonized_dir)
     harmonized_csv = harmonized_dir / f"{harmonized_stem}.csv"
     harmonized_parquet = harmonized_dir / f"{harmonized_stem}.parquet"
     neutralize_formula_text(all_harmonized).to_csv(harmonized_csv, index=False)
@@ -1792,6 +2216,12 @@ def _run_slice_locked(catalog_path: Path, output_dir: Path, harmonized_dir: Path
             if int(count)
         }
         if "n_rows_dropped_unusable" in all_harmonized.columns
+        else {},
+        "input_row_counts": {
+            str(study_id): int(count)
+            for study_id, count in all_harmonized.groupby("study_id")["n_input_rows"].max().items()
+        }
+        if "n_input_rows" in all_harmonized.columns
         else {},
         "pipeline_counts": _count_labels(catalog["pipeline"]),
         "assay_type_counts": _count_labels(catalog["assay_type"]) if "assay_type" in catalog.columns else {},

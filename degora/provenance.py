@@ -183,9 +183,63 @@ def normalize_ooxml_zip(path: str | Path) -> None:
                 info.compress_type = zipfile.ZIP_DEFLATED
                 info.external_attr = external_attr
                 target.writestr(info, data)
+        apply_default_file_mode(temporary)
         os.replace(temporary, archive_path)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+# Secrets that can ride along in an exception message: query-string keys, JSON
+# fields, HTTP Authorization headers (Bearer and Basic), header-style API keys,
+# and credentials embedded in a URL. Provider transports and third-party
+# libraries put request headers into their error text, and the CLI prints that
+# text - so a synthetic `Authorization: Bearer ...` reached the terminal intact.
+_SECRET_ASSIGNMENT_RE = re.compile(
+    r"(?i)\b(api[_-]?key|access[_-]?token|auth[_-]?token|refresh[_-]?token|token|password|passwd|pwd|secret|client[_-]?secret)"
+    r"(\s*[=:]\s*|\s*\"?\s*:\s*\"?)([^&\s\"',;]+)"
+)
+_AUTHORIZATION_HEADER_RE = re.compile(
+    r"(?i)((?:proxy-)?authorization\s*[:=]\s*)(bearer|basic|token|digest|negotiate|ntlm)?\s*([^\s,;]+)"
+)
+_BARE_BEARER_RE = re.compile(r"(?i)\b(bearer|basic)\s+([A-Za-z0-9\-._~+/]+=*)")
+_HEADER_API_KEY_RE = re.compile(r"(?i)\b(x-api-key|api-key|apikey|x-auth-token|x-access-token)(\s*[:=]\s*)([^\s,;]+)")
+_URL_CREDENTIALS_RE = re.compile(r"(?i)\b([a-z][a-z0-9+.-]*://)([^/@\s:]+):([^/@\s]+)@")
+
+
+def redact_secrets_in_text(text: str) -> str:
+    """Remove credential-bearing fragments from free text before it is shown or stored."""
+
+    if not text:
+        return text
+    text = _URL_CREDENTIALS_RE.sub(r"\1[redacted]@", text)
+    text = _AUTHORIZATION_HEADER_RE.sub(lambda m: f"{m.group(1)}{(m.group(2) or '').strip()} [redacted]".replace("  ", " "), text)
+    text = _HEADER_API_KEY_RE.sub(r"\1\2[redacted]", text)
+    text = _BARE_BEARER_RE.sub(r"\1 [redacted]", text)
+    text = _SECRET_ASSIGNMENT_RE.sub(r"\1\2[redacted]", text)
+    return text
+
+
+def default_file_mode() -> int:
+    """The mode an ordinary `open(..., "w")` would give a new file under this umask."""
+
+    current = os.umask(0)
+    os.umask(current)
+    return 0o666 & ~current
+
+
+def apply_default_file_mode(path: str | Path) -> None:
+    """Give a file written through mkstemp the permissions a plain write would have.
+
+    mkstemp creates 0600 files, which is right for a secret and wrong for a result:
+    the SQLite database and the workbook came out owner-only while the CSV holding
+    the same ranking was group-readable, so on a shared server a collaborator could
+    open one artifact of a run and not the next. One rule for every artifact.
+    """
+
+    try:
+        os.chmod(path, default_file_mode())
+    except OSError:
+        pass
 
 
 def _resilient_write_text(path: Path, text: str) -> None:
@@ -200,6 +254,7 @@ def _resilient_write_text(path: Path, text: str) -> None:
             tmp = Path(tmp_name)
             with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
                 handle.write(text)
+            apply_default_file_mode(tmp)
             tmp.replace(path)
             return
         except OSError as exc:
@@ -491,6 +546,7 @@ def publish_staged_artifacts(staged_to_final: dict[Path, Path]) -> None:
                 os.close(pending_fd)
                 pending_path = Path(pending_name)
                 shutil.copy2(staged_path, pending_path)
+                apply_default_file_mode(pending_path)
                 if final_path.exists():
                     backup_fd, backup_name = tempfile.mkstemp(
                         prefix=f".{final_path.name}.", suffix=".backup", dir=final_path.parent

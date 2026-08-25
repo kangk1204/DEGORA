@@ -60,12 +60,14 @@ def test_unusable_gene_labels_resolve_to_nothing(value: object) -> None:
     assert canonical_gene_symbol(value) == ""
 
 
-def _deg_table(genes: list[str]) -> pd.DataFrame:
+def _deg_table(genes: list[str], *, offset: float = 0.0) -> pd.DataFrame:
+    # `offset` keeps two tables with the same gene list from being byte-identical:
+    # one result table declared as two independent source units is refused.
     size = len(genes)
     return pd.DataFrame(
         {
             "gene": genes,
-            "log2FoldChange": [2.0 + index * 0.1 for index in range(size)],
+            "log2FoldChange": [2.0 + offset + index * 0.1 for index in range(size)],
             "pvalue": [10.0 ** -(6 + index) for index in range(size)],
             "padj": [10.0 ** -(5 + index) for index in range(size)],
         }
@@ -84,7 +86,7 @@ def _write_two_source_config(
     deg_dir = tmp_path / "deg_tables"
     deg_dir.mkdir(exist_ok=True)
     _deg_table(first_genes).to_csv(deg_dir / "study_a.csv", index=False)
-    _deg_table(second_genes).to_csv(deg_dir / "study_b.csv", index=False)
+    _deg_table(second_genes, offset=0.05).to_csv(deg_dir / "study_b.csv", index=False)
     contrasts = pd.DataFrame(
         {
             "study_id": ["STUDY_A", "STUDY_B"],
@@ -355,7 +357,7 @@ def test_serve_refuses_a_sqlite_file_without_the_score_tables(tmp_path) -> None:
     other = tmp_path / "notes.db"
     with sqlite3.connect(other) as connection:
         connection.execute("CREATE TABLE notes (body TEXT)")
-    with pytest.raises(ScoreDatabaseError, match="missing genes, gene_evidence, meta"):
+    with pytest.raises(ScoreDatabaseError, match="missing genes, gene_evidence, studies, meta"):
         serve(other, quiet=True)
 
 

@@ -33,6 +33,7 @@ from .formula_safety import (
     restore_formula_text_if_marked,
 )
 from .provenance import (
+    apply_default_file_mode,
     artifact_provenance_path,
     artifact_source_path,
     is_external_path_reference,
@@ -496,8 +497,35 @@ SOURCE_QUALITY_DIAGNOSTIC_COLUMNS = [
     "source_reliability_weight",
     "source_reliability_label",
     "source_outlier_flag",
+    "source_direction_conflict_flag",
     "recommended_role",
 ]
+
+# A source whose log2 fold changes run against every other source is, far more
+# often than not, a contrast written the other way round - the one mistake the
+# README says nothing downstream can catch. The coherence guardrail only ever
+# down-weighted low-quality sources with a near-zero correlation, so a
+# well-documented author table with its sign inverted kept full weight and was
+# never mentioned. This flag is advisory: it changes no weight and no rank.
+DIRECTION_CONFLICT_SPEARMAN = -0.10
+DIRECTION_CONFLICT_ALPHA = 0.05
+DIRECTION_CONFLICT_RULE = (
+    "source_direction_conflict_flag is set when, for at least half of a source unit's pairwise "
+    f"comparisons, the log2FC Spearman correlation is below {DIRECTION_CONFLICT_SPEARMAN:g} and "
+    f"significantly negative (one-sided t approximation, p < {DIRECTION_CONFLICT_ALPHA:g}); two "
+    "small tables of unrelated noise are therefore not flagged. It is an advisory review flag for a "
+    "possibly reversed contrast direction and changes no weight or rank"
+)
+
+
+def _negative_correlation_is_significant(rho: float, n_overlap: float) -> bool:
+    """One-sided test that a Spearman rho is below zero, via the t approximation."""
+
+    if not np.isfinite(rho) or rho >= 0 or n_overlap < 4:
+        return False
+    denominator = max(1.0 - rho * rho, 1e-12)
+    t_value = rho * np.sqrt((n_overlap - 2) / denominator)
+    return bool(t_dist.cdf(t_value, n_overlap - 2) < DIRECTION_CONFLICT_ALPHA)
 
 
 def _score_ready_harmonized(harmonized: pd.DataFrame, *, lfc_cap: float = 10.0) -> tuple[pd.DataFrame, int]:
@@ -1037,6 +1065,14 @@ def _source_quality_diagnostics_from_evidence(
             and low_static_quality
             and (np.isfinite(median_spearman) and median_spearman < 0.05)
         )
+        conflicting_pairs = [
+            item
+            for item in comparisons
+            if np.isfinite(item["lfc_spearman"])
+            and item["lfc_spearman"] < DIRECTION_CONFLICT_SPEARMAN
+            and _negative_correlation_is_significant(float(item["lfc_spearman"]), float(item["overlap"]))
+        ]
+        direction_conflict_flag = bool(lfc_corrs) and len(conflicting_pairs) * 2 >= len(lfc_corrs)
         coherence_weight = 0.50 if outlier_flag else 1.00
         recommended_weight = max(0.05, min(1.0, source_quality * coherence_weight))
         reliability_weight = _source_reliability_weight(
@@ -1063,6 +1099,7 @@ def _source_quality_diagnostics_from_evidence(
                 "source_reliability_weight": reliability_weight,
                 "source_reliability_label": _quality_label(reliability_weight),
                 "source_outlier_flag": outlier_flag,
+                "source_direction_conflict_flag": direction_conflict_flag,
                 "recommended_role": "sensitivity" if outlier_flag or source_quality < 0.60 else "primary",
             }
         )
@@ -2057,6 +2094,8 @@ def degora_score_table(
         "n_source_unit_gene_evidence_rows": int(len(evidence)),
         "n_source_units_total": total_source_units,
         "n_source_quality_outliers": int(source_quality_diagnostics["source_outlier_flag"].sum()) if not source_quality_diagnostics.empty else 0,
+        "n_source_direction_conflicts": int(source_quality_diagnostics["source_direction_conflict_flag"].sum()) if not source_quality_diagnostics.empty else 0,
+        "source_direction_conflict_rule": DIRECTION_CONFLICT_RULE,
         "n_contrasts_total": int(harmonized["study_id"].nunique()) if "study_id" in harmonized.columns else 0,
         "n_nonfinite_lfc_capped_for_score": n_nonfinite_lfc_capped,
         "independent_unit_for_consensus": "source_unit_id (paper_id when available, otherwise study_id)",
@@ -2195,6 +2234,7 @@ def _write_sqlite(
                 connection.execute("CREATE INDEX idx_studies_unit ON studies(source_unit_id)")
         finally:
             connection.close()
+        apply_default_file_mode(tmp_path)
         os.replace(tmp_path, db_path)
     except BaseException:
         tmp_path.unlink(missing_ok=True)
@@ -2235,6 +2275,35 @@ def _corpus_significance_warnings(gene_scores: pd.DataFrame) -> list[str]:
         f"{NOMINAL_SIGNIFICANCE_THRESHOLD}.{tier_note} Treat this ranking as a relative ordering of weak "
         "evidence, not as a set of findings."
     ]
+
+
+def direction_conflict_warnings(diagnostics: pd.DataFrame | list[dict[str, Any]]) -> list[str]:
+    """Name the source units whose direction runs against the rest of the corpus."""
+
+    frame = pd.DataFrame.from_records(diagnostics) if isinstance(diagnostics, list) else diagnostics
+    if frame is None or frame.empty or "source_direction_conflict_flag" not in frame.columns:
+        return []
+    flagged = frame.loc[frame["source_direction_conflict_flag"].astype(bool)]
+    if flagged.empty:
+        return []
+    n_units = int(len(frame))
+    warnings: list[str] = []
+    for record in flagged.to_dict(orient="records"):
+        median = pd.to_numeric(pd.Series([record.get("median_pairwise_lfc_spearman")]), errors="coerce").iloc[0]
+        median_text = f"{float(median):.2f}" if pd.notna(median) else "n/a"
+        if n_units == 2:
+            detail = (
+                "with only two source units DEGORA cannot tell which one is reversed; check the contrast "
+                "direction of both"
+            )
+        else:
+            detail = "check whether this source's contrast is written control-minus-treatment"
+        warnings.append(
+            f"source unit {record.get('source_unit_id')!r} disagrees in direction with the other source units "
+            f"(median pairwise log2FC Spearman {median_text}); {detail}. DEGORA never reverses an effect "
+            "column, and a reversed source votes against every gene it shares. Weights and ranks are unchanged."
+        )
+    return warnings
 
 
 def write_score_database(
@@ -2354,6 +2423,7 @@ def _write_score_database_locked(
         "primary_score_column": metadata.get("primary_score_column", PRIMARY_SCORE_COLUMN),
         "top_genes": gene_scores.head(20)["gene_symbol"].tolist(),
         "significance_warnings": _corpus_significance_warnings(gene_scores),
+        "direction_conflict_warnings": direction_conflict_warnings(metadata.get("source_quality_diagnostics", [])),
     }
 
     staging_parent = output_dir.parent

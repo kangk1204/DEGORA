@@ -125,6 +125,14 @@ def test_validate_catalog_reports_each_active_row_to_progress_callback(tmp_path)
             "pvalue": [0.01, 0.02],
         }
     ).to_csv(source, index=False)
+    source_b = tmp_path / "deg_b.csv"
+    pd.DataFrame(
+        {
+            "gene": ["GENEA", "GENEB"],
+            "log2FoldChange": [1.2, -0.8],
+            "pvalue": [0.02, 0.03],
+        }
+    ).to_csv(source_b, index=False)
     config = tmp_path / "config.csv"
     pd.DataFrame(
         [
@@ -139,7 +147,7 @@ def test_validate_catalog_reports_each_active_row_to_progress_callback(tmp_path)
             {
                 "study_id": "S2",
                 "paper_id": "P2",
-                "source_path": source.name,
+                "source_path": source_b.name,
                 "gene_column": "gene",
                 "lfc_column": "log2FoldChange",
                 "p_column": "pvalue",
@@ -481,13 +489,15 @@ def test_read_catalog_fills_empty_legacy_paper_id_from_explicit_source_unit(tmp_
 def test_validate_catalog_counts_explicit_source_units_over_shared_paper_id(tmp_path) -> None:
     source_path = tmp_path / "deg.csv"
     pd.DataFrame({"gene": ["GENEA"], "log2FoldChange": [1.0], "pvalue": [0.01]}).to_csv(source_path, index=False)
+    source_b = tmp_path / "deg_b.csv"
+    pd.DataFrame({"gene": ["GENEA"], "log2FoldChange": [1.3], "pvalue": [0.02]}).to_csv(source_b, index=False)
     config_path = tmp_path / "explicit_units.csv"
     pd.DataFrame(
         {
             "study_id": ["S1", "S2"],
             "paper_id": ["PAPER", "PAPER"],
             "source_unit_id": ["UNIT_A", "UNIT_B"],
-            "source_path": [str(source_path), str(source_path)],
+            "source_path": [str(source_path), str(source_b)],
             "gene_column": ["gene", "gene"],
             "lfc_column": ["log2FoldChange", "log2FoldChange"],
             "p_column": ["pvalue", "pvalue"],
@@ -914,12 +924,20 @@ def test_run_slice_metrics_are_json_serializable_with_blank_optional_metadata(tm
             "pvalue": [0.001, 0.002],
         }
     ).to_csv(source_path, index=False)
+    source_b = tmp_path / "deg_b.csv"
+    pd.DataFrame(
+        {
+            "gene": ["RBM39", "TYMS"],
+            "log2FoldChange": [1.1, -0.9],
+            "pvalue": [0.002, 0.003],
+        }
+    ).to_csv(source_b, index=False)
     config_path = tmp_path / "mixed_optional_metadata.csv"
     pd.DataFrame(
         {
             "study_id": ["S1", "S2"],
             "paper_id": ["P1", "P2"],
-            "source_path": [str(source_path), str(source_path)],
+            "source_path": [str(source_path), str(source_b)],
             "gene_column": ["gene", "gene"],
             "lfc_column": ["log2FoldChange", "log2FoldChange"],
             "p_column": ["pvalue", "pvalue"],
@@ -1391,10 +1409,10 @@ def test_one_run_mixing_two_species_says_so(tmp_path) -> None:
     """
 
     sources = []
-    for name in ("human", "mouse"):
+    for offset, name in enumerate(("human", "mouse")):
         path = tmp_path / f"{name}.csv"
         pd.DataFrame(
-            {"gene": ["G1", "G2"], "lfc": [2.0, -1.5], "pvalue": [0.001, 0.002]}
+            {"gene": ["G1", "G2"], "lfc": [2.0 + offset * 0.1, -1.5], "pvalue": [0.001, 0.002]}
         ).to_csv(path, index=False)
         sources.append(path.name)
     catalog = tmp_path / "catalog.csv"

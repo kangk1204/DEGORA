@@ -297,8 +297,10 @@ def test_demo_command_accepts_custom_live_search_seed(tmp_path) -> None:
 def test_validate_command_accepts_excel_config(tmp_path, capsys) -> None:
     source = tmp_path / "source.csv"
     _write_source(source, ["ISG15", "IFIT1", "RPL13A"], 1.0)
+    source_b = tmp_path / "source_b.csv"
+    _write_source(source_b, ["ISG15", "IFIT1", "RPL13A"], 1.1)
     config = tmp_path / "config.xlsx"
-    _write_config(config, source, source)
+    _write_config(config, source, source_b)
 
     assert main(["validate", str(config)]) == 0
     captured = capsys.readouterr()

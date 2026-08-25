@@ -429,8 +429,10 @@ def test_the_guided_flow_produces_a_config_that_validates(tmp_path) -> None:
     answers = iter(
         [
             "human",  # species, asked once
-            # ambiguous.tsv - the reader picks the effect column, then the direction
+            # ambiguous.tsv - the reader picks the effect column, confirms it is
+            # log2 (its name does not say so), then the direction
             "FC",
+            "yes",
             "yes",
             "drug vs vehicle",
             "PAPER_A",
@@ -471,6 +473,7 @@ def test_beginner_rejects_probability_column_as_effect_size(tmp_path) -> None:
             "human",
             "P.Value",
             "FC",
+            "yes",  # FC is log2
             "yes",
             "a vs b",
             "P1",
@@ -514,7 +517,7 @@ def test_beginner_rejects_a_distinct_probability_candidate_as_effect_size(tmp_pa
         }
     ).to_csv(path, sep="\t", index=False)
     lines: list[str] = []
-    answers = iter(["human", "p_backup", "FC", "yes", "a vs b", "P1", "3", "3"])
+    answers = iter(["human", "p_backup", "FC", "yes", "yes", "a vs b", "P1", "3", "3"])
 
     summary = run_init(
         tmp_path / "config.csv",
@@ -879,7 +882,7 @@ def test_lfc_answer_is_not_rejected_before_missing_pvalue_is_asked(tmp_path) -> 
         }
     ).to_csv(deg / "padj_only_ambiguous_lfc.tsv", sep="\t", index=False)
 
-    answers = iter(["human", "ratio", "adj.P.Val", "yes", "a vs b", "P1", "3", "3"])
+    answers = iter(["human", "ratio", "adj.P.Val", "yes", "yes", "a vs b", "P1", "3", "3"])
 
     summary = run_init(
         tmp_path / "config.csv",
@@ -910,7 +913,7 @@ def test_empty_required_column_answer_retries_instead_of_skipping_immediately(tm
     ).to_csv(deg / "padj_only.tsv", sep="\t", index=False)
 
     lines: list[str] = []
-    answers = iter(["human", "", "ratio", "adj.P.Val", "yes", "a vs b", "P1", "3", "3"])
+    answers = iter(["human", "", "ratio", "adj.P.Val", "yes", "yes", "a vs b", "P1", "3", "3"])
     summary = run_init(
         tmp_path / "config.csv",
         deg,

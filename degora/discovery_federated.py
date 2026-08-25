@@ -12,6 +12,7 @@ import math
 import re
 from typing import Any, Callable, Iterable
 
+from .provenance import redact_secrets_in_text
 from .discovery import (
     classify_filename,
     DiscoveryError,
@@ -1101,11 +1102,7 @@ def _clean_text(value: Any) -> str:
 def _safe_provider_error(exc: Exception) -> str:
     """Return bounded provider diagnostics without exposing request secrets."""
 
-    text = re.sub(
-        r"(?i)(api[_-]?key|access[_-]?token|token|password|secret)=([^&\s]+)",
-        r"\1=[redacted]",
-        str(exc),
-    )
+    text = redact_secrets_in_text(str(exc))
     text = re.sub(r"[\r\n\t]+", " ", text).strip()
     # The exception class name told a reader nothing they could act on and read as
     # noise in an otherwise plain-language message. Keep it only when the exception

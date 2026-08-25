@@ -1,0 +1,17 @@
+# Shell scripts must check out with LF line endings on every platform. A
+# Windows Git with core.autocrlf=true wrote CRLF into degora_quickstart.sh, and
+# bash under WSL then failed on the first line ("set: pipefail\r: invalid
+# option name") before the quickstart could do anything.
+*.sh text eol=lf
+degora_quickstart.sh text eol=lf
+Makefile text eol=lf
+# Keep text files normalised so a Windows checkout and a Linux checkout carry
+# the same bytes in the repository.
+*.py text
+*.md text
+*.toml text
+*.txt text
+*.yml text
+*.yaml text
+*.json text
+*.csv text

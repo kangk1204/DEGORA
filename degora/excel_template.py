@@ -85,6 +85,7 @@ def _contrast_rows() -> pd.DataFrame:
                 "rank_universe_size": "",
                 "sep": "",
                 "sheet_name": "",
+                "header_row": "",
                 "gene_type_column": "",
                 "gene_type_keep": "",
                 "include": "yes",
@@ -117,6 +118,7 @@ def _contrast_rows() -> pd.DataFrame:
                 "rank_universe_size": "",
                 "sep": "",
                 "sheet_name": "",
+                "header_row": "",
                 "gene_type_column": "",
                 "gene_type_keep": "",
                 "include": "yes",
@@ -149,6 +151,7 @@ def _contrast_rows() -> pd.DataFrame:
                 "rank_universe_size": "",
                 "sep": "",
                 "sheet_name": "",
+                "header_row": "",
                 "gene_type_column": "",
                 "gene_type_keep": "",
                 "include": "no",
@@ -376,6 +379,15 @@ def _guide_rows() -> pd.DataFrame:
                 "meaning": "Sheet name for Excel source DEG tables.",
             },
             {
+                "column": "header_row",
+                "required": "no",
+                "checked_where": "source reader if filled",
+                "meaning": (
+                    "1-based row number of the line that holds the column names, for tables with a title "
+                    "or notes above the header. Blank means the first row."
+                ),
+            },
+            {
                 "column": "gene_type_column",
                 "required": "no",
                 "checked_where": "source DEG table only when filled",
@@ -448,6 +460,19 @@ def _autosize_workbook(path: Path) -> None:
     normalize_ooxml_zip(path)
 
 
+def store_formula_like_text_as_text(writer: pd.ExcelWriter) -> None:
+    """Keep a value that starts with =, +, - or @ as literal text in a config workbook.
+
+    A `degora demo --keyword "=1+1"` was stored as a live formula in the Project
+    sheet and read back as an empty setting. The run workbook already guards its
+    cells this way; the config workbooks a reader starts from did not.
+    """
+
+    from .excel_export import _force_formula_like_text
+
+    _force_formula_like_text(writer)
+
+
 def write_note_sheet(writer: pd.ExcelWriter, sheet_name: str, frame: pd.DataFrame) -> None:
     """Write a config sheet with a human-readable '#'-note row above headers."""
 
@@ -460,6 +485,16 @@ def write_template(path: str | Path, *, force: bool = False) -> Path:
     """Write a beginner-facing Excel config template."""
 
     output = Path(path)
+    if output.suffix.lower() != ".xlsx":
+        # openpyxl refuses any other suffix only after the workbook has been
+        # written, which left an unstyled .xlsx under a misleading name and a
+        # traceback; `degora validate` on that file then failed on the bytes.
+        raise ValueError(
+            f"degora template writes an Excel workbook, so the name must end in .xlsx (got {output.name!r}). "
+            "For a CSV config use `degora init <name>.csv --deg-dir <folder>`."
+        )
+    if output.is_dir():
+        raise IsADirectoryError(f"Template path is a directory, not a file: {output}. Pass a file name such as {output / 'DEGORA_template.xlsx'}.")
     if output.exists() and not force:
         raise FileExistsError(f"Template already exists: {output}. Use --force to overwrite it.")
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -470,5 +505,6 @@ def write_template(path: str | Path, *, force: bool = False) -> Path:
         write_note_sheet(writer, "GoldPanel", _gold_rows())
         write_note_sheet(writer, "AdvancedSettings", _advanced_rows())
         write_note_sheet(writer, "ColumnGuide", _guide_rows())
+        store_formula_like_text_as_text(writer)
     _autosize_workbook(output)
     return output.resolve()

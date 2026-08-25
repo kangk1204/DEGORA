@@ -386,8 +386,9 @@ def _write_minimal_score_db(db_path) -> None:
     """Write the smallest file `degora serve` accepts as a score database."""
 
     with sqlite3.connect(db_path) as connection:
-        connection.execute("CREATE TABLE genes (gene_symbol TEXT)")
-        connection.execute("CREATE TABLE gene_evidence (gene_symbol TEXT)")
+        connection.execute("CREATE TABLE genes (gene_symbol TEXT, degora_rank INTEGER, degora_score REAL)")
+        connection.execute("CREATE TABLE gene_evidence (gene_symbol TEXT, source_unit_id TEXT, study_id TEXT)")
+        connection.execute("CREATE TABLE studies (study_id TEXT, source_unit_id TEXT)")
         connection.execute("CREATE TABLE meta (key TEXT, value TEXT)")
 
 

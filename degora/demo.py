@@ -8,7 +8,7 @@ from typing import Any
 import pandas as pd
 
 from . import SCORE_VERSION
-from .excel_template import _autosize_workbook, write_note_sheet
+from .excel_template import _autosize_workbook, store_formula_like_text_as_text, write_note_sheet
 
 
 DEMO_CONFIG_NAME = "degora_demo_config.xlsx"
@@ -230,6 +230,10 @@ def write_demo_workspace(
     build_geo_query(clean_keyword, species)
 
     output_dir = Path(path)
+    if output_dir.exists() and not output_dir.is_dir():
+        raise NotADirectoryError(
+            f"Demo path exists and is a file, not a folder: {output_dir}. Pass a folder name such as degora-demo."
+        )
     if output_dir.exists() and any(output_dir.iterdir()) and not force:
         raise FileExistsError(f"Demo folder is not empty: {output_dir}. Use --force to overwrite demo files.")
 
@@ -252,6 +256,7 @@ def write_demo_workspace(
         write_note_sheet(writer, "GoldPanel", _gold_rows())
         write_note_sheet(writer, "AdvancedSettings", _advanced_rows())
         write_note_sheet(writer, "ColumnGuide", _guide_rows())
+        store_formula_like_text_as_text(writer)
     _autosize_workbook(config_path)
 
     readme_path = output_dir / "README.md"

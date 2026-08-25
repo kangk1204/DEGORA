@@ -321,8 +321,8 @@ def test_ncbi_geo_provider_quarantines_mixed_records_and_returns_filename_candid
         [
             "^SERIES = GSE9",
             "!Series_title = Mixed record",
-            "!Series_sample_organism_ch1 = Homo sapiens",
-            "!Series_sample_organism_ch1 = Mus musculus",
+            "!Series_sample_organism = Homo sapiens",
+            "!Series_sample_organism = Mus musculus",
             "!Series_supplementary_file = https://ftp.ncbi.nlm.nih.gov/geo/GSE9_DESeq2_results.csv.gz",
         ]
     ).encode()

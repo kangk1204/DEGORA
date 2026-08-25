@@ -13,7 +13,7 @@ import pandas as pd
 from openpyxl.comments import Comment
 
 from . import runtime_version_info
-from .excel_io import read_config_sheet
+from .excel_io import locked_panel_mask, read_config_sheet
 from .harmonize import canonical_gene_symbol
 from .formula_safety import EXCEL_ERROR_LITERALS, restore_formula_text_if_marked
 from .provenance import (
@@ -397,9 +397,7 @@ def _read_gold_from_config(config_path: Path | None) -> tuple[pd.DataFrame, str,
     gold = gold.copy()
     named_rows = int(gold["gene_symbol"].astype("string").fillna("").str.strip().ne("").sum())
     if "locked" in gold.columns:
-        locked = gold["locked"].astype("string").fillna("").str.strip().str.lower()
-        keep = locked.isin({"", "1", "true", "t", "yes", "y", "locked"})
-        gold = gold.loc[keep].copy()
+        gold = gold.loc[locked_panel_mask(gold["locked"])].copy()
     # gene_symbol keeps what the user typed so their panel stays recognisable;
     # resolved_gene_symbol is what DEGORA actually scores and is what the ranked
     # output is matched on. Without the second column a panel written with legacy

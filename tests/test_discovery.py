@@ -79,8 +79,8 @@ class FakeGeoClient:
             return "\n".join(
                 [
                     "^SERIES = GSE100002",
-                    "!Series_sample_organism_ch1 = Homo sapiens",
-                    "!Series_sample_organism_ch1 = Mus musculus",
+                    "!Series_sample_organism = Homo sapiens",
+                    "!Series_sample_organism = Mus musculus",
                 ]
             )
         return "\n".join(
@@ -88,7 +88,7 @@ class FakeGeoClient:
                 "^SERIES = GSE100001",
                 "!Series_title = Dataset title",
                 "!Series_overall_design = treatment versus control",
-                "!Series_sample_organism_ch1 = Homo sapiens",
+                "!Series_sample_organism = Homo sapiens",
                 "!Series_supplementary_file = ftp://ftp.ncbi.nlm.nih.gov/geo/series/GSE100nnn/GSE100001/suppl/GSE100001_DESeq2_results.csv.gz",
                 "!Series_supplementary_file = https://ftp.ncbi.nlm.nih.gov/geo/series/GSE100nnn/GSE100001/suppl/GSE100001_raw_counts.tsv.gz",
             ]
@@ -905,7 +905,7 @@ def test_failed_materialized_preparation_publishes_no_partial_bundle(tmp_path: P
             return "\n".join(
                 [
                     f"^SERIES = {accession}",
-                    "!Series_sample_organism_ch1 = Homo sapiens",
+                    "!Series_sample_organism = Homo sapiens",
                     f"!Series_supplementary_file = https://ftp.ncbi.nlm.nih.gov/{accession}_DESeq2_results.csv.gz",
                 ]
             )
@@ -1128,7 +1128,7 @@ def test_soft_metadata_deduplicates_files_and_shared_secondary_pmids_define_one_
             return "\n".join(
                 [
                     f"^SERIES = {accession}",
-                    "!Series_sample_organism_ch1 = Homo sapiens",
+                    "!Series_sample_organism = Homo sapiens",
                     "!Series_pubmed_id = 999",
                     f"!Series_supplementary_file = {url}",
                     f"!Series_supplementary_file = {url}",

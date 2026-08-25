@@ -112,10 +112,12 @@ def test_run_slice_metrics_annotate_recall_ranking_basis(tmp_path) -> None:
     # cannot be misread as the quality-weighted DEGORA recall from score_db.
     src = tmp_path / "deg.csv"
     _write_deg(src)
+    src_b = tmp_path / "deg_b.csv"
+    src_b.write_text(src.read_text().replace("2.0", "2.1"), encoding="utf-8")
     cfg = tmp_path / "c.csv"
     pd.DataFrame(
         {
-            "study_id": ["S1", "S2"], "paper_id": ["P1", "P2"], "source_path": [str(src), str(src)],
+            "study_id": ["S1", "S2"], "paper_id": ["P1", "P2"], "source_path": [str(src), str(src_b)],
             "gene_column": ["gene", "gene"], "lfc_column": ["log2FoldChange", "log2FoldChange"],
             "p_column": ["pvalue", "pvalue"],
         }

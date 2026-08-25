@@ -28,6 +28,7 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Iterable
 
+from .provenance import apply_default_file_mode, redact_secrets_in_text
 from .discovery import (
     API_KEY_PACE_SECONDS,
     DEFAULT_PACE_SECONDS,
@@ -136,11 +137,7 @@ def _safe_remote_error(exc: Exception) -> str:
 
     if isinstance(exc, urllib.error.HTTPError):
         return f"HTTPError: remote service returned HTTP {exc.code}"
-    text = re.sub(
-        r"(?i)(api[_-]?key|access[_-]?token|token|password|secret)=([^&\s]+)",
-        r"\1=[redacted]",
-        str(exc),
-    )
+    text = redact_secrets_in_text(str(exc))
     text = re.sub(r"[\r\n\t]+", " ", text).strip()
     return f"{type(exc).__name__}: {(text or 'remote request failed')[:240]}"
 
@@ -705,6 +702,13 @@ class NcbiGeoProvider:
                     },
                     "quarantined": is_mixed,
                     "quarantine_reason": "GEO SOFT record contains mixed or mismatched taxa" if is_mixed else "",
+                    # A per-record organism check that named exactly the requested
+                    # species is what the README calls target-species evidence; it is
+                    # what lifts a record with a tabular candidate to verified_ready.
+                    "target_species_verified": is_exact,
+                    "target_species_evidence": (
+                        f"GEO SOFT organism {spec.scientific_name} (per-record check)" if is_exact else ""
+                    ),
                     "supplementary_file_candidates": supplement_candidates,
                     "detail_assessment": "complete" if parsed else "not_evaluated",
                     "detail_error": detail_error,
@@ -767,6 +771,7 @@ def download_public_candidate(
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
+        apply_default_file_mode(tmp_path)
         os.replace(tmp_path, target_path)
     finally:
         if tmp_path.exists():

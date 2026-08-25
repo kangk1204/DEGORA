@@ -18,12 +18,23 @@ from scipy import stats
 
 from .derived_counts import attach_low_count_filter_metadata, low_count_filter_mask, low_count_filter_summary
 from .formula_safety import formula_guard_metadata, neutralize_formula_text
-from .harmonize import _repair_excel_date_gene_symbol
-from .provenance import write_source_sidecar
+from .harmonize import _clean_gene_symbol
+from .provenance import apply_default_file_mode, write_source_sidecar
 
 
 SUPPORTED_MATRIX_ROLES = frozenset({"count_matrix", "normalized_expression_matrix"})
 MAX_GROUP_SAMPLES = 100
+# Welch's t-test divides by the within-group variances. When both groups of a
+# gene hold identical replicate values - rounded array intensities, a gene at a
+# detection floor, two of two samples that agree to every digit - the variance is
+# zero, t is infinite and scipy reports p = 0.0: a 1.07-fold change was ranked as
+# the most significant gene in a corpus, above a 32-fold change, because its two
+# replicates matched. Variances below a data-driven floor are raised to it. The
+# floor is a low quantile of the positive within-group variances of the same
+# matrix, so it scales with the data and touches only the genes whose variance
+# is unbelievably small for that matrix.
+VARIANCE_FLOOR_QUANTILE = 0.01
+VARIANCE_FLOOR_MINIMUM = 1e-8
 
 
 def _read_matrix(path: Path, *, sheet_name: str | int | None = None) -> pd.DataFrame:
@@ -35,14 +46,54 @@ def _read_matrix(path: Path, *, sheet_name: str | int | None = None) -> pd.DataF
 
 
 def _clean_gene_ids(values: pd.Series) -> pd.Series:
-    return (
-        values.map(_repair_excel_date_gene_symbol)
-        .astype("string")
-        .str.strip()
-        .str.replace(r"\.\d+$", "", regex=True)
-        .str.upper()
-        .replace({"": pd.NA, "NAN": pd.NA, "NONE": pd.NA, "NA": pd.NA})
-    )
+    # The one gene-identity rule DEGORA has (harmonize.canonical_gene_symbol):
+    # a private copy here stripped `.\d+` from every label and merged NKX2.5
+    # with NKX2.1 in matrices exactly as it once did in result tables.
+    return _clean_gene_symbol(values)
+
+
+def welch_with_variance_floor(
+    treatment: np.ndarray,
+    control: np.ndarray,
+    *,
+    floor_quantile: float = VARIANCE_FLOOR_QUANTILE,
+    floor_minimum: float = VARIANCE_FLOOR_MINIMUM,
+) -> dict[str, Any]:
+    """Row-wise Welch t-test with a data-driven floor on the within-group variances.
+
+    Rows whose variances are above the floor get exactly scipy's Welch result.
+    Returns the p-values, the Welch t statistics, the degrees of freedom, the
+    floor used and how many rows it touched.
+    """
+
+    treatment = np.asarray(treatment, dtype=float)
+    control = np.asarray(control, dtype=float)
+    n_t = treatment.shape[1]
+    n_c = control.shape[1]
+    mean_t = treatment.mean(axis=1)
+    mean_c = control.mean(axis=1)
+    var_t = treatment.var(axis=1, ddof=1)
+    var_c = control.var(axis=1, ddof=1)
+    positive = np.concatenate([var_t[np.isfinite(var_t) & (var_t > 0)], var_c[np.isfinite(var_c) & (var_c > 0)]])
+    floor = float(max(np.quantile(positive, floor_quantile), floor_minimum)) if positive.size else float(floor_minimum)
+    floored = (var_t < floor) | (var_c < floor)
+    var_t = np.maximum(var_t, floor)
+    var_c = np.maximum(var_c, floor)
+    se_t = var_t / n_t
+    se_c = var_c / n_c
+    se2 = se_t + se_c
+    with np.errstate(divide="ignore", invalid="ignore"):
+        t_stat = (mean_t - mean_c) / np.sqrt(se2)
+        df = se2**2 / (se_t**2 / (n_t - 1) + se_c**2 / (n_c - 1))
+    pvalue = 2.0 * stats.t.sf(np.abs(t_stat), df)
+    return {
+        "pvalue": pvalue,
+        "t": t_stat,
+        "df": df,
+        "variance_floor": floor,
+        "n_variance_floored": int(floored.sum()),
+        "n_zero_variance_rows": int(((treatment.var(axis=1, ddof=1) == 0) | (control.var(axis=1, ddof=1) == 0)).sum()),
+    }
 
 
 def validate_sample_groups(
@@ -124,6 +175,7 @@ def _atomic_csv(frame: pd.DataFrame, path: Path) -> None:
     temporary = Path(temporary_name)
     try:
         neutralize_formula_text(frame).to_csv(temporary, index=False, lineterminator="\n")
+        apply_default_file_mode(temporary)
         os.replace(temporary, path)
     finally:
         temporary.unlink(missing_ok=True)
@@ -214,14 +266,11 @@ def derive_welch_deg(
     control_values = transformed[control]
     treatment_values = transformed[treatment]
     log2fc = treatment_values.mean(axis=1) - control_values.mean(axis=1)
-    test = stats.ttest_ind(
+    test = welch_with_variance_floor(
         treatment_values.to_numpy(dtype=float),
         control_values.to_numpy(dtype=float),
-        axis=1,
-        equal_var=False,
-        nan_policy="omit",
     )
-    pvalue = pd.Series(test.pvalue, index=transformed.index).replace([np.inf, -np.inf], np.nan).fillna(1.0).clip(0.0, 1.0)
+    pvalue = pd.Series(test["pvalue"], index=transformed.index).replace([np.inf, -np.inf], np.nan).fillna(1.0).clip(0.0, 1.0)
     result = pd.DataFrame(
         {
             "gene_symbol": transformed.index.astype(str),
@@ -234,6 +283,17 @@ def derive_welch_deg(
     result["pipeline"] = pipeline
     result["normalization"] = normalization
     result["effect_direction"] = "treatment_minus_control"
+    variance_summary = {
+        "welch_variance_floor": float(test["variance_floor"]),
+        "welch_variance_floor_quantile": float(VARIANCE_FLOOR_QUANTILE),
+        "n_genes_variance_floored": int(test["n_variance_floored"]),
+        "n_genes_zero_within_group_variance": int(test["n_zero_variance_rows"]),
+        "welch_variance_floor_rule": (
+            "within-group variances below the 1st percentile of positive within-group variances "
+            "(or 1e-8) are raised to that floor before Welch's t; identical replicates no longer "
+            "yield p = 0"
+        ),
+    }
     if filter_summary:
         result = attach_low_count_filter_metadata(result, filter_summary)
     result = result.sort_values(["pvalue", "gene_symbol"]).reset_index(drop=True)
@@ -250,6 +310,7 @@ def derive_welch_deg(
         "treatment_samples": treatment,
         "effect_direction": "treatment_minus_control",
         "normalized_scale": normalized_scale or "not_applicable",
+        **variance_summary,
         **filter_summary,
         **(metadata or {}),
         **formula_guard_metadata(),
@@ -274,8 +335,9 @@ def derive_welch_deg(
         "treatment_samples": treatment,
         "effect_direction": "treatment_minus_control",
         "normalized_scale": normalized_scale or "not_applicable",
+        **variance_summary,
         **filter_summary,
     }
 
 
-__all__ = ["SUPPORTED_MATRIX_ROLES", "derive_welch_deg", "validate_sample_groups"]
+__all__ = ["SUPPORTED_MATRIX_ROLES", "derive_welch_deg", "validate_sample_groups", "welch_with_variance_floor"]

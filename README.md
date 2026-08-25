@@ -160,7 +160,11 @@ Useful options:
 Use `--ref` to review a specific branch or release tag in one command, for
 example `bash degora_quickstart.sh --ref main`. It fetches the name from
 `origin`, fast-forwards a local copy that is behind, and stops rather than
-serving stale code when a local branch of the same name has diverged.
+serving stale code when a local branch of the same name has diverged. `git` is
+needed only for cloning, `--ref` and `--update`; an unpacked ZIP folder works
+without it. `--config PATH` runs from the config's own folder, so its results
+land beside the config rather than inside the checkout, and `--demo-dir` accepts
+an absolute path.
 
 The script is safe to re-run: an existing demo workspace is reused, never
 deleted, so a config you edited there survives. Use `--demo-dir NAME` if you want
@@ -233,13 +237,23 @@ confirmed, because numeric values alone cannot distinguish Entrez IDs from ranks
 or row numbers. Known non-gene labels such as `rank`, `baseMean`, `pathway`, and
 `compound` are not offered as gene columns.
 
-One thing is never inferred. For every table it asks whether a positive value
+Two things are never inferred. For every table it asks whether a positive value
 means the gene went **up in the treated samples**. Getting that backwards inverts
 every up/down call in the results while leaving them looking entirely reasonable,
 so there is nothing later for you to notice. If you answer no, the table is
 written into the config **excluded**, with the reason recorded: DEGORA does not
 reverse an effect column for you, because that is a correction it cannot verify.
-If you are unsure, say so and the table is skipped rather than guessed at.
+If you are unsure, say so and the table is skipped rather than guessed at. When
+the effect column's name does not say it is on a log2 scale (`FoldChange`,
+`ratio`), it also asks whether the values **are log2 fold changes**, and shows
+their range and how many are negative: a linear fold change (2 = doubling,
+0.5 = halving) has no negative values, so DEGORA would read every gene as up.
+Answer no and the table is written excluded until it is converted.
+
+Workbooks whose table is not on the first sheet, or whose column names sit
+below a title row, are located automatically; the config records `sheet_name`
+and `header_row` (the 1-based row holding the column names) so `degora run`
+reads the same cells.
 
 Or start from a documented Excel template instead:
 
@@ -329,14 +343,17 @@ Search exports include JSON, CSV, and Excel snapshots with identifiers, title, a
 
 Before running an analysis, any selected record that was matched by the species filter rather than a per-record organism check has to be confirmed as that species, and the answer is recorded in the run's metadata rather than assumed.
 
-Species evidence is only as specific as the provider that supplied it. A record
-found through a repository that reports per-sample organisms carries a checked
-species label, and a record whose samples span two organisms is quarantined out
-of a species-specific preparation. A record found only through the literature
-search carries the organism filter that produced the search and nothing more, so
-it is labeled `query_constrained` rather than checked, and mixed-species
-quarantine cannot apply to it. Confirm the species of a `query_constrained`
-record yourself before activating it.
+Species evidence is only as specific as the provider that supplied it. A GEO
+record's Series entry lists the organisms of its samples and platforms; DEGORA
+reads them, so a record whose samples name exactly the requested species is
+`target_species_verified` (and `verified_ready` when it also carries a tabular
+file candidate), and a record whose samples span two organisms is quarantined
+out of a species-specific preparation at search time. A record found only
+through the literature search carries the organism filter that produced the
+search and nothing more, so it is labeled `query_constrained` rather than
+checked, and mixed-species quarantine cannot apply to it. Confirm the species of
+a `query_constrained` record yourself before activating it; the browser asks for
+that confirmation only for such records.
 
 You can also use the local browser:
 
@@ -400,14 +417,31 @@ The included synthetic demo is numerically and semantically reproducible from th
   lookups, so searching `SEPT9` finds the gene DEGORA scored. The label each
   source table actually carried is kept in the `input_gene_label` column of
   `slice_harmonized.csv`, and `degora run` reports how many symbols it changed.
+  A version suffix is removed only from accession-shaped identifiers
+  (`ENSG00000141510.16`, `NM_000546.5`, an Entrez ID exported as `7157.0`);
+  a dotted symbol such as `NKX2.5` is kept as written, and matches a partner
+  table only when that table writes it the same way (`NKX2-5` is a different
+  label). `DEC1` is also the previous symbol of `DELEC1`; DEGORA maps it to
+  `BHLHE40`, and `input_gene_label` keeps the original so the choice is visible.
+- `validate` and `run` refuse an effect column whose values have the shape of a
+  linear fold change (no negative values, values below 0.5 and above 1), refuse
+  a p-value written as a bound (`<1E-16`, `p<0.05`) rather than dropping the
+  row, refuse a mapping onto a header the table carries twice, and refuse one
+  result table declared under two different source units. Rows dropped for a
+  missing gene, effect or p-value are always reported, whatever their share.
+- Source units whose log2 fold changes run against the rest of the corpus
+  (pairwise Spearman below -0.10 and significantly negative for at least half
+  of the unit's comparisons) are flagged `source_direction_conflict_flag` in
+  the source-quality diagnostics and named in the run warnings as a possibly
+  reversed contrast. The flag changes no weight and no rank.
 - Related contrasts are collapsed by source unit before cross-source aggregation.
-- `time_course_mode` chooses which contrasts of a source unit are kept before that collapse, and every row sharing a source unit must use the same mode. `mean` keeps all of them; `early` and `late` keep all gene rows at that source unit's globally smallest and largest numeric `duration_h`; `peak_mean` keeps each gene's strongest half by `|signed_z|`, at least two. `peak_mean` selects on statistical strength, not effect size: `signed_z` is derived from the p-value, so a time point with a large fold change but a weak p-value is not the peak.
+- `time_course_mode` chooses which contrasts of a source unit are kept before that collapse, and every row sharing a source unit must use the same mode. `mean` keeps all of them; `early` and `late` keep all gene rows at that source unit's globally smallest and largest numeric `duration_h`, and every active row of such a unit must carry `duration_h` as a plain number of hours (`0.5`, `24`; `30min` or a blank cell is refused at validation); `peak_mean` keeps each gene's strongest half by `|signed_z|`, at least two. `peak_mean` selects on statistical strength, not effect size: `signed_z` is derived from the p-value, so a time point with a large fold change but a weak p-value is not the peak.
 - A row with `pvalue = 1` or zero effect is neutral evidence and does not contribute directional signed-z support. Values below `1e-300` are floored and reported in the run warnings.
 - Stouffer p-values from DEG-only or significance-filtered tables are ranking aids, not calibrated genome-wide inferential p-values or false-discovery rates.
 - `heterogeneity_i2` is a sample-size-weighted descriptive dispersion index, not calibrated Higgins I-squared. The heterogeneity-adjusted Stouffer fields are screening aids only.
 - Random-effects effect-size intervals are descriptive when few source units contribute; in particular, Hartung-Knapp-Sidik-Jonkman intervals with fewer than three source units are unstable.
 - Leave-one-source-out stability is a `priority_rank` diagnostic over global source-unit omission folds. Each fold applies the same `min_studies` eligibility rule and deterministic tie-break as the full priority lane. Median, IQR, and top-N fractions summarize rank-evaluable folds only; the stability score still treats ineligible folds as negative evidence. If no fold keeps a gene eligible, numeric LOO fields are reported as unavailable rather than as zero; the conditional reliability summary then uses the other three mandatory diagnostics with their weights renormalized. These LOO columns are therefore nullable. `evidence_reliability_components_used` records whether three or four diagnostics contributed. Compare reliability values across runs or corpora only when the contributing diagnostic count and LOO eligibility conditions match. The default browser/API ordering remains `quality_weighted_degora_rank`, and reliability does not determine that ordering.
-- Missing or non-numeric group sizes receive the documented neutral replicate multiplier of 0.75; an explicit zero receives 0.35.
+- Missing group sizes receive the documented neutral replicate multiplier of 0.75. `validate` rejects a zero, negative, fractional or non-numeric group size, so the 0.35 zero-count branch is reachable only through the Python API.
 - `sign_convention` records provenance only. DEGORA does not infer or automatically reverse the input effect direction, so the supplied effect must already represent treatment relative to control.
 - Public-data fallback uses a documented Welch workflow and does not automatically correct study-level batch or condition confounding.
 - Result-table semantics, contrast direction, group labels, and species must be reviewed before activation.
@@ -424,6 +458,164 @@ make smoke
 ## Release notes
 
 ### Unreleased
+
+Fixes from an independent code audit of the v0.4.17 branch (three module
+audits, edge-case runs, and a live comparison of the GEO organism parser against
+the records GEO actually serves), on top of the first-run review below.
+
+Input boundaries that silently changed results:
+
+- A linear fold-change column is refused. Direction is the sign of the effect,
+  so a linear ratio (2.5 = up, 0.4 = down) made every gene up with no warning; a
+  200-gene table with 97 down-regulated genes called none of them down.
+  `validate` and `run` now refuse a column with no negative values and values
+  on both sides of 1 unless its name says log2, warn when the name does not say
+  log2 and the values could be a signed linear ratio or an up-only list, and
+  warn on |log2FC| > 30. `degora init` asks whether the values are log2 when the
+  column name does not say so, shows their range, and writes a "no" as an
+  excluded row.
+- A p-value written as a bound (`<1E-16`, `<0.001`, `p<0.05`) is refused at
+  validation instead of being dropped as unreadable. Those rows are the most
+  significant genes in a table, and below a 10% share nothing said they were
+  gone. Every run now also reports how many rows each source lost to a missing
+  or unreadable gene, effect or p-value, whatever the share.
+- `early`/`late` time-course units must carry a plain numeric `duration_h` on
+  every row. `30min` used to parse as 30 and `4h` as 4, so `early` kept the
+  4-hour contrast of a unit whose earliest point was 30 minutes and inverted
+  every gene that changed between them; a blank duration was silently dropped.
+- Dotted gene symbols are kept. The version-stripping rule that turns
+  `ENSG00000141510.16` into `ENSG00000141510` also turned `NKX2.5` and `NKX2.1`
+  into one symbol, `NKX2`, that names no gene and matches no partner table. The
+  suffix is now removed only from accession-shaped identifiers (Ensembl,
+  RefSeq, an Entrez ID exported as `7157.0`). The same rule is one function for
+  source tables, the GoldPanel, API lookups and the reanalysis matrices, and it
+  treats the literal text `NA`, `<NA>`, `N/A` and `NULL` as missing everywhere.
+- A header the source table carries twice cannot be mapped by its bare name.
+  pandas renames the second `logFC` to `logFC.1` before anyone sees it, so a
+  two-contrast supplementary table bound to the first block in silence; the
+  mapping is refused with the pandas name of each copy so a later block can be
+  chosen explicitly.
+- One result table declared under two different source units is refused when
+  the column mappings are identical (the same file, or byte-identical files),
+  and warned about when they differ. The same table under U1 and U2 used to
+  validate, run, and give every gene "2 / 2 source units" with perfect
+  concordance.
+- A GoldPanel `locked` column typed as 1/0 with a blank cell beside it is read
+  correctly. pandas delivers `1.0`, which matched nothing in the flag set, so
+  the rows the reader had marked were dropped and the blank rows kept.
+  `include_in_analysis` already handled this; the two panel readers now share
+  one flag parser.
+- A source unit whose log2 fold changes run against the other source units
+  (pairwise Spearman below -0.10 and significantly negative for at least half
+  of its comparisons) is flagged
+  `source_direction_conflict_flag` and named in the run warnings as a possibly
+  reversed contrast. The coherence guardrail only ever looked at low-quality
+  sources with a near-zero correlation, so a well-documented author table with
+  its sign inverted kept full weight and was never mentioned. The flag changes
+  no weight and no rank.
+- The Welch fallback floors within-group variances at the 1st percentile of
+  the matrix's positive within-group variances. Identical replicates gave
+  t = infinity and p = 0.0, which the harmonizer floored to p = 1e-300: a
+  1.07-fold change with matching duplicates was ranked as the most significant
+  gene in a corpus, above a 32-fold change. Genes above the floor get exactly
+  scipy's Welch result; the floor and the number of genes it touched are
+  recorded in the derived table's provenance.
+- A `paper_id`-only catalog (documented as accepted) whose papers use different
+  `time_course_mode` values passed `validate` and crashed `run` with a traceback
+  naming an empty source unit; with the same mode, the `time_course_selection`
+  audit in `slice_metrics.json` reported one unit instead of several. The report
+  now resolves source units the way the scorer does.
+- The row-loss warning distinguishes empty cells (DESeq2 leaves `pvalue` blank
+  for untested genes; no action needed) from text that would not parse.
+
+`degora serve` and the browser:
+
+- The database preflight added for v0.4.17 built its SQLite URI from the raw
+  path, so a `#`, `?` or `%XX` in the path made SQLite open a different file,
+  read-write, create it when it did not exist, and report the reader's good
+  database as not a DEGORA database. The preflight now opens the file exactly
+  as every request does, and it checks the `studies` table and the columns the
+  dashboard's first requests read, so a database that passes cannot fail
+  `/api/health` with a 500 a moment later.
+- Ticking "I have confirmed they are Human data" did not enable **Run**, and
+  unticking it did not disable it: the listener that recomputes eligibility was
+  bound to the candidate list, and the checkbox lives in the card footer. With
+  the GEO organism fix below, that box now appears only for records whose
+  species could not be checked.
+- GEO organism evidence was never read. The parser looked for
+  `!Sample_organism_ch1`, which GEO emits only in per-sample records, while
+  DEGORA fetches the Series record, which lists `!Series_sample_organism`. Every
+  GEO record was therefore `query_constrained`, mixed-species series were not
+  quarantined at search time, and `verified_ready` could not be reached by any
+  provider. The Series keys are read now, a record whose samples name exactly
+  the requested species carries `target_species_verified`, and the test
+  fixtures use the keys GEO actually serves.
+- Stopping a re-run search left the previous search's rows on screen under the
+  new search id, where they could not be prepared. A new search empties the
+  previous snapshot's rows when it is submitted.
+- `degora demo --species mouse` opens the browser on the Mouse workspace with
+  its pre-filled keyword, instead of on Human with an empty box.
+- A permissions problem creating the `degora_discovery/` workspace is reported
+  as one, not as "port is already in use" after twenty futile bind attempts.
+- On Linux and macOS the server can be restarted on the same port straight
+  after Ctrl-C; TIME_WAIT connections from the previous run no longer push it
+  to the next port with a message about another DEGORA that does not exist.
+- `--host ::1` binds as IPv6 and prints a bracketed URL; a loopback alias such
+  as `127.0.0.2` is treated as loopback by every check, not only by the
+  Host-header check.
+- A closed tab or an aborted download no longer prints a nested traceback: the
+  handler returns instead of writing a second response to a dead socket, and a
+  stalled upload is no longer diagnosed as a filesystem error.
+- `Infinity` in a JSON `limit`, a list in `species_confirmation_required_for`,
+  and a non-ASCII access token each answer with a 4xx instead of dropping the
+  connection.
+- Network-mode redaction uses the same path rule as the discovery store, so
+  `1%/21% O2` and `ratio (A)/(B)` are no longer replaced by
+  `[redacted: local path]`.
+- "Narrow these results" filters as you type; the Stop button on the progress
+  card keeps its identity across polls so a slow press is not lost; search
+  timestamps are ISO-8601 like job timestamps; tuples with non-finite values
+  serialise as `null` and a non-finite value can no longer reach the wire as
+  the bare token `NaN`.
+- A provider error carrying `Authorization: Bearer ...`, `Basic ...`, an
+  `X-API-Key` header or a `user:password@host` URL is redacted before it is
+  printed or stored.
+
+Preparation, packaging, and the command line:
+
+- One field past csv's 128 KiB limit in a supplementary file no longer ends a
+  whole preparation with a traceback; the matrix reader has the guard the
+  DEG-table reader already had.
+- Every generated file has the permissions a plain write would give it under
+  the current umask. Files written through a temporary file (the database, the
+  workbook, the sidecars) came out owner-only while the CSV beside them was
+  group-readable.
+- Two runs with output folders of the same name no longer overwrite each
+  other's harmonized copy under `harmonized/`; the second copy gets a suffix
+  derived from its output path.
+- `degora run` validates before it claims the output directory, so a config
+  that fails its preflight leaves no empty results folder or lock file behind;
+  a run interrupted by a closed pipe (`| head`) exits 141 instead of 0.
+- `degora template` refuses a name that does not end in `.xlsx` before writing
+  anything; `degora template <dir>` and `degora demo <file>` say what is wrong
+  instead of printing a traceback; a demo keyword starting with `=`, `+`, `-`
+  or `@` is stored as text rather than as a live formula.
+- `degora init` locates a table on a later sheet or below a title row and
+  records `sheet_name` and `header_row`; recognises Seurat `p_val_adj`, scanpy
+  `pvals_adj` and R `p.adjust` columns as adjusted p-values and no longer offers
+  `pct.1`/`pct.2` as p-values; skips DEGORA's own output tables; and accepts
+  only a whole number (or a blank) for a group size and no `;` in a source unit
+  id, so what it writes is what `validate` accepts.
+- `validate` names a UTF-16 source table and a semicolon-delimited config for
+  what they are.
+- `scripts/degora_quickstart.sh` needs `git` only to clone, `--ref` or
+  `--update`; an unpacked ZIP folder works without it. `--config` runs from the
+  config's own folder so its results land beside it, `--demo-dir` accepts an
+  absolute path, and the temporary run log is removed on failure. A
+  `.gitattributes` file keeps the shell scripts LF-only on Windows checkouts run
+  under WSL.
+- `--min-studies 0` is reported as a command-line value, not as a spreadsheet
+  cell.
 
 Fixes from a first-run review of v0.4.17 by a reader following this README with
 no prior knowledge of the tool.

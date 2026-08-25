@@ -198,6 +198,38 @@ class TableMapping:
     padj_column: str | None = None
     sep: str | None = None
     sheet_name: str | int | None = None
+    # 1-based row number of the line that carries the column names. Supplementary
+    # workbooks routinely put a table title or a note above the header, and there
+    # was no way to say so short of editing the file.
+    header_row: int | None = None
+
+
+def normalize_header_row(value: Any) -> int | None:
+    """Return a 1-based header row number, or None for the default first row."""
+
+    if value is None:
+        return None
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    text = str(value).strip()
+    if not text:
+        return None
+    number = pd.to_numeric(pd.Series([text]), errors="coerce").iloc[0]
+    if pd.isna(number) or not np.isfinite(float(number)) or float(number) != int(number) or int(number) < 1:
+        raise ValueError(
+            f"Unsupported header_row={value!r}. Use the 1-based row number of the line that holds the "
+            "column names (blank means the first row)."
+        )
+    return int(number)
+
+
+# Attribute name under which read_deg_table records duplicated raw headers. pandas
+# renames a repeated header to `name.1`, so a catalog that maps `logFC` binds to
+# the first block in silence; the raw header is what the reader saw.
+DUPLICATE_HEADER_ATTR = "degora_duplicate_headers"
 
 
 MAPPING_ROLE_LABELS = {
@@ -221,8 +253,8 @@ def normalize_table_scope(value: Any) -> str:
     )
 
 
-def _read_excel_any(path: Path, sheet_name: str | int | None) -> pd.DataFrame:
-    """Read a workbook, decompressing it first when it arrived gzipped.
+def _excel_payload(path: Path) -> Path | io.BytesIO:
+    """Return what pandas should open for a workbook, decompressing a .gz first.
 
     Repositories serve supplementary workbooks as .xlsx.gz and .xls.gz, and pandas
     reads neither. Such a file used to fall through to the CSV reader and fail on
@@ -230,7 +262,7 @@ def _read_excel_any(path: Path, sheet_name: str | int | None) -> pd.DataFrame:
     """
 
     if not path.name.lower().endswith(".gz"):
-        return pd.read_excel(path, sheet_name=sheet_name)
+        return path
     with gzip.open(path, "rb") as handle:
         payload = handle.read(MAX_DECOMPRESSED_WORKBOOK_BYTES + 1)
     if len(payload) > MAX_DECOMPRESSED_WORKBOOK_BYTES:
@@ -238,16 +270,62 @@ def _read_excel_any(path: Path, sheet_name: str | int | None) -> pd.DataFrame:
             f"{path.name} expands beyond the {MAX_DECOMPRESSED_WORKBOOK_BYTES // (1024 * 1024)} MB "
             "workbook safety cap; decompress it and check what it contains before using it"
         )
-    return pd.read_excel(io.BytesIO(payload), sheet_name=sheet_name)
+    return io.BytesIO(payload)
+
+
+def _read_excel_any(path: Path, sheet_name: str | int | None, header_row: int | None = None) -> pd.DataFrame:
+    """Read a workbook sheet, honouring an explicit 1-based header row."""
+
+    header = 0 if header_row is None else header_row - 1
+    return pd.read_excel(_excel_payload(path), sheet_name=sheet_name, header=header)
+
+
+def _duplicated_headers(raw_header: list[Any]) -> dict[str, int]:
+    """Return {header: count} for headers that appear more than once."""
+
+    counts: dict[str, int] = {}
+    for value in raw_header:
+        if value is None:
+            continue
+        try:
+            if pd.isna(value):
+                continue
+        except (TypeError, ValueError):
+            pass
+        text = str(value).strip()
+        if text:
+            counts[text] = counts.get(text, 0) + 1
+    return {name: count for name, count in counts.items() if count > 1}
+
+
+def _record_duplicate_headers(frame: pd.DataFrame, raw_header: list[Any]) -> pd.DataFrame:
+    duplicates = _duplicated_headers(raw_header)
+    if duplicates:
+        frame.attrs[DUPLICATE_HEADER_ATTR] = duplicates
+    return frame
+
+
+def duplicate_source_headers(frame: pd.DataFrame) -> dict[str, int]:
+    """Return the repeated raw headers read_deg_table found in a source table."""
+
+    duplicates = frame.attrs.get(DUPLICATE_HEADER_ATTR, {})
+    return dict(duplicates) if isinstance(duplicates, dict) else {}
 
 
 def read_deg_table(path: str | Path, mapping: TableMapping) -> pd.DataFrame:
     path = Path(path)
     suffixes = "".join(path.suffixes).lower()
+    header_row = normalize_header_row(mapping.header_row)
+    skip = 0 if header_row is None else header_row - 1
 
     if suffixes.endswith((".xlsx", ".xls", ".xlsx.gz", ".xls.gz")):
         sheet_name: str | int | None = 0 if mapping.sheet_name in (None, "") else mapping.sheet_name
-        return _read_excel_any(path, sheet_name)
+        payload = _excel_payload(path)
+        frame = pd.read_excel(payload, sheet_name=sheet_name, header=skip)
+        if isinstance(payload, io.BytesIO):
+            payload.seek(0)
+        raw_header = pd.read_excel(payload, sheet_name=sheet_name, header=None, skiprows=skip, nrows=1)
+        return _record_duplicate_headers(frame, raw_header.iloc[0].tolist() if len(raw_header) else [])
 
     raw_sep = mapping.sep
     auto_sep = raw_sep in (None, "")
@@ -258,9 +336,20 @@ def read_deg_table(path: str | Path, mapping: TableMapping) -> pd.DataFrame:
     # A multi-character separator is a regex to pandas, and the C parser cannot take
     # one. Choosing the engine here keeps a plain ParserWarning off the user's screen.
     engine = "python" if len(sep) > 1 else None
-    frame = pd.read_csv(path, sep=sep, engine=engine)
+    frame = pd.read_csv(path, sep=sep, engine=engine, skiprows=skip or None)
+    # pandas renames a repeated header to `name.1` before anyone can see it, so the
+    # raw header line is read once more, as data, to know what the file said. A
+    # file whose header line cannot be re-read as data (an empty file) has no
+    # duplicates to report.
+    try:
+        raw_header = pd.read_csv(path, sep=sep, engine=engine, header=None, skiprows=skip or None, nrows=1)
+        raw_values = raw_header.iloc[0].tolist() if len(raw_header) else []
+    except (pd.errors.EmptyDataError, pd.errors.ParserError):
+        raw_values = []
     frame = restore_formula_text_if_marked(frame, path)
     frame = _restore_unnamed_row_labels(frame)
+    # Attached last: the transforms above can hand back a new frame object.
+    frame = _record_duplicate_headers(frame, raw_values)
     if frame.shape[1] == 1:
         header = str(frame.columns[0])
         # The recovery hint used to run only when the delimiter was auto-detected,
@@ -549,15 +638,28 @@ def _rank_universe_size(study_meta: dict[str, Any], observed_rows: int, scope: s
     return observed_rows, None, ""
 
 
-def _clean_gene_symbol(values: pd.Series) -> pd.Series:
-    return (
-        values.map(_repair_excel_date_gene_symbol)
-        .astype("string")
-        .str.strip()
-        .str.replace(r"\.\d+$", "", regex=True)
-        .str.upper()
-        .replace({"": pd.NA, "NAN": pd.NA, "NONE": pd.NA})
-    )
+# A version suffix is stripped only from identifiers that carry one: Ensembl
+# gene/transcript/protein accessions (ENSG00000141510.16), RefSeq accessions
+# (NM_000546.5) and Entrez IDs that a spreadsheet exported as floats (7157.0).
+# Stripping `.\d+` from every label turned NKX2.5 and NKX2.1 - two different
+# genes, and the way the whole NK-homeobox family is written in many tables -
+# into one symbol, NKX2, that names nothing and matches nothing.
+_VERSIONED_ACCESSION_RE = re.compile(
+    r"^(?:((?:ENS[A-Z]*[GTPR]\d+)|(?:[NX][MRPCGWZ]_\d+))\.\d+|(\d+)\.0+)$",
+    re.IGNORECASE,
+)
+# Text that means "no gene here" whichever reader produced it. pandas turns most
+# of these into NaN on the way in, but a frame built in Python or read with
+# keep_default_na=False carries the literal text, and one rule has to hold for
+# source tables, the GoldPanel and API lookups alike.
+_MISSING_GENE_LABELS = frozenset({"", "NAN", "NONE", "NA", "<NA>", "N/A", "NULL", "#N/A"})
+
+
+def _strip_accession_version(text: str) -> str:
+    match = _VERSIONED_ACCESSION_RE.match(text)
+    if not match:
+        return text
+    return match.group(1) or match.group(2) or text
 
 
 def canonical_gene_symbol(value: Any) -> str:
@@ -579,8 +681,18 @@ def canonical_gene_symbol(value: Any) -> str:
         # Arrays and other non-scalars: fall through to the string form below.
         pass
     repaired = _repair_excel_date_gene_symbol(value)
-    text = re.sub(r"\.\d+$", "", str(repaired).strip()).upper()
-    return "" if text in {"", "NAN", "NONE", "NA", "<NA>"} else text
+    text = _strip_accession_version(str(repaired).strip()).upper()
+    return "" if text in _MISSING_GENE_LABELS else text
+
+
+def _clean_gene_symbol(values: pd.Series) -> pd.Series:
+    """Vectorised canonical_gene_symbol: one rule, applied per distinct label."""
+
+    codes, uniques = pd.factorize(values, use_na_sentinel=True)
+    canonical = np.array([canonical_gene_symbol(unique) for unique in uniques], dtype=object)
+    mapped = np.where(codes >= 0, canonical[np.maximum(codes, 0)] if len(canonical) else "", "")
+    out = pd.Series(mapped, index=values.index, dtype="string")
+    return out.mask(out.eq(""), pd.NA)
 
 
 def original_gene_label(value: Any) -> str:
@@ -829,6 +941,25 @@ def _non_numeric_examples(raw: pd.Series, numeric: pd.Series, limit: int = 5) ->
     return seen
 
 
+# A p-value written as a bound ("<0.001", "<1E-16", "p<0.05") is not a missing
+# value: it is the most significant kind of row a supplementary table has, and
+# dropping it as unparsable removes exactly the genes the table was published for.
+BOUNDED_VALUE_RE = re.compile(r"^\s*(?:p\s*)?(?:<|<=|≤|less than)\s*[0-9.eE+-]+\s*$", re.IGNORECASE)
+
+
+def bounded_value_examples(raw: pd.Series, limit: int = 5) -> list[str]:
+    """Return the distinct '<x'-style texts a numeric column carries."""
+
+    seen: list[str] = []
+    for value in raw.dropna():
+        text = str(value).strip()
+        if text and BOUNDED_VALUE_RE.match(text) and text not in seen:
+            seen.append(text)
+            if len(seen) >= limit:
+                break
+    return seen
+
+
 def _unusable_row_warning(
     study_id: str,
     n_input_rows: int,
@@ -855,18 +986,32 @@ def _unusable_row_warning(
     if share < ROW_LOSS_WARNING_SHARE:
         return ""
     parts = []
+    unparsed_text = False
     for column, count in reasons.items():
         detail = f"{count:,} missing a {column}"
         sample = examples.get(column) or []
         if sample:
+            unparsed_text = True
             detail += f" (e.g. {', '.join(repr(text) for text in sample[:3])})"
         parts.append(detail)
+    # Empty cells are ordinary: DESeq2 leaves the p-value blank for genes it did
+    # not test, and edgeR/limma exports do the same after filtering. Text that
+    # would not parse is the case that needs the reader's attention.
+    if unparsed_text:
+        advice = (
+            "Check that the mapped columns are the intended ones and that the effect and p-value "
+            "columns hold numbers rather than text such as 'NA', 'UP' or a spreadsheet error value."
+        )
+    else:
+        advice = (
+            "The dropped cells were empty, which is expected for genes a pipeline did not test "
+            "(DESeq2 leaves pvalue blank for outlier and all-zero genes); no action is needed unless "
+            "the count is larger than that explanation allows."
+        )
     return (
         f"{study_id}: {dropped:,} of {n_input_rows:,} rows ({share:.1%}) were dropped before ranking "
         f"- {'; '.join(parts)} (a row can be missing more than one). A gene symbol, a numeric log2 fold "
-        f"change and a numeric p-value are all "
-        "required. Check that the mapped columns are the intended ones and that the effect and p-value "
-        "columns hold numbers rather than text such as 'NA', 'UP' or a spreadsheet error value."
+        f"change and a numeric p-value are all required. {advice}"
     )
 
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation
 import operator
+import re
 from typing import Any
 
 import numpy as np
@@ -144,11 +145,33 @@ def _normalize_time_course_mode(value: Any) -> str:
     )
 
 
-def _duration_numeric(values: pd.Series) -> pd.Series:
-    """Parse simple duration labels for configured temporal aggregation."""
+# A duration is a number of hours, nothing else. "30min" used to parse as 30 and
+# "4h" as 4, so `early` kept the 4 h contrast of a unit whose earliest point was
+# 30 minutes - and inverted every gene whose direction changed between them.
+DURATION_NUMBER_RE = r"^\s*[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?\s*$"
 
-    text = values.astype("string").fillna("").str.extract(r"([-+]?\d*\.?\d+)", expand=False)
-    return pd.to_numeric(text, errors="coerce")
+
+def duration_hours(value: Any) -> float:
+    """Return a duration in hours, or NaN when the label is not a plain number."""
+
+    if value is None:
+        return float("nan")
+    try:
+        if pd.isna(value):
+            return float("nan")
+    except (TypeError, ValueError):
+        return float("nan")
+    text = str(value).strip()
+    if not text or not re.match(DURATION_NUMBER_RE, text):
+        return float("nan")
+    number = pd.to_numeric(pd.Series([text]), errors="coerce").iloc[0]
+    return float(number) if pd.notna(number) and np.isfinite(float(number)) else float("nan")
+
+
+def _duration_numeric(values: pd.Series) -> pd.Series:
+    """Parse plain numeric duration labels for configured temporal aggregation."""
+
+    return pd.Series([duration_hours(value) for value in values.tolist()], index=values.index, dtype=float)
 
 
 def _apply_time_course_mode(frame: pd.DataFrame) -> pd.DataFrame:
@@ -236,10 +259,16 @@ def time_course_selection_report(harmonized: pd.DataFrame) -> list[dict[str, Any
     ranking with no warning, no count, and no diagnostic.
     """
 
-    if harmonized.empty or "source_unit_id" not in harmonized.columns:
+    if harmonized.empty or "study_id" not in harmonized.columns:
         return []
-    before = harmonized
-    after = _apply_time_course_mode(harmonized.copy())
+    # The harmonized table carries source_unit_id only when the catalog named
+    # one; a paper_id-only catalog leaves it blank on every row. Resolving the
+    # unit the same way the scorer does keeps this report about the same units
+    # the ranking used - grouping every row under "" raised a conflict between
+    # papers that never shared a unit, and reported one unit instead of several.
+    before = harmonized.copy()
+    before["source_unit_id"] = _source_unit_series(before)
+    after = _apply_time_course_mode(before.copy())
     if after.empty:
         return []
     modes = (

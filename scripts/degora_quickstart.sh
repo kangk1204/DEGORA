@@ -68,7 +68,9 @@ case "$(uname -s)" in
 esac
 note "Platform: $PLATFORM ($(uname -s) $(uname -m))"
 
-command -v git >/dev/null 2>&1 || die "git is required. Install it (macOS: xcode-select --install; Ubuntu: sudo apt install git) and re-run."
+need_git() {
+  command -v git >/dev/null 2>&1 || die "git is required for this step. Install it (macOS: xcode-select --install; Ubuntu: sudo apt install git) and re-run."
+}
 
 # --- interpreter ----------------------------------------------------------
 # macOS /usr/bin/python3 is often 3.9, which the package metadata rejects.
@@ -114,7 +116,14 @@ else
   if [ -d "$BASE_DIR/DEGORA/.git" ]; then
     REPO_ROOT="$BASE_DIR/DEGORA"
     note "Found an existing checkout: $REPO_ROOT"
+  elif [ -f "$BASE_DIR/DEGORA/pyproject.toml" ] && grep -q '^name = "degora"' "$BASE_DIR/DEGORA/pyproject.toml" 2>/dev/null; then
+    # A ZIP download unpacked next to the script: usable, just not a git checkout.
+    REPO_ROOT="$BASE_DIR/DEGORA"
+    note "Found an unpacked DEGORA folder (not a git checkout): $REPO_ROOT"
+  elif [ -e "$BASE_DIR/DEGORA" ]; then
+    die "$BASE_DIR/DEGORA exists but is neither a git checkout nor an unpacked DEGORA folder. Move it aside, or pass --dir PATH to clone somewhere else."
   else
+    need_git
     note "Cloning DEGORA into $BASE_DIR/DEGORA"
     git clone --quiet "$REPO_URL" "$BASE_DIR/DEGORA"
     REPO_ROOT="$BASE_DIR/DEGORA"
@@ -122,6 +131,10 @@ else
 fi
 cd "$REPO_ROOT"
 
+if [ -n "$GIT_REF" ] || [ "$DO_UPDATE" -eq 1 ]; then
+  need_git
+  git rev-parse --git-dir >/dev/null 2>&1 || die "$REPO_ROOT is not a git checkout, so --ref and --update cannot be used here."
+fi
 if [ -n "$GIT_REF" ]; then
   note "Checking out $GIT_REF"
   git fetch --quiet origin "$GIT_REF" \
@@ -142,7 +155,7 @@ elif [ "$DO_UPDATE" -eq 1 ]; then
   note "Updating the checkout"
   git pull --ff-only --quiet || die "git pull failed; resolve local changes and re-run without --update."
 fi
-if git rev-parse --git-dir >/dev/null 2>&1; then
+if command -v git >/dev/null 2>&1 && git rev-parse --git-dir >/dev/null 2>&1; then
   note "Commit: $(git log --oneline -1 2>/dev/null || echo unknown)"
 fi
 
@@ -179,12 +192,24 @@ note "Installed: $(degora --version)"
 # --- workspace ------------------------------------------------------------
 if [ -n "$CONFIG_PATH" ]; then
   [ -f "$CONFIG_PATH" ] || die "config not found: $CONFIG_PATH"
-  note "Running your config: $CONFIG_PATH"
-  RUN_LOG="$(mktemp)"
-  degora run "$CONFIG_PATH" 2>&1 | tee "$RUN_LOG"
+  CONFIG_PATH="$(cd -- "$(dirname -- "$CONFIG_PATH")" && pwd -P)/$(basename -- "$CONFIG_PATH")"
+  CONFIG_DIR="$(dirname -- "$CONFIG_PATH")"
+  note "Running your config: $CONFIG_PATH (results are written beside it, not inside the checkout)"
+  RUN_LOG="$(mktemp "${TMPDIR:-/tmp}/degora_run_log.XXXXXX")" || die "could not create a temporary log file"
+  trap 'rm -f "$RUN_LOG"' EXIT
+  # The default output folder is relative to the working directory, so the run
+  # happens in the config's own folder rather than in the checkout.
+  if ! (cd -- "$CONFIG_DIR" && degora run "$CONFIG_PATH" 2>&1 | tee "$RUN_LOG"); then
+    die "degora run failed for $CONFIG_PATH; see the messages above."
+  fi
   # `degora run` prints "- Database: <path>" on success.
   DB_PATH="$(sed -n 's/^- Database: //p' "$RUN_LOG" | tail -1)"
   rm -f "$RUN_LOG"
+  trap - EXIT
+  case "$DB_PATH" in
+    /*) : ;;
+    ?*) DB_PATH="$CONFIG_DIR/$DB_PATH" ;;
+  esac
   if [ -z "$DB_PATH" ] || [ ! -f "$DB_PATH" ]; then
     die "Could not locate the score database for $CONFIG_PATH. Run 'degora serve <output_dir>/degora_scores.db' directly."
   fi
@@ -201,11 +226,17 @@ elif [ "$BUILD_DEMO" -eq 1 ]; then
     degora demo "$DEMO_DIR" >/dev/null
   fi
   degora run "$DEMO_DIR/degora_demo_config.xlsx"
-  DB_PATH="$REPO_ROOT/$DEMO_DIR/results/degora_scores.db"
+  DB_PATH="$DEMO_DIR/results/degora_scores.db"
 else
-  DB_PATH="$REPO_ROOT/$DEMO_DIR/results/degora_scores.db"
+  DB_PATH="$DEMO_DIR/results/degora_scores.db"
   [ -f "$DB_PATH" ] || die "No database at $DB_PATH. Re-run without --no-demo."
 fi
+# The demo folder may be relative (to the checkout, which is the working
+# directory here) or absolute; either way the printed path has to be the real one.
+case "$DB_PATH" in
+  /*) : ;;
+  *) DB_PATH="$REPO_ROOT/$DB_PATH" ;;
+esac
 
 # --- choose a free port so the printed URL is always correct --------------
 PORT="$(

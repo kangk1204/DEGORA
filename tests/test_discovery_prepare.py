@@ -657,7 +657,7 @@ class LabelledGeoClient:
                 f"^SERIES = {accession}",
                 "!Series_title = Renal epithelial hypoxia series",
                 "!Series_overall_design = hypoxia versus normoxia",
-                "!Series_sample_organism_ch1 = Homo sapiens",
+                "!Series_sample_organism = Homo sapiens",
                 f"!Series_supplementary_file = https://ftp.ncbi.nlm.nih.gov/geo/series/GSE100nnn/{accession}/suppl/{accession}_series_matrix.txt.gz",
             ]
         )
@@ -814,7 +814,7 @@ class AuthorMatrixGeoClient(LabelledGeoClient):
                 f"^SERIES = {accession}",
                 "!Series_title = Mouse mammary gland series",
                 "!Series_overall_design = induced versus uninduced",
-                "!Series_sample_organism_ch1 = Homo sapiens",
+                "!Series_sample_organism = Homo sapiens",
                 f"!Series_supplementary_file = https://ftp.ncbi.nlm.nih.gov/geo/series/GSE100nnn/{accession}/suppl/{accession}_TPM_matrix.txt.gz",
             ]
         )
