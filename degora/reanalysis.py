@@ -17,6 +17,7 @@ import pandas as pd
 from scipy import stats
 
 from .derived_counts import attach_low_count_filter_metadata, low_count_filter_mask, low_count_filter_summary
+from .formula_safety import formula_guard_metadata, neutralize_formula_text
 from .harmonize import _repair_excel_date_gene_symbol
 from .provenance import write_source_sidecar
 
@@ -122,7 +123,7 @@ def _atomic_csv(frame: pd.DataFrame, path: Path) -> None:
     os.close(fd)
     temporary = Path(temporary_name)
     try:
-        frame.to_csv(temporary, index=False, lineterminator="\n")
+        neutralize_formula_text(frame).to_csv(temporary, index=False, lineterminator="\n")
         os.replace(temporary, path)
     finally:
         temporary.unlink(missing_ok=True)
@@ -251,6 +252,7 @@ def derive_welch_deg(
         "normalized_scale": normalized_scale or "not_applicable",
         **filter_summary,
         **(metadata or {}),
+        **formula_guard_metadata(),
     }
     write_source_sidecar(output, command, inputs=[source], metadata=provenance)
     return {

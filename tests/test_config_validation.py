@@ -715,6 +715,76 @@ def test_legacy_temporal_mode_populates_time_course_mode(tmp_path) -> None:
     assert catalog.loc[0, "time_course_mode"] == "earliest"
 
 
+def test_validate_discloses_a_promoted_legacy_temporal_mode(tmp_path) -> None:
+    source_path = tmp_path / "deg.csv"
+    pd.DataFrame(
+        {"gene": ["ISG15", "VEGFA"], "log2FoldChange": [2.0, 1.0], "pvalue": [0.001, 0.01]}
+    ).to_csv(source_path, index=False)
+    config_path = tmp_path / "legacy_temporal_mode.csv"
+    pd.DataFrame(
+        {
+            "study_id": ["S1"],
+            "source_unit_id": ["P1"],
+            "source_path": [source_path.name],
+            "gene_column": ["gene"],
+            "lfc_column": ["log2FoldChange"],
+            "p_column": ["pvalue"],
+            "temporal_mode": ["early"],
+            "duration_h": [1],
+        }
+    ).to_csv(config_path, index=False)
+
+    validation = validate_catalog_inputs(config_path)
+
+    assert any("legacy 'temporal_mode'" in warning for warning in validation["warnings"])
+
+
+def test_run_records_early_selection_retention_and_warning_threshold(tmp_path) -> None:
+    early = tmp_path / "early.csv"
+    late = tmp_path / "late.csv"
+    pd.DataFrame(
+        {"gene": ["G1", "G2"], "log2FoldChange": [2.0, 1.5], "pvalue": [0.001, 0.002]}
+    ).to_csv(early, index=False)
+    pd.DataFrame(
+        {
+            "gene": [f"G{index}" for index in range(1, 101)],
+            "log2FoldChange": [1.0] * 100,
+            "pvalue": [0.01] * 100,
+        }
+    ).to_csv(late, index=False)
+    config_path = tmp_path / "early_selection.csv"
+    pd.DataFrame(
+        {
+            "study_id": ["S1_early", "S1_late"],
+            "source_unit_id": ["P1", "P1"],
+            "source_path": [early.name, late.name],
+            "gene_column": ["gene", "gene"],
+            "lfc_column": ["log2FoldChange", "log2FoldChange"],
+            "p_column": ["pvalue", "pvalue"],
+            "temporal_mode": ["early", "early"],
+            "duration_h": [1, 24],
+        }
+    ).to_csv(config_path, index=False)
+
+    metrics = run_slice(config_path, tmp_path / "out", tmp_path / "harmonized", min_studies=1)
+
+    assert metrics["time_course_selection_warning_fraction"] == 0.5
+    assert metrics["time_course_selection"] == [
+        {
+            "source_unit_id": "P1",
+            "time_course_mode": "early",
+            "rows_before": 102,
+            "rows_after": 2,
+            "genes_before": 100,
+            "genes_after": 2,
+            "gene_retention": 0.02,
+        }
+    ]
+    assert metrics["time_course_selection_warnings"]
+    assert metrics["time_course_selection_warnings"][0] in metrics["warnings"]
+    assert any("legacy 'temporal_mode'" in warning for warning in metrics["warnings"])
+
+
 def test_validate_rejects_conflicting_time_course_modes_within_source_unit(tmp_path) -> None:
     source_path = tmp_path / "deg.csv"
     pd.DataFrame(
@@ -741,6 +811,33 @@ def test_validate_rejects_conflicting_time_course_modes_within_source_unit(tmp_p
     assert "conflicting time_course_mode" in message
     assert "source_unit_id='P1'" in message
     assert "early" in message and "late" in message
+
+
+def test_validate_explains_blank_time_course_mode_as_mean_in_a_conflict(tmp_path) -> None:
+    source_path = tmp_path / "deg.csv"
+    pd.DataFrame(
+        {"gene": ["ISG15"], "log2FoldChange": [2.0], "pvalue": [0.001]}
+    ).to_csv(source_path, index=False)
+    config_path = tmp_path / "blank_time_mode_conflict.csv"
+    pd.DataFrame(
+        {
+            "study_id": ["S1", "S2"],
+            "source_unit_id": ["P1", "P1"],
+            "source_path": [source_path.name, source_path.name],
+            "gene_column": ["gene", "gene"],
+            "lfc_column": ["log2FoldChange", "log2FoldChange"],
+            "p_column": ["pvalue", "pvalue"],
+            "time_course_mode": ["", "early"],
+            "duration_h": [1, 24],
+        }
+    ).to_csv(config_path, index=False)
+
+    with pytest.raises(DegoraConfigError) as exc_info:
+        validate_catalog_inputs(config_path)
+
+    message = str(exc_info.value)
+    assert "blank time_course_mode cell means 'mean'" in message
+    assert "conflict, not an omission" in message
 
 
 def test_run_slice_explains_wrong_source_column_and_suggests_fix(tmp_path) -> None:

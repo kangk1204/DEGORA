@@ -15,6 +15,8 @@ import numpy as np
 import pandas as pd
 from scipy.stats import norm
 
+from .formula_safety import restore_formula_text_if_marked
+
 # Z-representable p-value floor: norm.isf(P_MIN/2) must stay finite. The smallest
 # positive float (np.nextafter(0, 1) = 5e-324) overflows isf to +inf, which the
 # non-finite guard then turns into NaN -- silently dropping the MOST significant gene
@@ -257,6 +259,7 @@ def read_deg_table(path: str | Path, mapping: TableMapping) -> pd.DataFrame:
     # one. Choosing the engine here keeps a plain ParserWarning off the user's screen.
     engine = "python" if len(sep) > 1 else None
     frame = pd.read_csv(path, sep=sep, engine=engine)
+    frame = restore_formula_text_if_marked(frame, path)
     frame = _restore_unnamed_row_labels(frame)
     if frame.shape[1] == 1:
         header = str(frame.columns[0])

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -8,6 +9,7 @@ from openpyxl import load_workbook
 
 from degora.beginner import (
     BeginnerInitError,
+    _write_catalog_atomic,
     build_catalog,
     catalog_row,
     default_study_id,
@@ -16,7 +18,7 @@ from degora.beginner import (
     infer_source_table,
     run_init,
 )
-from degora.slice_runner import validate_catalog_inputs
+from degora.slice_runner import read_catalog, validate_catalog_inputs
 
 
 def _clean_table(path):
@@ -214,9 +216,13 @@ def test_beginner_init_rejects_sample_id_even_when_values_look_like_gene_symbols
         ("index", list(range(1, 121))),
         ("position", list(range(1, 121))),
         ("pathway", [f"PATHWAY_{i}" for i in range(120)]),
+        ("pathway_id", [f"PATHWAY_{i}" for i in range(120)]),
         ("metabolite", [f"METABOLITE_{i}" for i in range(120)]),
         ("cell_line", [f"CELL_{i}" for i in range(120)]),
         ("compound", [f"COMPOUND_{i}" for i in range(120)]),
+        ("compound_id", [f"COMPOUND_{i}" for i in range(120)]),
+        ("cluster_id", list(range(1, 121))),
+        ("taxon_id", list(range(9606, 9726))),
     ],
 )
 def test_beginner_does_not_auto_accept_non_gene_row_labels(
@@ -274,6 +280,7 @@ def test_beginner_init_cannot_publish_rank_values_as_gene_symbols(tmp_path) -> N
         ("ID", [f"ENSG{i:011d}.{i % 9 + 1}" for i in range(120)], "Ensembl ID"),
         ("ID", [100000 + i for i in range(120)], "Entrez ID"),
         ("feature", [100000 + i for i in range(120)], "Entrez ID"),
+        ("feature_id", [100000 + i for i in range(120)], "Entrez ID"),
         ("identifier", [f"{1000 + i}_at" for i in range(120)], "Affymetrix probe ID"),
         ("identifier", [200000 + i for i in range(120)], "Entrez ID"),
     ],
@@ -957,6 +964,49 @@ def test_init_force_keeps_existing_config_when_csv_write_fails(tmp_path, monkeyp
 
     assert output.read_text() == original
     assert not list(tmp_path.glob(".config.csv.*"))
+
+
+def test_beginner_csv_config_formula_guard_is_reversible_and_provenanced(tmp_path) -> None:
+    output = tmp_path / "config.csv"
+    catalog = pd.DataFrame(
+        {
+            "study_id": ["S1"],
+            "source_unit_id": ["U1"],
+            "source_path": ["source.csv"],
+            "gene_column": ["gene"],
+            "lfc_column": ["logFC"],
+            "p_column": ["pvalue"],
+            "hypoxia_modality": ["-Dox versus +Dox"],
+        }
+    )
+
+    _write_catalog_atomic(catalog, output)
+
+    assert pd.read_csv(output).loc[0, "hypoxia_modality"] == "'-Dox versus +Dox"
+    assert read_catalog(output).loc[0, "hypoxia_modality"] == "-Dox versus +Dox"
+    provenance = json.loads(Path(str(output) + ".provenance.json").read_text())
+    assert provenance["metadata"]["csv_formula_guard"] == "reversible_apostrophe_prefix_v1"
+
+
+def test_plain_generated_csv_config_remains_editable_with_a_stale_digest(tmp_path) -> None:
+    output = tmp_path / "config.csv"
+    catalog = pd.DataFrame(
+        {
+            "study_id": ["S1"],
+            "source_unit_id": ["U1"],
+            "source_path": ["source.csv"],
+            "gene_column": ["gene"],
+            "lfc_column": ["logFC"],
+            "p_column": ["pvalue"],
+            "notes": ["before edit"],
+        }
+    )
+    _write_catalog_atomic(catalog, output)
+    edited = pd.read_csv(output)
+    edited.loc[0, "notes"] = "after edit"
+    edited.to_csv(output, index=False)
+
+    assert read_catalog(output).loc[0, "notes"] == "after edit"
 
 
 def test_init_rejects_directory_output_even_with_force_before_prompting(tmp_path) -> None:

@@ -6,6 +6,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from degora.formula_safety import restore_formula_text_if_marked
 from degora.reanalysis import derive_welch_deg, validate_sample_groups
 
 
@@ -72,6 +73,38 @@ def test_normalized_expression_fallback_collapses_duplicate_genes_by_median(tmp_
     assert summary["source_input_type"] == "normalized_expression_matrix"
     assert len(result) == 2
     assert result.set_index("gene_symbol").loc["A", "log2FoldChange"] == pytest.approx(4.0)
+
+
+def test_fallback_csv_guards_formula_genes_and_restores_them_with_provenance(tmp_path: Path) -> None:
+    source = tmp_path / "matrix.tsv"
+    output = tmp_path / "derived.csv"
+    pd.DataFrame(
+        {
+            "symbol": ["=BAD()", "'=LITERAL", "TP53"],
+            "c1": [1.0, 2.0, 3.0],
+            "c2": [1.2, 2.2, 3.2],
+            "t1": [4.0, 5.0, 6.0],
+            "t2": [4.2, 5.2, 6.2],
+        }
+    ).to_csv(source, sep="\t", index=False)
+
+    derive_welch_deg(
+        source,
+        output,
+        role="normalized_expression_matrix",
+        gene_column="symbol",
+        control_samples=["c1", "c2"],
+        treatment_samples=["t1", "t2"],
+        normalized_scale="log2",
+        metadata={"csv_formula_guard": "caller_must_not_override_reserved_scheme"},
+    )
+
+    guarded = pd.read_csv(output)
+    assert {"'=BAD()", "''=LITERAL"}.issubset(set(guarded["gene_symbol"]))
+    restored = restore_formula_text_if_marked(guarded, output)
+    assert {"=BAD()", "'=LITERAL"}.issubset(set(restored["gene_symbol"]))
+    provenance = json.loads(Path(str(output) + ".provenance.json").read_text())
+    assert provenance["metadata"]["csv_formula_guard"] == "reversible_apostrophe_prefix_v1"
 
 
 def test_normalized_expression_requires_explicit_scale(tmp_path: Path) -> None:

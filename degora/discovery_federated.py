@@ -19,6 +19,7 @@ from .discovery import (
     SpeciesSpec,
     _query_terms,
     normalize_species as _normalize_species,
+    SEARCH_ASSESSMENT_VERSION,
 )
 
 
@@ -377,6 +378,10 @@ def search_publications(
         "ranking_truncated": len(merged_search_records) > evaluated_limit,
         "ranking_contract": "Partially resolved readiness, then provider relevance; 10 rows per browser page, with later selections resolved on demand.",
         "provider_status": "partial" if diagnostics["errors"] else "complete",
+        # The legacy GEO path stamps this and the federated path did not, so the
+        # snapshot that actually gets persisted - and read back months later -
+        # carried no record of which readiness rules produced it.
+        "assessment_version": SEARCH_ASSESSMENT_VERSION,
         "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "provider_events": provider_events,
         "diagnostics": diagnostics,

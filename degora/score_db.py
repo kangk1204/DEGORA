@@ -14,8 +14,6 @@ from typing import Any, Callable, Mapping
 
 import numpy as np
 import pandas as pd
-
-from .formula_safety import neutralize_formula_text
 from scipy.stats import beta, norm
 from scipy.stats import t as t_dist
 
@@ -29,6 +27,11 @@ from .aggregate import (
     validate_min_studies,
 )
 from .aggregate import _source_unit_series as _aggregate_source_unit_series
+from .formula_safety import (
+    formula_guard_metadata,
+    neutralize_formula_text,
+    restore_formula_text_if_marked,
+)
 from .provenance import (
     artifact_provenance_path,
     artifact_source_path,
@@ -2279,6 +2282,7 @@ def _write_score_database_locked(
         harmonized = pd.read_parquet(harmonized_path)
     else:
         harmonized = pd.read_csv(harmonized_path, low_memory=False)
+        harmonized = restore_formula_text_if_marked(harmonized, harmonized_path)
     gene_scores, evidence, metadata = degora_score_table(harmonized, min_studies=min_studies)
     gene_scores = primary_ranked_scores(gene_scores)
     evidence = _portable_source_path_columns(evidence, source_path_base, path_base)
@@ -2393,12 +2397,15 @@ def _write_score_database_locked(
         for staged_artifact, final_artifact in artifact_pairs.items():
             staged_source = artifact_source_path(staged_artifact)
             staged_provenance = artifact_provenance_path(staged_artifact)
+            artifact_metadata = dict(sidecar_metadata)
+            if final_artifact in {score_csv, diagnostics_tsv}:
+                artifact_metadata.update(formula_guard_metadata())
             source_text, json_text = source_sidecar_payloads(
                 final_artifact,
                 command,
                 artifact_content_path=staged_artifact,
                 inputs=inputs,
-                metadata=sidecar_metadata,
+                metadata=artifact_metadata,
             )
             staged_source.write_text(source_text, encoding="utf-8")
             if json_text is not None:

@@ -237,6 +237,7 @@ def test_search_publications_caps_evaluated_records_at_1000() -> None:
     assert snapshot["diagnostics"]["evaluated_limit"] == 1000
     assert snapshot["diagnostics"]["evaluated_records"] == 1000
     assert snapshot["total_records"] == 1000
+    assert snapshot["assessment_version"] == 2
     # The stub records carry an accession and no file candidate, which is a
     # repository record rather than a promise of a usable table.
     assert snapshot["records"][0]["data_readiness"]["verification_state"] == "candidate"

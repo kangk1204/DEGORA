@@ -12,6 +12,7 @@ from degora.discovery_store import (
     DiscoveryJobManager,
     DiscoveryStateStore,
     DiscoveryStoreError,
+    _sanitize_text,
 )
 
 
@@ -156,6 +157,17 @@ def test_worker_failure_redaction_handles_common_secret_and_path_shapes(
     assert path_text not in message
     assert "[redacted]" in message
     assert "[redacted: local path]" in message
+
+
+def test_path_redaction_preserves_slash_prose_but_catches_colon_and_root_paths() -> None:
+    text = "hypoxia /normoxia comparison; Error:/home/user/table.csv; cache at /tmp"
+
+    sanitized = _sanitize_text(text)
+
+    assert "hypoxia /normoxia comparison" in sanitized
+    assert "/home/user/table.csv" not in sanitized
+    assert "/tmp" not in sanitized
+    assert sanitized.count("[redacted: local path]") == 2
 
 
 def test_artifact_paths_are_preserved_for_restart_and_local_reuse(tmp_path) -> None:

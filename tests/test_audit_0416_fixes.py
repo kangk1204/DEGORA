@@ -10,7 +10,13 @@ import pytest
 
 from degora.aggregate import time_course_selection_report, time_course_selection_warnings
 from degora.discovery import classify_header
-from degora.formula_safety import neutralize_formula_text
+from degora.formula_safety import (
+    formula_guard_metadata,
+    neutralize_formula_text,
+    restore_formula_text,
+    restore_formula_text_if_marked,
+)
+from degora.provenance import write_source_sidecar
 from degora.slice_runner import CATALOG_ALIASES, _normalize_catalog_columns
 
 
@@ -95,6 +101,20 @@ def test_a_stated_time_course_mode_is_not_reported_as_promoted() -> None:
     assert _normalize_catalog_columns(frame).attrs["promoted_alias_warnings"] == []
 
 
+def test_a_blank_row_is_reported_even_when_another_row_states_the_canonical_mode() -> None:
+    frame = _catalog(
+        source_unit_id=["U1", "U2"],
+        time_course_mode=["mean", ""],
+        temporal_mode=["", "early"],
+    )
+
+    promoted = _normalize_catalog_columns(frame)
+
+    assert promoted["time_course_mode"].tolist() == ["mean", "early"]
+    assert len(promoted.attrs["promoted_alias_warnings"]) == 1
+    assert "early" in promoted.attrs["promoted_alias_warnings"][0]
+
+
 def _timed(unit: str, genes: int, duration: float) -> pd.DataFrame:
     return pd.DataFrame(
         {
@@ -162,6 +182,57 @@ def test_published_text_cannot_be_read_as_a_formula() -> None:
     assert str(guarded["n_studies"].dtype).startswith("int")
 
 
+def test_formula_guard_is_reversible_even_for_a_source_apostrophe() -> None:
+    frame = pd.DataFrame(
+        {
+            "gene_symbol": ["=BAD()", "'=LITERAL", "  #REF!", "TP53"],
+            "score": [1.0, -2.0, 3.0, 4.0],
+        }
+    )
+
+    guarded = neutralize_formula_text(frame)
+
+    assert guarded["gene_symbol"].tolist() == ["'=BAD()", "''=LITERAL", "'  #REF!", "TP53"]
+    pd.testing.assert_frame_equal(restore_formula_text(guarded), frame)
+
+
+def test_formula_guard_is_restored_only_with_matching_provenance(tmp_path: Path) -> None:
+    raw = pd.DataFrame({"gene_symbol": ["=BAD()", "'=LITERAL", "TP53"]})
+    path = tmp_path / "guarded.csv"
+    neutralize_formula_text(raw).to_csv(path, index=False)
+    write_source_sidecar(path, "degora test", metadata=formula_guard_metadata())
+
+    loaded = pd.read_csv(path)
+
+    pd.testing.assert_frame_equal(restore_formula_text_if_marked(loaded, path), raw)
+
+
+def test_tampered_formula_guard_provenance_fails_closed(tmp_path: Path) -> None:
+    path = tmp_path / "guarded.csv"
+    neutralize_formula_text(pd.DataFrame({"gene_symbol": ["=BAD()"]})).to_csv(path, index=False)
+    write_source_sidecar(path, "degora test", metadata=formula_guard_metadata())
+    path.write_text(path.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="invalid formula-guard provenance"):
+        restore_formula_text_if_marked(pd.read_csv(path), path)
+
+
+def test_unmarked_apostrophe_guarded_text_fails_as_ambiguous(tmp_path: Path) -> None:
+    path = tmp_path / "guarded.csv"
+    pd.DataFrame({"gene_symbol": ["'=BAD()"]}).to_csv(path, index=False)
+
+    with pytest.raises(ValueError, match="no matching DEGORA formula-guard provenance"):
+        restore_formula_text_if_marked(pd.read_csv(path), path)
+
+
+def test_unmarked_raw_formula_text_remains_a_raw_identifier(tmp_path: Path) -> None:
+    raw = pd.DataFrame({"gene_symbol": ["=BAD()", "TP53"]})
+    path = tmp_path / "raw.csv"
+    raw.to_csv(path, index=False)
+
+    pd.testing.assert_frame_equal(restore_formula_text_if_marked(pd.read_csv(path), path), raw)
+
+
 def test_ordinary_gene_symbols_are_left_exactly_alone() -> None:
     """The score contract depends on this: real data must round-trip unchanged."""
 
@@ -170,10 +241,24 @@ def test_ordinary_gene_symbols_are_left_exactly_alone() -> None:
     assert neutralize_formula_text(frame)["gene_symbol"].tolist() == frame["gene_symbol"].tolist()
 
 
-def test_an_unambiguous_feature_identifier_is_a_gene_column() -> None:
-    """feature_id matched nothing; the trailing-_id branch had narrowed to id_ref."""
-
-    assert classify_header(["feature_id", "logFC", "P.Value"])["mapping"]["gene_column"] == "feature_id"
+@pytest.mark.parametrize(
+    "column",
+    [
+        "feature_id",
+        "cluster_id",
+        "pathway_id",
+        "compound_id",
+        "taxon_id",
+        "publication_id",
+        "dataset_id",
+        "experiment_id",
+        "protein_id",
+        "peak_id",
+        "variant_id",
+    ],
+)
+def test_generic_or_non_gene_id_headers_are_not_automatic(column: str) -> None:
+    assert classify_header([column, "logFC", "P.Value"])["mapping"]["gene_column"] == ""
 
 
 @pytest.mark.parametrize(
@@ -190,7 +275,7 @@ def test_a_hand_edited_bundle_species_does_not_end_in_a_traceback() -> None:
 
     from degora.discovery_run import DiscoveryError, run_discovery_analysis
 
-    for payload in ({"species": "human"}, {"species": None}, {}):
+    for payload in ({"species": "human"}, {"species": None}, {"species": []}, {}):
         with pytest.raises(DiscoveryError):
             run_discovery_analysis(
                 payload, [], "/tmp/degora-unused", species="human", min_studies=2, force=True

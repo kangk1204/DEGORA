@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import sqlite3
 from pathlib import Path
 
@@ -10,6 +11,7 @@ import pytest
 import degora.discovery_run as discovery_run
 from degora.discovery import DiscoveryError
 from degora.discovery_run import _author_pipeline, run_discovery_analysis
+from degora.slice_runner import read_catalog
 
 
 def test_author_pipeline_recognizes_cuffdiff_gene_exp_diff_filename() -> None:
@@ -147,6 +149,42 @@ def test_reviewed_human_candidates_run_end_to_end_without_cross_species_pooling(
         assert meta["discovery_cross_species_pooling"] == "false"
         assert meta["discovery_source_units"] == "PMID:900001,PMID:900002"
         assert connection.execute("SELECT COUNT(DISTINCT source_unit_id) FROM studies").fetchone()[0] == 2
+
+
+def test_formula_guarded_author_csv_preserves_raw_gene_in_scoring_and_sqlite(tmp_path: Path) -> None:
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    prepared = _prepared_bundle(bundle)
+    for study in prepared["studies"]:
+        candidate = study["files"][0]
+        path = Path(candidate["inspection"]["local_path"])
+        frame = pd.read_csv(path)
+        frame.loc[0, "gene"] = "=BAD()"
+        frame.to_csv(path, index=False)
+        candidate["inspection"]["full_file_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+
+    selections = _selections()
+    selections[0]["contrast_label"] = "-Dox versus +Dox"
+    result = run_discovery_analysis(
+        prepared,
+        selections,
+        tmp_path / "analysis",
+        species="human",
+    )
+
+    catalog = pd.read_csv(result["catalog_path"])
+    assert catalog.loc[0, "hypoxia_modality"] == "'-Dox versus +Dox"
+    assert read_catalog(result["catalog_path"]).loc[0, "hypoxia_modality"] == "-Dox versus +Dox"
+    catalog_provenance = json.loads(Path(result["catalog_path"] + ".provenance.json").read_text())
+    assert catalog_provenance["metadata"]["csv_formula_guard"] == "reversible_apostrophe_prefix_v1"
+    published_author_table = pd.read_csv(catalog.loc[0, "source_path"])
+    assert published_author_table.loc[0, "gene_symbol"] == "'=BAD()"
+    score_csv = pd.read_csv(Path(result["results_dir"]) / "degora_gene_scores.csv")
+    assert "'=BAD()" in set(score_csv["gene_symbol"])
+    with sqlite3.connect(result["db_path"]) as connection:
+        genes = {row[0] for row in connection.execute("SELECT gene_symbol FROM genes")}
+    assert "=BAD()" in genes
+    assert "'=BAD()" not in genes
 
 
 def test_no_geo_author_deg_papers_run_end_to_end_as_two_source_units(tmp_path: Path) -> None:

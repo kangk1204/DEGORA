@@ -398,6 +398,16 @@ also rejects an unknown `time_course_mode` instead of silently treating a typo a
 Catalog normalization now fills an empty legacy `paper_id` column from
 `source_unit_id` without a pandas 3 dtype error.
 
+CSV/TSV outputs now neutralize spreadsheet formula-like text. Generated files
+that are reused as analysis inputs carry a digest-checked provenance marker, so
+DEGORA reverses exactly one guard during ingestion and preserves the original
+identifier in scoring and SQLite. If that marker is missing or its digest is
+invalid, apostrophe-guarded formula-like text is rejected as ambiguous instead of
+silently changing a scientific identifier. Early/late time-course runs now record per-source
+row/gene retention and warn below the recorded 50% retention threshold; legacy
+temporal aliases that fill blank canonical cells are disclosed before validation
+and execution.
+
 Custom ablation weights are stored as the normalized floating-point values that
 passed validation, so numeric strings cannot survive construction and fail later
 inside weighted scoring. The workbook dictionary now labels the legacy

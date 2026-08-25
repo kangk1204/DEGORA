@@ -12,8 +12,8 @@ from typing import Any, Callable
 
 import pandas as pd
 
-from .formula_safety import neutralize_formula_text
 from .aggregate import (
+    TIME_COURSE_RETENTION_WARNING_FRACTION,
     _source_unit_series,
     slice_consensus,
     time_course_selection_report,
@@ -21,6 +21,11 @@ from .aggregate import (
     validate_min_studies,
 )
 from .excel_io import read_config_sheet
+from .formula_safety import (
+    formula_guard_metadata,
+    neutralize_formula_text,
+    restore_formula_text_if_marked,
+)
 from .harmonize import (
     TableMapping,
     harmonize_frame,
@@ -238,6 +243,9 @@ def _is_external_absolute_path(path: Path, catalog_path: Path) -> bool:
 
 def _source_context(row: dict[str, Any], source_path: Path, catalog_path: Path, available: list[Any] | None = None) -> str:
     if _is_external_absolute_path(source_path, catalog_path):
+        # Both the path and the column names stay hidden. A column name can itself
+        # be private - an assay name, a cohort label - which is why the test for
+        # this uses a sentinel header rather than an ordinary one.
         return (
             f"{row.get('study_id', 'source table')}: source_path is outside the config folder; "
             "path and available columns hidden"
@@ -441,7 +449,19 @@ def _read_catalog_frame(path: Path) -> pd.DataFrame:
                     "Keep Project and AdvancedSettings sheets if you want them; GoldPanel is used only for optional locked recall metrics.",
                 ],
             )
-        return pd.read_csv(path)
+        frame = pd.read_csv(path)
+        try:
+            return restore_formula_text_if_marked(frame, path)
+        except ValueError as exc:
+            raise DegoraConfigError(
+                "CSV config formula-guard provenance is invalid or incomplete",
+                context=f"config file: {path}",
+                problems=[str(exc)],
+                fixes=[
+                    "Keep the generated .provenance.json sidecar beside the CSV config.",
+                    "If the config was edited, regenerate it or use the original raw identifiers rather than guarded spreadsheet text.",
+                ],
+            ) from exc
     except DegoraConfigError:
         raise
     except Exception as exc:
@@ -551,12 +571,15 @@ def _promoted_alias_warnings(catalog: pd.DataFrame) -> list[str]:
     for alias, canonical in CATALOG_ALIASES.items():
         if canonical != "time_course_mode" or alias not in catalog.columns:
             continue
-        if canonical in catalog.columns and catalog[canonical].map(_nonempty).notna().any():
-            continue
+        promoted_rows = (
+            pd.Series(True, index=catalog.index)
+            if canonical not in catalog.columns
+            else catalog[canonical].map(_nonempty).isna()
+        )
         promoted = sorted(
             {
                 str(value).strip()
-                for value in catalog[alias].tolist()
+                for value in catalog.loc[promoted_rows, alias].tolist()
                 if _nonempty(value) and _normalize_time_course_setting(value) not in {None, "mean"}
             }
         )
@@ -1609,6 +1632,7 @@ def _run_slice_locked(catalog_path: Path, output_dir: Path, harmonized_dir: Path
         "identifier_space_warnings": _identifier_space_warnings(all_harmonized, min_studies=min_studies),
         "time_course_selection": time_course_report,
         "time_course_selection_warnings": time_course_report_warnings,
+        "time_course_selection_warning_fraction": TIME_COURSE_RETENTION_WARNING_FRACTION,
         "rank_universe_warnings": rank_universe_warnings,
         "gene_symbol_collapse_warnings": gene_symbol_collapse_warnings,
         "unusable_row_warnings": unusable_row_warnings,
@@ -1661,11 +1685,14 @@ def _run_slice_locked(catalog_path: Path, output_dir: Path, harmonized_dir: Path
     if harmonized_parquet.exists():
         artifacts.insert(1, harmonized_parquet)
     for artifact in artifacts:
+        metadata = {"generator": "slice", "min_studies": min_studies}
+        if artifact.suffix.lower() == ".csv":
+            metadata.update(formula_guard_metadata())
         write_source_sidecar(
             artifact,
             command,
             inputs=[catalog_path, *source_inputs_sorted],
-            metadata={"generator": "slice", "min_studies": min_studies},
+            metadata=metadata,
         )
 
     return metrics

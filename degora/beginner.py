@@ -32,11 +32,19 @@ from .discovery import (
     is_gene_identifier_header,
 )
 from .excel_export import _force_formula_like_text
+from .formula_safety import formula_guard_metadata, neutralize_formula_text
 from .harmonize import (
     TableMapping,
     _is_binary_probability_indicator,
     assess_table_scope,
     read_deg_table,
+)
+from .provenance import (
+    artifact_provenance_path,
+    artifact_source_path,
+    publish_staged_artifacts,
+    shell_command,
+    source_sidecar_payloads,
 )
 
 # Extensions read_deg_table knows how to open.
@@ -728,7 +736,13 @@ def _prompt_yes_no(
     return None
 
 
-def _write_catalog_atomic(catalog: pd.DataFrame, output: Path) -> None:
+def _write_catalog_atomic(
+    catalog: pd.DataFrame,
+    output: Path,
+    *,
+    command: str = "degora init",
+    inputs: Iterable[str | Path] = (),
+) -> None:
     """Publish a complete config without damaging an existing forced target."""
 
     descriptor, temporary_name = tempfile.mkstemp(
@@ -738,16 +752,38 @@ def _write_catalog_atomic(catalog: pd.DataFrame, output: Path) -> None:
     )
     os.close(descriptor)
     temporary = Path(temporary_name)
+    staged_source = artifact_source_path(temporary)
+    staged_provenance = artifact_provenance_path(temporary)
     try:
         if output.suffix.lower() == ".xlsx":
             with pd.ExcelWriter(temporary, engine="openpyxl") as writer:
                 catalog.to_excel(writer, sheet_name="Contrasts", index=False)
                 _force_formula_like_text(writer)
+            os.replace(temporary, output)
         else:
-            catalog.to_csv(temporary, index=False)
-        os.replace(temporary, output)
+            neutralize_formula_text(catalog).to_csv(temporary, index=False)
+            source_text, provenance_text = source_sidecar_payloads(
+                output,
+                command,
+                artifact_content_path=temporary,
+                inputs=inputs,
+                metadata={"generator": "beginner_init", **formula_guard_metadata()},
+            )
+            staged_source.write_text(source_text, encoding="utf-8")
+            if provenance_text is None:  # pragma: no cover - JSON is requested above
+                raise RuntimeError("CSV config provenance was not generated")
+            staged_provenance.write_text(provenance_text, encoding="utf-8")
+            publish_staged_artifacts(
+                {
+                    temporary: output,
+                    staged_source: artifact_source_path(output),
+                    staged_provenance: artifact_provenance_path(output),
+                }
+            )
     finally:
         temporary.unlink(missing_ok=True)
+        staged_source.unlink(missing_ok=True)
+        staged_provenance.unlink(missing_ok=True)
 
 
 def run_init(
@@ -926,7 +962,16 @@ def run_init(
         echo(f"WARNING: {replication_warning}")
 
     output.parent.mkdir(parents=True, exist_ok=True)
-    _write_catalog_atomic(catalog, output)
+    init_args: list[str | Path] = ["degora", "init", output, "--deg-dir", Path(deg_dir)]
+    if force:
+        init_args.append("--force")
+    init_command = shell_command(init_args)
+    _write_catalog_atomic(
+        catalog,
+        output,
+        command=init_command,
+        inputs=[path for path, _inference in inferences],
+    )
 
     reversed_rows = [row for row in rows if row["include_in_analysis"] == "no"]
     active_rows = [row for row in rows if row["include_in_analysis"] == "yes"]

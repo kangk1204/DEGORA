@@ -31,6 +31,7 @@ from degora.discovery import (
     prepare_geo_studies,
     search_geo,
 )
+from degora.slice_runner import read_catalog
 
 
 HUMAN_RECORD = {
@@ -224,9 +225,21 @@ def test_deg_header_prefers_hugo_symbol_over_generic_gene_identifier() -> None:
         "index",
         "position",
         "pathway",
+        "pathway_id",
         "metabolite",
+        "metabolite_id",
         "cell_line",
+        "cell_line_id",
         "compound",
+        "compound_id",
+        "cluster_id",
+        "taxon_id",
+        "publication_id",
+        "dataset_id",
+        "experiment_id",
+        "protein_id",
+        "peak_id",
+        "variant_id",
     ],
 )
 def test_generic_or_sample_identifiers_are_not_gene_headers(identifier: str) -> None:
@@ -793,6 +806,26 @@ def test_prepare_selected_study_materializes_candidates_but_keeps_catalog_inacti
     assert audit["analysis_policy"]["cross_species_pooling"] is False
 
 
+def test_discovery_draft_catalog_formula_guard_is_reusable(tmp_path: Path) -> None:
+    prepared = prepare_geo_studies(
+        ["GSE100001"],
+        "human",
+        materialize_dir=tmp_path / "prepared",
+        client=FakeGeoClient(),
+    )
+    prepared["studies"][0]["source_unit_id"] = "-FORMULA-LIKE-UNIT"
+
+    exports = export_discovery_bundle(prepared, tmp_path / "export")
+    catalog_path = Path(exports["draft_catalog_csv"])
+    with catalog_path.open(newline="", encoding="utf-8") as handle:
+        raw = next(csv.DictReader(handle))
+
+    assert raw["source_unit_id"] == "'-FORMULA-LIKE-UNIT"
+    assert read_catalog(catalog_path).loc[0, "source_unit_id"] == "-FORMULA-LIKE-UNIT"
+    provenance = json.loads(Path(str(catalog_path) + ".provenance.json").read_text())
+    assert provenance["metadata"]["csv_formula_guard"] == "reversible_apostrophe_prefix_v1"
+
+
 def test_prepare_geo_before_publish_runs_once_immediately_before_publish(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -960,6 +993,17 @@ def test_search_csv_neutralizes_spreadsheet_formulas_but_json_preserves_source_t
     assert row["paper_title"] == "'" + title
     assert row["authors"].startswith("'@")
     assert payload["studies"][0]["paper_title"] == title
+
+
+@pytest.mark.parametrize("title", ["#VALUE!", "  #REF!", "'=LITERAL"])
+def test_search_csv_neutralizes_excel_errors_reversibly(tmp_path: Path, title: str) -> None:
+    result = {"studies": [{"accession": "GSE1", "paper_title": title, "authors": [], "pubmed_ids": []}]}
+
+    exports = export_search_page(result, tmp_path)
+    with Path(exports["search_csv"]).open(newline="", encoding="utf-8") as handle:
+        row = next(csv.DictReader(handle))
+
+    assert row["paper_title"] == "'" + title
 
 
 def test_ncbi_client_caches_success_but_never_failure() -> None:

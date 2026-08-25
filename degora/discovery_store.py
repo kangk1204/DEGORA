@@ -52,8 +52,22 @@ _SENSITIVE_ASSIGNMENT_RE = re.compile(
 )
 _BEARER_TOKEN_RE = re.compile(r"(?i)\b(Bearer\s+)([^,\s;]+)")
 _FILE_URI_RE = re.compile(r'''(?i)file:/+[^\s,;)\]}"']+''')
+# Two rules, both learned from getting it wrong in one direction each.
+#
+# A colon may precede a path: "Error:/home/user/table.csv" is exactly how an
+# exception prints one, and excluding ":" from the lookbehind let that through
+# unredacted. URLs stay safe without it - "file:" is handled above, "//" is
+# rejected outright, and the path part of "http://host/a/b" is preceded by a
+# word character.
+#
+# A path worth redacting either descends ("/etc/passwd") or names a file
+# ("/catalog.csv"). Matching a lone bare word meant "hypoxia /normoxia
+# comparison" lost its second condition to "[redacted: local path]", which
+# damages the message while protecting nothing: a lone "/normoxia" is prose.
 _POSIX_ABSOLUTE_PATH_RE = re.compile(
-    r'''(?<![\w:/.-])/(?!/)[^/\s,;)\]}"']+(?:/[^/\s,;)\]}"']+)*'''
+    r'''(?<![\w/.-])/(?!/)[^/\s,;)\]}"']+(?:/[^/\s,;)\]}"']+)+'''
+    r'''|(?<![\w/.-])/(?!/)[^/\s,;)\]}"']*\.[A-Za-z0-9]{1,8}'''
+    r'''|(?<![\w/.-])/(?:Users|home|private|tmp|var|etc|opt|mnt|Volumes|root)\b'''
 )
 _WINDOWS_ABSOLUTE_PATH_RE = re.compile(r"(?i)\b[A-Z]:[\\/](?:[^\\/\s,;)]+[\\/]?)+")
 _UNC_PATH_RE = re.compile(r"\\\\[^\\\s,;)]+\\[^,\s;)]+")

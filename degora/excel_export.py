@@ -13,6 +13,7 @@ from openpyxl.comments import Comment
 
 from . import runtime_version_info
 from .excel_io import read_config_sheet
+from .formula_safety import EXCEL_ERROR_LITERALS, restore_formula_text_if_marked
 from .provenance import (
     normalize_ooxml_zip,
     portable_command,
@@ -27,7 +28,6 @@ EXCEL_MAX_ROWS = 1_048_576
 DEFAULT_WORKBOOK_NAME = "DEGORA_output.xlsx"
 COMMENT_AUTHOR = "DEGORA"
 FORMULA_PREFIX_WHITESPACE = " \t\r\n"
-from .formula_safety import EXCEL_ERROR_LITERALS  # re-exported: discovery_export imports it here
 
 # Large corpora (e.g. the cross-platform hypoxia benchmark) can produce hundreds of
 # thousands of per-source evidence rows. Writing them all into a single Excel sheet is slow
@@ -634,6 +634,7 @@ def export_run_workbook(
     genes = _read_table(db_path, "genes")
     if genes.empty and score_csv.exists():
         genes = pd.read_csv(score_csv)
+        genes = restore_formula_text_if_marked(genes, score_csv)
     evidence_sheet, evidence_total_rows, evidence_capped = _read_evidence_for_workbook(
         db_path,
         _evidence_row_cap(),
@@ -649,6 +650,7 @@ def export_run_workbook(
     if diagnostics_tsv.exists():
         try:
             diagnostics = pd.read_csv(diagnostics_tsv, sep="\t")
+            diagnostics = restore_formula_text_if_marked(diagnostics, diagnostics_tsv)
         except (pd.errors.EmptyDataError, pd.errors.ParserError):
             # Mirror the JSON/gold readers: a truncated or hand-edited TSV must not
             # abort the whole workbook export; fall back to an empty Source_quality sheet.

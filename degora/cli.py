@@ -341,7 +341,10 @@ def _zero_gene_diagnostic(harmonized_path: Path, min_studies: int) -> str:
     try:
         import pandas as pd
 
+        from .formula_safety import restore_formula_text_if_marked
+
         frame = pd.read_csv(harmonized_path, usecols=["gene_symbol", "source_unit_id"])
+        frame = restore_formula_text_if_marked(frame, harmonized_path)
     except Exception:  # noqa: BLE001 - a diagnostic must never mask the real error.
         return ""
     if frame.empty:

@@ -14,6 +14,7 @@ import pandas as pd
 
 from .discovery import DiscoveryError, normalize_species
 from .excel_export import DEFAULT_WORKBOOK_NAME, export_run_workbook
+from .formula_safety import formula_guard_metadata, neutralize_formula_text
 from .provenance import shell_command, write_source_sidecar
 from .reanalysis import derive_welch_deg
 from .score_db import write_score_database
@@ -487,7 +488,7 @@ def _materialize_author_table(
     derived_dir.mkdir(parents=True, exist_ok=True)
     accession = _study_accession_key(study)
     output = derived_dir / f"{sequence:02d}_{accession}_{str(candidate['candidate_id'])[:10]}_author.csv"
-    selected.to_csv(output, index=False, lineterminator="\n")
+    neutralize_formula_text(selected).to_csv(output, index=False, lineterminator="\n")
     provenance = {
         "generator": "degora.discovery_run._materialize_author_table",
         "operation": "author_table_column_projection_and_optional_exact_row_subset",
@@ -516,6 +517,7 @@ def _materialize_author_table(
         "n_duplicate_gene_rows": n_duplicate_gene_rows,
         "n_duplicate_genes": n_duplicate_genes,
         "n_usable_output_rows": int(len(selected)),
+        **formula_guard_metadata(),
     }
     write_source_sidecar(output, replay_command, inputs=[source_path], metadata=provenance)
     return output, provenance, provenance["output_mapping"]
@@ -883,7 +885,14 @@ def _execute_discovery_analysis(
         encoding="utf-8",
     )
     catalog_path = output / f"DEGORA_{spec.key}_selected_catalog.csv"
-    pd.DataFrame(rows, columns=CATALOG_COLUMNS).to_csv(catalog_path, index=False, lineterminator="\n")
+    catalog = pd.DataFrame(rows, columns=CATALOG_COLUMNS)
+    neutralize_formula_text(catalog).to_csv(catalog_path, index=False, lineterminator="\n")
+    write_source_sidecar(
+        catalog_path,
+        replay_command,
+        inputs=[request_path],
+        metadata={"generator": "discovery_selected_catalog", **formula_guard_metadata()},
+    )
     validation = validate_catalog_inputs(catalog_path)
     results_dir = output / "results"
     harmonized_dir = output / "harmonized"

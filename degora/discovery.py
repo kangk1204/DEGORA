@@ -33,6 +33,8 @@ from pathlib import Path
 from typing import Any, Callable, Iterable
 
 from . import runtime_version_info
+from .formula_safety import formula_guard_metadata, neutralize_formula_cell
+from .provenance import artifact_provenance_path, artifact_source_path, write_source_sidecar
 
 
 EUTILS_BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
@@ -767,19 +769,17 @@ GENE_EXACT_RE = re.compile(
 # write.csv export, where the gene names arrive as an unnamed index. Leaving it
 # out meant DEGORA could not recognise a column it had just created itself.
 GENE_LOOSE_RE = re.compile(
-    # `feature_id` is an unambiguous identifier column in expression data, and
-    # matched nothing here: the trailing-`_id` branch had been narrowed to
-    # `id_ref`. Sample- and run-scoped ids are refused before this is
-    # consulted, so admitting a trailing `_id` cannot let one through.
-    r"gene|symbol|hgnc|hugo|ensembl|entrez|probe|transcript|^row_name(_\d+)?$|id_ref|(?:^|[_.])id$",
-    re.I,
+    r"gene|symbol|hgnc|hugo|ensembl|entrez|probe|transcript|^row_name(_\d+)?$|id_ref", re.I
 )
 NON_GENE_IDENTIFIER_RE = re.compile(
     r"^(?:id|identifier)$|"
     r"^(?:rank|row[_. -]?(?:number|num|index)|index|position|base[_. -]?mean|"
     r"mean[_. -]?(?:count|expression|abundance)|stat(?:istic)?|score|pathway|"
-    r"gene[_. -]?set|metabolite|cell[_. -]?line|compound)$|"
-    r"(?:^|[_ .-])(?:sample|subject|patient|donor|run|file|series)(?:[_ .-]?(?:id|name|accession|identifier))?$|"
+    r"gene[_. -]?set|metabolite|cell[_. -]?line|compound|cluster|taxon|protein|"
+    r"peak|variant|snp)(?:[_. -]?(?:id|name|accession|identifier))?$|"
+    r"(?:^|[_ .-])(?:sample|subject|patient|donor|run|file|series|source[_. -]?unit|"
+    r"publication|dataset|experiment|contrast|comparison|unit)"
+    r"(?:[_ .-]?(?:id|name|accession|identifier))?$|"
     r"^(?:gsm|srr|err|drr)(?:[_ .-]?(?:id|accession|identifier))?$",
     re.I,
 )
@@ -2342,18 +2342,10 @@ def _draft_catalog_rows(result: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _csv_text(rows: list[dict[str, Any]], columns: list[str]) -> str:
-    def spreadsheet_safe(value: Any) -> Any:
-        if not isinstance(value, str):
-            return value
-        stripped = value.lstrip(" \t\r\n")
-        if stripped.startswith(("=", "+", "-", "@")):
-            return "'" + value
-        return value
-
     buffer = io.StringIO(newline="")
     writer = csv.DictWriter(buffer, fieldnames=columns, extrasaction="ignore", lineterminator="\n")
     writer.writeheader()
-    writer.writerows({key: spreadsheet_safe(value) for key, value in row.items()} for row in rows)
+    writer.writerows({key: neutralize_formula_cell(value) for key, value in row.items()} for row in rows)
     return buffer.getvalue()
 
 
@@ -2421,7 +2413,13 @@ def export_discovery_bundle(result: dict[str, Any], output_dir: str | Path, *, f
     audit_path = output / "discovery_audit.json"
     candidates_path = output / "discovery_candidates.csv"
     catalog_path = output / "DEGORA_discovery_draft_catalog.csv"
-    targets = (audit_path, candidates_path, catalog_path)
+    targets = (
+        audit_path,
+        candidates_path,
+        catalog_path,
+        artifact_source_path(catalog_path),
+        artifact_provenance_path(catalog_path),
+    )
     existing = [path for path in targets if path.exists()]
     if existing and not force:
         raise FileExistsError("discovery output already exists; use --force to replace: " + ", ".join(map(str, existing)))
@@ -2475,6 +2473,12 @@ def export_discovery_bundle(result: dict[str, Any], output_dir: str | Path, *, f
     _atomic_write_text(audit_path, json.dumps(result, indent=2, sort_keys=True, ensure_ascii=False) + "\n")
     _atomic_write_text(candidates_path, _csv_text(candidates, candidate_columns))
     _atomic_write_text(catalog_path, _csv_text(catalog, catalog_columns))
+    write_source_sidecar(
+        catalog_path,
+        "degora discovery prepare",
+        inputs=[audit_path],
+        metadata={"generator": "discovery_draft_catalog", **formula_guard_metadata()},
+    )
     return {
         "output_dir": str(output),
         "audit_json": str(audit_path),

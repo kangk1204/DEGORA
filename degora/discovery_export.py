@@ -14,11 +14,9 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
-from .excel_export import EXCEL_ERROR_LITERALS
+from .formula_safety import neutralize_formula_cell
 
 
-FORMULA_PREFIXES = ("=", "+", "-", "@")
-FORMULA_PREFIX_WHITESPACE = " \t\r\n"
 SEARCH_JSON_NAME = "publication_search.json"
 SEARCH_CSV_NAME = "publication_search.csv"
 SEARCH_XLSX_NAME = "DEGORA_search_results.xlsx"
@@ -37,9 +35,7 @@ def _safe_cell(value: Any) -> Any:
         value = json.dumps(value, sort_keys=True, ensure_ascii=False)
     else:
         value = str(value)
-    stripped = value.lstrip(FORMULA_PREFIX_WHITESPACE)
-    unsafe = stripped.startswith(FORMULA_PREFIXES) or stripped.upper() in EXCEL_ERROR_LITERALS
-    return "'" + value if unsafe else value
+    return neutralize_formula_cell(value)
 
 
 def _atomic_bytes(path: Path, payload: bytes) -> None:
