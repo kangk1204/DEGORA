@@ -112,6 +112,7 @@ class ScoreAblation:
         if not weights:
             raise ValueError(f"ablation {self.name!r} must keep at least one score component")
         invalid: list[str] = []
+        normalized: dict[str, float] = {}
         for component, raw_weight in weights.items():
             if isinstance(raw_weight, (bool, np.bool_)):
                 invalid.append(f"{component}={raw_weight!r}")
@@ -123,18 +124,20 @@ class ScoreAblation:
                 continue
             if not np.isfinite(weight) or weight <= 0:
                 invalid.append(f"{component}={raw_weight!r}")
+                continue
+            normalized[component] = weight
         if invalid:
             raise ValueError(
                 f"ablation {self.name!r} weights must be finite positive numbers; invalid: "
                 + ", ".join(invalid)
             )
-        total = float(sum(float(weight) for weight in weights.values()))
+        total = float(sum(normalized.values()))
         if not np.isfinite(total) or total <= 0:
             raise ValueError(f"ablation {self.name!r} has non-positive total weight {total!r}")
         # A frozen dataclass does not freeze a caller-owned dict. Snapshot the
         # mapping so post-construction mutation cannot bypass the validation above
         # and silently redefine an already-recorded ablation.
-        object.__setattr__(self, "component_weights", MappingProxyType(weights))
+        object.__setattr__(self, "component_weights", MappingProxyType(normalized))
 
     @property
     def weights(self) -> dict[str, float]:

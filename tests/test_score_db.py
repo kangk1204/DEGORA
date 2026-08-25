@@ -147,6 +147,13 @@ def test_score_ablation_snapshots_the_validated_weight_mapping() -> None:
         ablation.component_weights["support_score"] = -1.0
 
 
+def test_score_ablation_normalizes_numeric_string_weights() -> None:
+    ablation = score_db.ScoreAblation(component_weights={"support_score": "1.0"})
+
+    assert ablation.weights == {"support_score": 1.0}
+    assert isinstance(ablation.weights["support_score"], float)
+
+
 def test_write_sqlite_preserves_existing_db_on_failed_rebuild(tmp_path) -> None:
     db = tmp_path / "degora_scores.db"
     genes = pd.DataFrame({"gene_symbol": ["A", "B"], "degora_rank": [1, 2], "degora_score": [0.9, 0.8]})
