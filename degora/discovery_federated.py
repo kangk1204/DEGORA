@@ -18,6 +18,7 @@ from .discovery import (
     DiscoveryUnavailableError,
     SpeciesSpec,
     _query_terms,
+    network_failure_message,
     normalize_species as _normalize_species,
     SEARCH_ASSESSMENT_VERSION,
 )
@@ -298,9 +299,22 @@ def search_publications(
     diagnostics["searchable_providers"] = searchable_providers
     diagnostics["successful_searches"] = successful_searches
     if searchable_providers == 0:
-        raise DiscoveryUnavailableError("no publication search provider is available")
+        raise DiscoveryUnavailableError(
+            network_failure_message("no publication search provider is available")
+        )
     if successful_searches == 0:
-        raise DiscoveryUnavailableError("all publication search providers are unavailable; retry later")
+        # The per-provider reasons were collected and then thrown away, so a
+        # request that never left the machine was reported as a remote outage.
+        causes = [
+            f"{item.get('provider', 'provider')}: {item.get('error', 'no reason recorded')}"
+            for item in diagnostics.get("errors", [])
+        ]
+        raise DiscoveryUnavailableError(
+            network_failure_message(
+                f"no publication search provider could be reached ({searchable_providers} tried)",
+                causes,
+            )
+        )
 
     # Build one source-neutral publication universe before applying the global
     # cap.  This avoids a full PubMed page starving GEO records from the same
@@ -1093,7 +1107,10 @@ def _safe_provider_error(exc: Exception) -> str:
         str(exc),
     )
     text = re.sub(r"[\r\n\t]+", " ", text).strip()
-    return f"{type(exc).__name__}: {(text or 'provider request failed')[:240]}"
+    # The exception class name told a reader nothing they could act on and read as
+    # noise in an otherwise plain-language message. Keep it only when the exception
+    # carried no message of its own.
+    return (text or f"request failed ({type(exc).__name__})")[:240]
 
 
 def _sorted_strings(values: Iterable[Any]) -> list[str]:

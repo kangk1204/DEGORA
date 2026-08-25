@@ -28,6 +28,7 @@ from .formula_safety import (
 )
 from .harmonize import (
     TableMapping,
+    canonical_gene_symbol,
     harmonize_frame,
     normalize_table_scope,
     read_deg_table,
@@ -524,26 +525,38 @@ def _read_locked_gold_panel(path: Path) -> dict[str, Any]:
             ),
         }
     gold = gold.copy()
+    named_rows = int(gold["gene_symbol"].astype("string").fillna("").str.strip().ne("").sum())
     if "locked" in gold.columns:
         locked = gold["locked"].astype("string").fillna("").str.strip().str.lower()
         gold = gold.loc[locked.isin({"1", "true", "t", "yes", "y", "locked"}) | locked.eq("")]
-    genes = (
-        gold["gene_symbol"]
-        .astype("string")
-        .fillna("")
-        .str.strip()
-        .str.upper()
-        .loc[lambda series: series.ne("")]
-        .drop_duplicates()
-        .sort_values()
-        .tolist()
+    # Resolve panel symbols the same way source tables are resolved. A panel written
+    # with legacy symbols (SEPT9, MARCH1, DEC1) previously reported every one of its
+    # genes as absent, because the scored output holds the current symbol instead.
+    genes = sorted(
+        {
+            symbol
+            for symbol in (
+                canonical_gene_symbol(value) for value in gold["gene_symbol"].tolist()
+            )
+            if symbol
+        }
     )
+    if genes:
+        reason = ""
+    elif named_rows:
+        reason = (
+            f"GoldPanel lists {named_rows:,} gene(s) but none are locked; set locked=yes "
+            "on the rows that should be used for curated recall"
+        )
+    else:
+        reason = "GoldPanel contains no locked gene symbols"
     return {
         "status": "locked" if genes else "not_provided",
         "source": "GoldPanel",
         "gene_column": "gene_symbol",
         "genes": genes,
-        "reason": "" if genes else "GoldPanel contains no locked gene symbols",
+        "reason": reason,
+        "n_panel_rows": named_rows,
     }
 
 
@@ -643,7 +656,12 @@ def _normalize_catalog_columns(catalog: pd.DataFrame) -> pd.DataFrame:
     return frame
 
 
-def _validate_catalog_columns(catalog: pd.DataFrame, path: Path) -> None:
+def _validate_catalog_columns(
+    catalog: pd.DataFrame,
+    path: Path,
+    *,
+    file_columns: list[Any] | None = None,
+) -> None:
     missing = [column for column in ESSENTIAL_CATALOG_COLUMNS if column not in catalog.columns]
     if not missing:
         return
@@ -652,17 +670,58 @@ def _validate_catalog_columns(catalog: pd.DataFrame, path: Path) -> None:
         f"{CATALOG_COLUMN_HELP.get(column, 'required catalog field')}."
         for column in missing
     ]
+    # Report the headers the file actually carried. Optional catalog defaults are
+    # injected before this check, so listing catalog.columns told the reader that
+    # source_unit_id was "available" in the same message that said it was missing.
+    available = list(catalog.columns) if file_columns is None else list(file_columns)
+    fixes = [
+        f"Required Contrasts columns are: {_format_columns(BEGINNER_REQUIRED_CONTRAST_COLUMNS)}.",
+        "Add the missing column(s) to the CSV file or to the Excel Contrasts sheet.",
+        "For time-course data, put one row per time point and reuse paper_id/source_unit_id for related rows.",
+        "Supported beginner aliases include source_unit_id->paper_id, time_h->duration_h, condition->hypoxia_modality, and include->include_in_analysis.",
+    ]
+    if _looks_like_deg_table(available):
+        # The commonest way to reach this error is passing a DEG table where the
+        # config belongs, and the required-column list alone does not say so.
+        fixes.insert(
+            0,
+            "This file looks like a DEG results table, not a DEGORA config. A DEG table belongs in "
+            "source_path inside the config; create the config with `degora template <name>.xlsx` or "
+            "`degora init <name>.csv --deg-dir <folder>`.",
+        )
     raise DegoraConfigError(
         "catalog is missing required column(s)",
-        context=f"config file: {path}; available columns: {_format_columns(list(catalog.columns))}",
+        context=f"config file: {path}; available columns: {_format_columns(available)}",
         problems=problems,
-        fixes=[
-            f"Required Contrasts columns are: {_format_columns(BEGINNER_REQUIRED_CONTRAST_COLUMNS)}.",
-            "Add the missing column(s) to the CSV file or to the Excel Contrasts sheet.",
-            "For time-course data, put one row per time point and reuse paper_id/source_unit_id for related rows.",
-            "Supported beginner aliases include source_unit_id->paper_id, time_h->duration_h, condition->hypoxia_modality, and include->include_in_analysis.",
-        ],
+        fixes=fixes,
     )
+
+
+DEG_TABLE_HEADER_HINTS = frozenset(
+    {
+        "adj.p.val",
+        "adjpval",
+        "avgexpr",
+        "basemean",
+        "fdr",
+        "gene",
+        "gene_id",
+        "gene_symbol",
+        "log2foldchange",
+        "logcpm",
+        "logfc",
+        "p.value",
+        "padj",
+        "pvalue",
+    }
+)
+
+
+def _looks_like_deg_table(columns: list[Any]) -> bool:
+    """Report whether these headers look like a DEG results table."""
+
+    seen = {str(column).strip().lower() for column in columns}
+    return len(seen & DEG_TABLE_HEADER_HINTS) >= 2
 
 
 def _validate_catalog_required_values(catalog: pd.DataFrame, include_mask: pd.Series, path: Path) -> None:
@@ -975,7 +1034,7 @@ def read_catalog(path: str | Path) -> pd.DataFrame:
     frame = _read_catalog_frame(path)
     _reject_ambiguous_headers(frame, path)
     catalog = _normalize_catalog_columns(frame)
-    _validate_catalog_columns(catalog, path)
+    _validate_catalog_columns(catalog, path, file_columns=list(frame.columns))
     return catalog[CATALOG_COLUMNS]
 
 
@@ -1131,6 +1190,61 @@ def _validate_source_columns(
 # and the count alone rejects a twenty-thousand-row table over three.
 NON_NUMERIC_REJECT_SHARE = 0.10
 NON_NUMERIC_REJECT_MINIMUM = 3
+
+
+
+
+def _count_normalized_gene_symbols(harmonized: pd.DataFrame) -> int:
+    """Count genes whose stored symbol differs from the label the source carried.
+
+    Repairing "9-Sep" to SEPTIN9 changes the name the reader will search for, so
+    the run has to be able to say how often it happened.
+    """
+
+    if not {"input_gene_label", "gene_symbol"}.issubset(harmonized.columns):
+        return 0
+    renamed: set[str] = set()
+    labels = harmonized["input_gene_label"].tolist()
+    symbols = harmonized["gene_symbol"].tolist()
+    for label, symbol in zip(labels, symbols):
+        text = "" if label is None or (not isinstance(label, str) and pd.isna(label)) else str(label)
+        target = "" if symbol is None or (not isinstance(symbol, str) and pd.isna(symbol)) else str(symbol)
+        if not text.strip() or not target.strip():
+            continue
+        parts = [part.strip().upper() for part in text.split(";") if part.strip()]
+        if any(part != target for part in parts):
+            renamed.add(target)
+    return len(renamed)
+
+
+def _report_all_missing_source_files(catalog: pd.DataFrame, catalog_path: Path) -> None:
+    """Report every active row whose source table is missing, not just the first.
+
+    Leaving the Excel template's example rows in place is the commonest beginner
+    mistake, and it leaves more than one broken path behind. Reporting them one at
+    a time turned a single edit into a fix-and-re-run loop, so collect the whole
+    set before raising. Rows that exist but are not regular files are left to the
+    per-row check, which explains what the path is instead.
+    """
+
+    problems: list[str] = []
+    for row in catalog.to_dict(orient="records"):
+        source_path = _resolve_source_path(row["source_path"], catalog_path)
+        if source_path.exists():
+            continue
+        problems.append(_source_path_problem(row, source_path, catalog_path, "but that file does not exist."))
+    if not problems:
+        return
+    raise DegoraConfigError(
+        "source DEG table file was not found",
+        problems=problems,
+        fixes=[
+            "Check the file path in the Contrasts sheet.",
+            "Relative paths are resolved from the Excel/CSV config folder, then the current folder.",
+            "If the file was moved, update source_path rather than editing analysis outputs by hand.",
+            "Delete the template's example rows, or set their include column to no, before your own rows are run.",
+        ],
+    )
 
 
 def _require_readable_source_file(source_path: Path, row: dict[str, Any], catalog_path: Path) -> None:
@@ -1348,6 +1462,7 @@ def validate_catalog_inputs(
             fixes=["Set include_in_analysis/include to yes for at least one contrast row."],
         )
     _validate_generated_replicate_provenance(catalog, catalog_path)
+    _report_all_missing_source_files(catalog, catalog_path)
 
     checked_sources: list[str] = []
     rows = catalog.to_dict(orient="records")
@@ -1441,6 +1556,7 @@ def validate_catalog_inputs(
         "required_source_table_mappings": _format_source_mapping_contract(REQUIRED_SOURCE_TABLE_MAPPINGS),
         "optional_source_table_mappings": _format_source_mapping_contract(OPTIONAL_SOURCE_TABLE_MAPPINGS),
         "gold_panel_status": gold_panel["status"],
+        "n_panel_rows": int(gold_panel.get("n_panel_rows", 0) or 0),
         "gold_panel_source": gold_panel["source"],
         "gold_panel_gene_count": len(gold_panel["genes"]),
         "gold_panel_reason": gold_panel["reason"],
@@ -1506,6 +1622,7 @@ def _run_slice_locked(catalog_path: Path, output_dir: Path, harmonized_dir: Path
             fixes=["Set include_in_analysis/include to yes for at least one contrast row."],
         )
     _validate_generated_replicate_provenance(catalog, catalog_path)
+    _report_all_missing_source_files(catalog, catalog_path)
 
     harmonized_tables = []
     source_inputs: list[Path] = []
@@ -1663,6 +1780,7 @@ def _run_slice_locked(catalog_path: Path, output_dir: Path, harmonized_dir: Path
         "time_course_selection_warning_fraction": TIME_COURSE_RETENTION_WARNING_FRACTION,
         "rank_universe_warnings": rank_universe_warnings,
         "gene_symbol_collapse_warnings": gene_symbol_collapse_warnings,
+        "n_gene_symbols_normalized": _count_normalized_gene_symbols(all_harmonized),
         "unusable_row_warnings": unusable_row_warnings,
         # rows_before minus the harmonized count used to be the only way to see
         # this, and it could not say which column was responsible.
@@ -1683,6 +1801,7 @@ def _run_slice_locked(catalog_path: Path, output_dir: Path, harmonized_dir: Path
         "warnings": input_warnings,
         "optional_output_warnings": optional_output_warnings,
         "gold_panel_status": gold_panel["status"],
+        "n_panel_rows": int(gold_panel.get("n_panel_rows", 0) or 0),
         "gold_panel_source": gold_panel["source"],
         "gold_panel_gene_count": len(gold_panel["genes"]),
         "gold_panel_reason": gold_panel["reason"],

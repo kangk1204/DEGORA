@@ -20,7 +20,11 @@ SHEET_NOTES = {
     "README": "# Start here: quick steps for editing and running this workbook.",
     "Project": "# Project-level settings. Defaults are OK for a first run.",
     "Contrasts": "# Main input: one row per DEG table or contrast; required columns are gene/effect/p-value mappings.",
-    "GoldPanel": "# Optional: known marker genes for recall checks only; leave empty if unavailable.",
+    "GoldPanel": (
+        "# Optional: known marker genes for recall checks only; leave empty if unavailable. "
+        "IMPORTANT: a row is used only when locked is yes or blank - locked=no drops it. "
+        "Legacy symbols are fine: SEPT9, MARCH1 and DEC1 resolve to the symbols DEGORA scores."
+    ),
     "AdvancedSettings": "# Optional advanced settings. Most users can keep the defaults.",
     "ColumnGuide": "# Reference guide for required and optional columns.",
 }
@@ -161,14 +165,14 @@ def _gold_rows() -> pd.DataFrame:
                 "gene_symbol": "ISG15",
                 "expected_direction": "up",
                 "role": "optional_marker",
-                "evidence_basis": "Example IFN marker; set locked=yes only after replacing with your panel.",
+                "evidence_basis": "Example row: replace with your own marker, then set locked to yes.",
                 "locked": "no",
             },
             {
                 "gene_symbol": "IFIT1",
                 "expected_direction": "up",
                 "role": "optional_marker",
-                "evidence_basis": "Example IFN marker; set locked=yes only after replacing with your panel.",
+                "evidence_basis": "Example row: replace with your own marker, then set locked to yes.",
                 "locked": "no",
             },
         ]
@@ -206,9 +210,22 @@ def _readme_rows() -> pd.DataFrame:
             {"step": 5, "instruction": "Keep source_unit_id the same for rows from the same paper or dataset."},
             {"step": 6, "instruction": "If the paper only gives significant genes, set table_scope to deg_only."},
             {"step": 7, "instruction": "For microarray DEG tables, set assay_type=microarray and pipeline=limma_microarray."},
-            {"step": 8, "instruction": "Run: degora validate degora_config.xlsx"},
-            {"step": 9, "instruction": "Run: degora run degora_config.xlsx"},
-            {"step": 10, "instruction": "Run: degora serve outputs/results/degora-run/degora_scores.db"},
+            {
+                "step": 8,
+                "instruction": (
+                    "GoldPanel is optional. A row counts only when locked is yes or blank; see ColumnGuide."
+                ),
+            },
+            {
+                "step": 9,
+                "instruction": (
+                    "Results are ranked by quality_weighted_degora_rank. degora_rank is the unweighted "
+                    "audit lane, not the headline rank."
+                ),
+            },
+            {"step": 10, "instruction": "Run: degora validate degora_config.xlsx"},
+            {"step": 11, "instruction": "Run: degora run degora_config.xlsx"},
+            {"step": 12, "instruction": "Run: degora serve outputs/results/degora-run/degora_scores.db"},
         ]
     )
 
@@ -375,6 +392,30 @@ def _guide_rows() -> pd.DataFrame:
             {"column": "pipeline", "required": "no", "checked_where": "metadata", "meaning": "DEG analysis pipeline or method, such as DESeq2 or limma_microarray."},
             {"column": "notes", "required": "no", "checked_where": "metadata", "meaning": "Free-text note carried through to provenance; not used in scoring."},
             {"column": "include", "required": "no", "checked_where": "validated setting", "meaning": "yes to include, no to exclude."},
+            {
+                "column": "gene_symbol",
+                "required": "yes (only if GoldPanel is used)",
+                "checked_where": "GoldPanel sheet",
+                "meaning": (
+                    "Marker gene for the optional recall check. Legacy symbols are accepted: SEPT9, "
+                    "MARCH1 and DEC1 resolve to SEPTIN9, MARCHF1 and BHLHE40 before matching."
+                ),
+            },
+            {
+                "column": "locked",
+                "required": "no",
+                "checked_where": "GoldPanel sheet",
+                "meaning": (
+                    "yes or blank uses the row for curated recall; no drops it. If every GoldPanel row "
+                    "says no, the whole panel is ignored and the run reports it as a warning."
+                ),
+            },
+            {
+                "column": "expected_direction",
+                "required": "no",
+                "checked_where": "GoldPanel sheet",
+                "meaning": "up or down; recorded beside the observed direction for review, not used in scoring.",
+            },
         ]
     )
 

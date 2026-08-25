@@ -41,6 +41,7 @@ from .discovery import (
     SpeciesSpec,
     _query_terms,
     classify_filename,
+    describe_transport_error,
     inspect_candidate_bytes,
     inspect_upstream_bytes,
     normalize_species,
@@ -315,9 +316,8 @@ class SafePublicTransport:
                     self.sleep(_retry_delay_seconds(exc, attempt))
         if last_error is None:  # pragma: no cover - retries is clamped to >= 1
             raise DiscoveryUnavailableError("public source request was never attempted")
-        detail = f"HTTP {last_error.code}" if isinstance(last_error, urllib.error.HTTPError) else type(last_error).__name__
         raise DiscoveryUnavailableError(
-            f"public source request failed after {self.retries} attempt(s) ({detail})"
+            f"request failed after {self.retries} attempt(s): {describe_transport_error(last_error)}"
         ) from last_error
 
     def get_json(

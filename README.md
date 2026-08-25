@@ -127,16 +127,20 @@ environment can be deleted.
 interpreter, creates the virtual environment, installs the package, builds the
 demo, chooses a free port, and opens the dashboard.
 
-From a checkout:
+From a checkout, either path works. `degora_quickstart.sh` in the repository
+root forwards to the real script under `scripts/`, so the command is the same
+whether or not you remember where the file lives:
 
 ```bash
 bash scripts/degora_quickstart.sh
+bash degora_quickstart.sh          # same thing, from the checkout root
 ```
 
 Without a checkout, download just that one file and run it; it clones the
 repository into `./DEGORA` first:
 
 ```bash
+curl -fsSLO https://raw.githubusercontent.com/kangk1204/DEGORA/main/scripts/degora_quickstart.sh
 bash degora_quickstart.sh
 ```
 
@@ -278,6 +282,27 @@ slice_harmonized.csv
 slice_metrics.json
 ```
 
+### Optional GoldPanel
+
+The Excel template carries a `GoldPanel` sheet for marker genes you already
+trust. It changes nothing about the ranking; it adds a recall check to
+`DEGORA_output.xlsx` (`Curated_lookup` and the `curated_*` rows of
+`Run_summary`) so you can see where your known genes landed.
+
+Two things decide whether the panel is used at all:
+
+- **`locked`** — a row counts when `locked` is `yes` or blank. `locked=no` drops
+  that row, and if every row says `no` the whole panel is ignored. The run then
+  says so as a non-fatal warning rather than reporting an empty panel silently.
+- **`gene_symbol`** — required. Legacy and Excel-damaged symbols are fine:
+  `SEPT9`, `MARCH1`, `DEC1`, `9-Sep` and `1-Mar` all resolve to the symbol
+  DEGORA scored. `Curated_lookup` shows the symbol you wrote in `gene_symbol`
+  and the symbol it resolved to in `resolved_gene_symbol`.
+
+`expected_direction` is recorded beside the observed direction for review and is
+not used in scoring. A panel is optional in the ordinary sense: leaving the sheet
+empty is a valid, complete run.
+
 ## Search public Human or Mouse records
 
 Search one species at a time:
@@ -328,7 +353,7 @@ an intentionally different replication floor is required.
 
 The review panel asks each prepared table only for the confirmations that actually apply to it, and keeps the settings most tables never touch behind a collapsed **Advanced settings** panel that opens by itself if any of them is already set. Where a linked series reports how many samples it holds, that total is shown beside the group-size boxes and the two numbers you enter are checked against it; the split between groups is never guessed, because a results table has one row per gene and the number feeds the source weight directly. A table whose columns were recognised and left alone is asked one thing; a table whose effect column does not say it is log2, or whose adjusted p-value is standing in for a raw one, is asked about that as well. Contrast direction is the exception: it is asked for every table, because reversing it inverts every up/down call while leaving results that look entirely reasonable.
 
-The browser opens on **Discover**. Search results are globally ranked before the first page of 10 is shown. **Narrow these results** filters the records already found by title, author, journal or year without running a new search, and reports how many of the total match. The compact table displays publication metadata, linked-data availability, estimated DEG-input readiness, and an **Inspect** action. **Run separate Human + Mouse searches** launches two independent searches; it never pools their records or scores.
+The browser opens on **Evidence atlas** when the database already holds scored genes, which is what `degora serve` after a run is for, and on **Discover** when it does not. Either tab is one click away at any time. Search results are globally ranked before the first page of 10 is shown. **Narrow these results** filters the records already found by title, author, journal or year without running a new search, and reports how many of the total match. The compact table displays publication metadata, linked-data availability, estimated DEG-input readiness, and an **Inspect** action. **Run separate Human + Mouse searches** launches two independent searches; it never pools their records or scores.
 
 While a search runs, the results panel shows the current stage, a completion percentage, and elapsed time, driven by the search job's own progress reporting; `GET /api/discovery/jobs/{job_id}` exposes the same `progress` and `message` fields. At most 20 publications can be selected at a time, and that limit applies across pages: the selection counter reports how many of them are on the page you are looking at, and rows that cannot be selected are shown disabled with the reason.
 
@@ -359,7 +384,7 @@ Create or sign in to an NCBI account and open <https://account.ncbi.nlm.nih.gov/
 
 ## Reproduction boundary
 
-The included synthetic demo is numerically and semantically reproducible from this repository across the supported Python environments. Repeating a run over the same inputs reproduces `degora_gene_scores.csv`, `degora_scores.db`, and `DEGORA_output.xlsx` byte for byte: the workbook's own timestamps and its archive member timestamps are pinned rather than taken from the clock. Larger external datasets are not bundled here and must be obtained from their original providers before they can be analyzed.
+The included synthetic demo is numerically and semantically reproducible from this repository across the supported Python environments. Repeating a run over the same inputs **in the same environment** reproduces `degora_gene_scores.csv`, `degora_scores.db`, and `DEGORA_output.xlsx` byte for byte: the workbook's own timestamps and its archive member timestamps are pinned rather than taken from the clock. Across *different* dependency versions the results are numerically identical but not byte-identical: NumPy and SciPy differ in the last one or two digits of some floating-point fields, which changes the text a float is written as. Ranks, tiers, directions and every displayed value are unaffected. Compare runs from different environments by value at a sane precision, not by checksum; the `.provenance.json` sidecars checksum the *inputs*, which are stable, and the environment that produced each output is recorded beside it. Larger external datasets are not bundled here and must be obtained from their original providers before they can be analyzed.
 
 ## Interpretation boundaries
 
@@ -367,6 +392,14 @@ The included synthetic demo is numerically and semantically reproducible from th
 - The primary output rank is `quality_weighted_degora_rank`. The earlier
   `degora_rank` column is the unweighted audit/reference lane, even when a CSV
   viewer displays it first.
+- Gene symbols are resolved to one current symbol before anything is compared.
+  Excel date damage is undone (`9-Sep` -> `SEPTIN9`) and legacy symbols are
+  updated (`SEPT9` -> `SEPTIN9`, `MARCH1` -> `MARCHF1`, `DEC1` -> `BHLHE40`), so
+  two tables that spell the same gene differently still count as one gene. The
+  same resolution is applied to the optional GoldPanel and to browser/API
+  lookups, so searching `SEPT9` finds the gene DEGORA scored. The label each
+  source table actually carried is kept in the `input_gene_label` column of
+  `slice_harmonized.csv`, and `degora run` reports how many symbols it changed.
 - Related contrasts are collapsed by source unit before cross-source aggregation.
 - `time_course_mode` chooses which contrasts of a source unit are kept before that collapse, and every row sharing a source unit must use the same mode. `mean` keeps all of them; `early` and `late` keep all gene rows at that source unit's globally smallest and largest numeric `duration_h`; `peak_mean` keeps each gene's strongest half by `|signed_z|`, at least two. `peak_mean` selects on statistical strength, not effect size: `signed_z` is derived from the p-value, so a time point with a large fold change but a weak p-value is not the peak.
 - A row with `pvalue = 1` or zero effect is neutral evidence and does not contribute directional signed-z support. Values below `1e-300` are floored and reported in the run warnings.
@@ -392,6 +425,46 @@ make smoke
 
 ### Unreleased
 
+Fixes from a first-run review of v0.4.17 by a reader following this README with
+no prior knowledge of the tool.
+
+- Gene-symbol resolution is now applied in every direction, not only on input.
+  The optional GoldPanel and browser/API gene lookups resolve legacy and
+  Excel-damaged symbols the same way source tables do, so a panel written as
+  `SEPT9` no longer reports the gene as absent while the run ranks it as
+  `SEPTIN9`, and `/api/genes/SEPT9` answers instead of returning 404. The label
+  each source table carried is preserved in the new `input_gene_label` column of
+  `slice_harmonized.csv`, and `degora run` reports how many symbols it changed.
+- `degora serve` refuses a path that is not a DEGORA score database instead of
+  binding and then failing every API call with a 500 behind a dashboard that
+  loaded normally.
+- Validation reports every active row whose source table is missing, rather than
+  stopping at the first, so leaving the template's example rows in place is one
+  fix instead of one fix per row.
+- The missing-required-column error lists the headers the file actually had.
+  Optional catalog defaults are injected before that check, so the message used
+  to name `source_unit_id` as available in the same breath as calling it
+  missing. A file whose headers look like a DEG results table now says so.
+- Search failures name the cause and say what to do about it, in the same
+  `Problems:` / `How to fix:` shape as every other DEGORA error. A blocked proxy
+  or an offline machine is no longer reported as "retry later", and transport
+  failures no longer surface a bare Python exception class name.
+- Duplicate rows for one gene whose log2 fold changes disagree in sign now
+  populate `gene_symbol_collapse_warning`. Collapsing them is unchanged; leaving
+  a directional conflict unreported was the problem.
+- A GoldPanel whose rows are all `locked=no` is reported as a non-fatal warning.
+  `locked` is now documented in the template's `ColumnGuide` sheet, in the
+  `GoldPanel` sheet note, and in this README, instead of only inside the example
+  row the template tells you to replace.
+- The browser opens on **Evidence atlas** when the database holds scored genes,
+  which is what `degora serve` after a run is for. Discover remains the landing
+  view for a database with nothing scored yet.
+- `degora_quickstart.sh` in the repository root forwards to
+  `scripts/degora_quickstart.sh`, so the command works from a fresh checkout's
+  root as well.
+- `degora run` names the primary rank column in its completion summary, and the
+  reproduction boundary now states that results are numerically identical but
+  not byte-identical across different NumPy/SciPy versions.
 - GitHub Actions now uses the official Node 24 action releases pinned to immutable
   commit SHAs instead of floating Node 20 major tags.
 - The browser documentation now states its fixed two-independent-source-unit

@@ -11,6 +11,7 @@ import copy
 import csv
 import gzip
 import hashlib
+import errno
 import http.client
 import io
 import json
@@ -27,6 +28,7 @@ import urllib.request
 import zipfile
 import zlib
 from collections import OrderedDict
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -116,6 +118,58 @@ class DiscoveryUnsafeArchiveError(DiscoveryError):
 
 class DiscoveryUnavailableError(RuntimeError):
     """A remote discovery source could not be resolved after bounded retries."""
+
+
+NETWORK_HELP_LINES = (
+    "How to fix:",
+    "- Check that this machine can reach the internet, and that a proxy or firewall is not blocking"
+    " ncbi.nlm.nih.gov.",
+    "- Behind a proxy, set HTTPS_PROXY (and NO_PROXY for internal hosts) before running degora.",
+    "- Set NCBI_EMAIL, and optionally NCBI_API_KEY, to identify your requests and raise NCBI rate limits.",
+    "- Public-data search is optional. `degora init`, `degora validate`, `degora run` and `degora serve`"
+    " all work offline with DEG tables you already have.",
+)
+
+
+def network_failure_message(headline: str, causes: Sequence[str] = ()) -> str:
+    """Format a search failure the same way config errors are formatted.
+
+    Every other DEGORA failure names the cause and says what to do about it. A
+    blocked search used to report only that providers were "unavailable", which
+    reads as a remote outage even when the request never left the machine.
+    """
+
+    lines = [headline]
+    unique_causes = list(dict.fromkeys(str(cause).strip() for cause in causes if str(cause).strip()))
+    if unique_causes:
+        lines.extend(["", "Problems:", *(f"- {cause}" for cause in unique_causes)])
+    lines.extend(["", *NETWORK_HELP_LINES])
+    return "\n".join(lines)
+
+
+def describe_transport_error(exc: BaseException) -> str:
+    """Describe a transport failure without leaking a URL, path or host detail."""
+
+    if isinstance(exc, urllib.error.HTTPError):
+        return f"the server answered HTTP {exc.code}"
+    if isinstance(exc, TimeoutError):
+        return "the request timed out"
+    if isinstance(exc, urllib.error.URLError):
+        reason = exc.reason
+        if isinstance(reason, TimeoutError):
+            return "the request timed out"
+        if isinstance(reason, OSError) and getattr(reason, "errno", None) is not None:
+            return (
+                "the connection could not be established "
+                f"({errno.errorcode.get(reason.errno, reason.errno)}); a proxy, firewall or DNS "
+                "failure is the usual cause"
+            )
+        return (
+            "the connection could not be established; a proxy, firewall or DNS failure is the usual cause"
+        )
+    if isinstance(exc, OSError) and getattr(exc, "errno", None) is not None:
+        return f"the connection failed ({errno.errorcode.get(exc.errno, exc.errno)})"
+    return f"the request failed ({type(exc).__name__})"
 
 
 @dataclass(frozen=True)
@@ -356,14 +410,19 @@ class NcbiGeoClient:
                             self._cache.popitem(last=False)
                     return payload
                 except urllib.error.HTTPError as exc:
-                    last_error = f"HTTP {exc.code}"
+                    last_error = describe_transport_error(exc)
                     if exc.code not in {429, 500, 502, 503, 504}:
                         break
                 except (urllib.error.URLError, TimeoutError, OSError, http.client.HTTPException) as exc:
-                    last_error = type(exc).__name__
+                    last_error = describe_transport_error(exc)
                 if attempt < self.retries - 1:
                     self.sleep(min(2.0 * (attempt + 1), 6.0))
-            raise DiscoveryUnavailableError(f"NCBI request unresolved after {self.retries} attempt(s): {last_error}")
+            raise DiscoveryUnavailableError(
+                network_failure_message(
+                    f"NCBI could not be reached after {self.retries} attempt(s)",
+                    [last_error] if last_error else (),
+                )
+            )
 
     def get_json(self, url: str, *, max_bytes: int = MAX_JSON_BYTES) -> dict[str, Any]:
         payload = self.get_bytes(url, max_bytes=max_bytes)

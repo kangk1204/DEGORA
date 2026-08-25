@@ -236,7 +236,10 @@ def test_local_api_serves_health_gene_list_and_detail(tmp_path, monkeypatch) -> 
     assert 'const payload = await getJson("/api/meta");' in html
     assert "demo_search_keyword" in html
     assert "demo_search_species" in html
-    assert "void loadDiscoveryDefaults();" in html
+    # The dashboard still primes Discover defaults at boot; it now also uses the
+    # scored-gene count from that same payload to choose the landing view.
+    assert "loadDiscoveryDefaults()" in html
+    assert 'showView(Number.isFinite(scored) && scored > 0 ? "atlas" : "discover")' in html
     assert ".mobile-study-tools button { width: auto; min-width: 118px; }" in html
     assert 'id="exportGenes"' in html
     assert 'id="exportEvidence"' in html
@@ -378,9 +381,21 @@ def test_serve_requires_explicit_network_allow_for_non_loopback(tmp_path) -> Non
         serve(db, host="0.0.0.0", port=0, quiet=True)
 
 
+
+def _write_minimal_score_db(db_path) -> None:
+    """Write the smallest file `degora serve` accepts as a score database."""
+
+    with sqlite3.connect(db_path) as connection:
+        connection.execute("CREATE TABLE genes (gene_symbol TEXT)")
+        connection.execute("CREATE TABLE gene_evidence (gene_symbol TEXT)")
+        connection.execute("CREATE TABLE meta (key TEXT, value TEXT)")
+
+
 def test_serve_handles_keyboard_interrupt_cleanly(tmp_path, monkeypatch, capsys) -> None:
     db = tmp_path / "degora_scores.db"
-    db.write_bytes(b"stub")
+    # serve() refuses a path that is not a DEGORA score database before it binds,
+    # so this fixture needs a real one rather than a stub byte string.
+    _write_minimal_score_db(db)
     state = {"closed": False}
 
     class InterruptingServer:
@@ -515,7 +530,9 @@ def test_sqlite_readonly_uri_uses_path_as_uri(tmp_path, monkeypatch) -> None:
 
 def test_serve_prints_token_as_fragment_not_query(tmp_path, monkeypatch, capsys) -> None:
     db = tmp_path / "degora_scores.db"
-    db.write_bytes(b"stub")
+    # serve() refuses a path that is not a DEGORA score database before it binds,
+    # so this fixture needs a real one rather than a stub byte string.
+    _write_minimal_score_db(db)
     state = {"closed": False}
 
     class InterruptingServer:

@@ -24,6 +24,7 @@ from urllib.parse import parse_qs, parse_qsl, quote, unquote, urlencode, urlpars
 
 from . import format_version_info, runtime_version_info
 from .excel_export import EXCEL_ERROR_LITERALS
+from .harmonize import canonical_gene_symbol
 from .score_db import (
     PRIMARY_CONCORDANCE_COLUMN,
     PRIMARY_DIRECTION_COLUMN,
@@ -2429,8 +2430,10 @@ INDEX_HTML = """<!doctype html>
         if (!state.query && !$("discoveryQuery").value.trim()) {
           $("discoveryQuery").value = state.suggestedQuery;
         }
+        return meta;
       } catch (_) {
         // Demo search defaults are optional; the atlas and manual search remain usable.
+        return {};
       }
     }
 
@@ -4107,9 +4110,20 @@ INDEX_HTML = """<!doctype html>
     updateSortHeaders();
     initPanelResize();
     setSpecies("human");
-    void loadDiscoveryDefaults();
     discoveryOpened = true;
-    showView("discover");
+    // `degora serve <db>` follows a run, so a database that already holds scored
+    // genes is what the user asked to look at: open the atlas on it. Discover
+    // stays the landing view for a database with nothing scored yet.
+    void (async () => {
+      let scored = 0;
+      try {
+        const meta = await loadDiscoveryDefaults();
+        scored = Number((meta && meta.n_gene_scores) || 0);
+      } catch (_) {
+        scored = 0;
+      }
+      showView(Number.isFinite(scored) && scored > 0 ? "atlas" : "discover");
+    })();
   </script>
 </body>
 </html>
@@ -5519,8 +5533,15 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
                 where.append(f"{direction_column} = ?")
                 values.append(direction)
             if query:
-                where.append("gene_symbol LIKE ? ESCAPE '\\'")
-                values.append(f"%{_escape_like_literal(query)}%")
+                # A search for SEPT9 has to find the gene DEGORA actually scored it
+                # as (SEPTIN9). Both forms are matched so partial queries such as
+                # "SEPT" keep working unchanged.
+                terms = [query]
+                resolved = canonical_gene_symbol(query)
+                if resolved and resolved != query:
+                    terms.append(resolved)
+                where.append("(" + " OR ".join("gene_symbol LIKE ? ESCAPE '\\'" for _ in terms) + ")")
+                values.extend(f"%{_escape_like_literal(term)}%" for term in terms)
 
             where_clause = " AND ".join(where)
             count = connection.execute(f"SELECT COUNT(*) FROM genes WHERE {where_clause}", values).fetchone()[0]
@@ -5539,19 +5560,34 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
         if len(symbol) > 128:
             raise ValueError("gene symbol is too long; maximum length is 128 characters")
         with closing(_connect(db_path or self.server.db_path)) as connection:
+            matched = symbol
             gene = _one_row(connection.execute("SELECT * FROM genes WHERE gene_symbol = ?", [symbol]))
+            if gene is None:
+                # A legacy or Excel-date symbol names the same gene as the current
+                # symbol the run scored; resolve it rather than reporting a 404.
+                resolved = canonical_gene_symbol(symbol)
+                if resolved and resolved != symbol:
+                    gene = _one_row(
+                        connection.execute("SELECT * FROM genes WHERE gene_symbol = ?", [resolved])
+                    )
+                    if gene is not None:
+                        matched = resolved
             if gene is None:
                 raise FileNotFoundError(f"gene not found: {symbol[:64]}")
             gene = _normalize_gene_api_record(gene)
             evidence = _row_dicts(
                 connection.execute(
                     "SELECT * FROM gene_evidence WHERE gene_symbol = ? ORDER BY source_unit_id, study_id",
-                    [symbol],
+                    [matched],
                 )
             )
         if self.server.server_address[0] not in LOOPBACK_HOSTS:
             evidence = _redact_records_paths_for_network(evidence)
-        return {"gene": gene, "evidence": evidence}
+        payload: dict[str, Any] = {"gene": gene, "evidence": evidence}
+        if matched != symbol:
+            payload["requested_gene_symbol"] = symbol
+            payload["resolved_gene_symbol"] = matched
+        return payload
 
 
 _DISCOVERY_PROCESS_LOCK_GUARD = threading.Lock()
@@ -5805,6 +5841,46 @@ def _is_loopback_host(value: str) -> bool:
     return bool(address.is_loopback or (mapped is not None and mapped.is_loopback))
 
 
+class ScoreDatabaseError(ValueError):
+    """The path given to `degora serve` is not a DEGORA score database."""
+
+
+REQUIRED_SCORE_DB_TABLES = ("genes", "gene_evidence", "meta")
+
+
+def _require_degora_score_database(db_path: Path) -> None:
+    """Refuse to serve a file that is not a DEGORA score database.
+
+    Existence alone was checked before, so a mistyped path to a DEG table started a
+    server that returned the dashboard with HTTP 200 and then failed every single
+    API call with a 500. That is the hardest failure to diagnose, because the page
+    loads. Fail here instead, before binding, with the command that makes the file.
+    """
+
+    fix = (
+        "Pass the degora_scores.db written by `degora run` "
+        "(for example: degora serve outputs/results/degora-run/degora_scores.db)."
+    )
+    if db_path.is_dir():
+        raise ScoreDatabaseError(f"DEGORA database path is a directory, not a database file: {db_path}\n{fix}")
+    try:
+        with closing(sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)) as connection:
+            names = {
+                str(row[0])
+                for row in connection.execute("SELECT name FROM sqlite_master WHERE type IN ('table', 'view')")
+            }
+    except sqlite3.DatabaseError as exc:
+        raise ScoreDatabaseError(
+            f"{db_path} is not a DEGORA score database (SQLite could not read it: {exc}).\n{fix}"
+        ) from exc
+    missing = [table for table in REQUIRED_SCORE_DB_TABLES if table not in names]
+    if missing:
+        raise ScoreDatabaseError(
+            f"{db_path} is a SQLite file but not a DEGORA score database; it is missing "
+            f"{', '.join(missing)}.\n{fix}"
+        )
+
+
 def serve(
     db_path: str | Path,
     host: str = "127.0.0.1",
@@ -5818,6 +5894,7 @@ def serve(
     if not db_path.exists():
         # Fail before binding so a missing DB never serves (and never leaks its path over HTTP).
         raise FileNotFoundError(f"DEGORA database does not exist: {db_path}")
+    _require_degora_score_database(db_path)
     token = access_token
     if host not in LOOPBACK_HOSTS:
         if not allow_network:

@@ -142,7 +142,7 @@ def test_safe_public_transport_normalizes_network_failures_without_secret_urls()
     )
     url = "https://eutils.ncbi.nlm.nih.gov/test?api_key=do-not-leak"
 
-    with pytest.raises(DiscoveryUnavailableError, match="public source request failed") as exc_info:
+    with pytest.raises(DiscoveryUnavailableError, match="request failed after") as exc_info:
         transport.get_bytes(url)
 
     assert "do-not-leak" not in str(exc_info.value)

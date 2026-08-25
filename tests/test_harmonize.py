@@ -386,8 +386,12 @@ def test_harmonize_does_not_warn_on_gene_level_rnaseq_duplicate_collapse() -> No
     # warning, while the rule actually applied is still recorded in metadata for audit.
     frame = pd.DataFrame(
         {
+            # Same sign on both duplicate rows: this test is about probe-collapse
+            # noise and the NaN probe_collapse cell, not about direction. Duplicate
+            # rows that disagree on sign are a separate warning, covered by
+            # test_harmonize_warns_when_duplicate_rows_disagree_on_direction.
             "gene": ["GENEX", "GENEX", "RPL13A"],
-            "log2FoldChange": [2.5, -3.0, 0.1],
+            "log2FoldChange": [2.5, 3.0, 0.1],
             "pvalue": [1e-5, 1e-4, 0.9],
             "padj": [0.001, 0.01, 0.9],
         }

@@ -294,7 +294,7 @@ def test_search_publications_fails_when_every_search_provider_is_unavailable() -
         def search(self, query, species, limit):
             raise OSError("request failed?api_key=do-not-leak")
 
-    with pytest.raises(DiscoveryUnavailableError, match="all publication search providers") as exc_info:
+    with pytest.raises(DiscoveryUnavailableError, match="no publication search provider could be reached") as exc_info:
         search_publications("ifn", "human", providers=[FailingProvider()])
 
     assert "do-not-leak" not in str(exc_info.value)

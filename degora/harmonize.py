@@ -560,6 +560,42 @@ def _clean_gene_symbol(values: pd.Series) -> pd.Series:
     )
 
 
+def canonical_gene_symbol(value: Any) -> str:
+    """Return the symbol DEGORA stores for one user-supplied gene label.
+
+    This is the single definition of "the same gene" across DEGORA. Source DEG
+    tables, the optional GoldPanel and browser/API lookups all pass through it,
+    so a panel written as ``SEPT9`` and a table written as ``9-Sep`` resolve to
+    the one symbol that is actually scored (``SEPTIN9``). Returns "" when the
+    value carries no usable identifier.
+    """
+
+    if value is None:
+        return ""
+    try:
+        if pd.isna(value):
+            return ""
+    except (TypeError, ValueError):
+        # Arrays and other non-scalars: fall through to the string form below.
+        pass
+    repaired = _repair_excel_date_gene_symbol(value)
+    text = re.sub(r"\.\d+$", "", str(repaired).strip()).upper()
+    return "" if text in {"", "NAN", "NONE", "NA", "<NA>"} else text
+
+
+def original_gene_label(value: Any) -> str:
+    """Return the gene label exactly as the source table carried it."""
+
+    if value is None:
+        return ""
+    try:
+        if pd.isna(value):
+            return ""
+    except (TypeError, ValueError):
+        pass
+    return str(value).strip()
+
+
 def _collapse_duplicate_gene_symbols(out: pd.DataFrame, study_meta: dict[str, Any]) -> pd.DataFrame:
     """Collapse repeated gene symbols before rank calculation.
 
@@ -608,6 +644,20 @@ def _collapse_duplicate_gene_symbols(out: pd.DataFrame, study_meta: dict[str, An
     collapsed = frame.drop_duplicates("gene_symbol", keep="first").drop(columns=["_abs_lfc", "_source_row_order"])
     collapsed["n_source_rows_for_gene"] = collapsed["_n_source_rows_for_gene"].astype(int)
     collapsed = collapsed.drop(columns=["_n_source_rows_for_gene"])
+    if "input_gene_label" in frame.columns:
+        # Two rows can reach one symbol from different labels (a table carrying
+        # both "SEPT9" and "9-Sep"). Keeping only the surviving row's label would
+        # hide the other one, so record every distinct label the gene came from.
+        merged_labels = (
+            frame.loc[frame["input_gene_label"].astype("string").fillna("").ne(""), ["gene_symbol", "input_gene_label"]]
+            .astype({"input_gene_label": "string"})
+            .drop_duplicates()
+            .groupby("gene_symbol", dropna=False)["input_gene_label"]
+            .agg(lambda labels: ";".join(sorted(dict.fromkeys(str(label) for label in labels))))
+        )
+        collapsed["input_gene_label"] = (
+            collapsed["gene_symbol"].map(merged_labels).fillna(collapsed["input_gene_label"])
+        )
     # Record what was actually applied (best-probe) and what the config declared, so the
     # two can never silently disagree downstream.
     collapsed["gene_symbol_collapse_rule"] = GENE_SYMBOL_COLLAPSE_RULE
@@ -616,6 +666,7 @@ def _collapse_duplicate_gene_symbols(out: pd.DataFrame, study_meta: dict[str, An
     study_id = str(study_meta.get("study_id", ""))
     study_assay = str(study_meta.get("assay_type", "") or "").strip().lower()
     requested_norm = _normalize_collapse_label(requested_probe_collapse)
+    sign_conflict_genes = _count_sign_conflicting_genes(out, counts)
     if requested_probe_collapse == "":
         # probe_collapse genuinely matters for microarray sources, so nudge the user to declare
         # it. For gene-level (RNA-seq) sources, duplicate gene symbols are an ordinary occurrence
@@ -651,8 +702,32 @@ def _collapse_duplicate_gene_symbols(out: pd.DataFrame, study_meta: dict[str, An
             "(e.g. derive_microarray_deg.py --collapse-rule median_expression) so the declared rule is the one "
             "actually applied; otherwise the recorded collapse rule will not match probe_collapse."
         )
+    if sign_conflict_genes:
+        # Directional consistency is the whole point of the score, so a source
+        # whose own duplicate rows disagree about the sign must say so even when
+        # the collapse rule itself is unremarkable.
+        conflict_note = (
+            f"{study_id}: {sign_conflict_genes:,} gene(s) had duplicate rows with opposite log2 "
+            f"fold-change signs; {GENE_SYMBOL_COLLAPSE_RULE} kept the most significant row, so the "
+            "direction reported for those genes comes from one row of a disagreeing pair. Check "
+            "whether the table stacks more than one contrast."
+        )
+        warning = f"{warning} {conflict_note}".strip() if warning else conflict_note
     collapsed["gene_symbol_collapse_warning"] = warning
     return collapsed
+
+
+def _count_sign_conflicting_genes(out: pd.DataFrame, counts: pd.Series) -> int:
+    """Count genes whose duplicate rows disagree about the direction of change."""
+
+    duplicated = counts.gt(1)
+    if not bool(duplicated.any()):
+        return 0
+    signs = np.sign(pd.to_numeric(out["lfc"], errors="coerce")).loc[duplicated]
+    grouped = signs.groupby(out.loc[duplicated, "gene_symbol"], dropna=False)
+    highest = grouped.max()
+    lowest = grouped.min()
+    return int(((highest > 0) & (lowest < 0)).sum())
 
 
 # A gene appearing twice is ordinary; a block of rows per gene is a stacked table.
@@ -809,6 +884,7 @@ def harmonize_frame(frame: pd.DataFrame, mapping: TableMapping, study_meta: dict
             + _row_label_hint(frame)
         )
     genes = _clean_gene_symbol(frame[gene_column])
+    input_gene_labels = frame[gene_column].map(original_gene_label)
     lfc = _series_as_numeric(frame, mapping.lfc_column)
     pvalue = _series_as_numeric(frame, mapping.p_column)
     _reject_invalid_unit_interval(
@@ -846,6 +922,10 @@ def harmonize_frame(frame: pd.DataFrame, mapping: TableMapping, study_meta: dict
             "paper_id": study_meta.get("paper_id", study_meta["study_id"]),
             "source_unit_id": "" if pd.isna(study_meta.get("source_unit_id")) else str(study_meta.get("source_unit_id") or "").strip(),
             "gene_symbol": genes,
+            # The label the source table actually carried. gene_symbol is the
+            # canonical symbol DEGORA scores; without this column a repaired
+            # "9-Sep" -> SEPTIN9 rename left no trace in any user-facing output.
+            "input_gene_label": input_gene_labels,
             "lfc": lfc,
             "pvalue": pvalue,
             "padj": padj,

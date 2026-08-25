@@ -19,3 +19,15 @@ search-human/
 search-mouse/
 analysis-human/
 analysis-mouse/
+outputs/
+# Default harmonized_dir from the Excel template's Project sheet: `degora run`
+# inside a checkout writes here, so a first run must not dirty the working tree.
+data/deg/harmonized/
+
+# Local credential/token scratch files. Never commit these.
+gitignore_git.txt
+*token*.txt
+*.token
+.env
+.env.*
+!.env.example

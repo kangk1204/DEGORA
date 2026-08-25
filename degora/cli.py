@@ -228,6 +228,14 @@ def _run_warning_messages(metrics: dict[str, Any]) -> list[str]:
         warning_values.append(
             metrics.get("gold_panel_reason") or "GoldPanel could not support curated recall metrics"
         )
+    elif metrics.get("gold_panel_status") == "not_provided" and int(metrics.get("n_panel_rows", 0) or 0):
+        # A filled GoldPanel whose rows all say locked=no is dropped in full. That
+        # was visible only inside DEGORA_output.validation.txt, so a user who set
+        # up a panel had no way to learn from the run that it was never used.
+        warning_values.append(
+            metrics.get("gold_panel_reason")
+            or "GoldPanel rows were found but none are locked; curated recall was not calculated"
+        )
 
     try:
         clipped_rows = int(metrics.get("pvalue_clipped_rows", 0) or 0)
@@ -557,6 +565,15 @@ def _run_pipeline(
     if workbook_summary is not None:
         print(f"- Excel workbook: {Path(workbook_summary['output']).resolve()}")
     print(f"- Top genes: {', '.join(summary['top_genes'][:10])}")
+    print(f"- Primary rank column: {summary.get('primary_rank_column', 'quality_weighted_degora_rank')}")
+    renamed = int(metrics.get("n_gene_symbols_normalized", 0) or 0)
+    if renamed:
+        # Repairing "9-Sep" to SEPTIN9 changes what the user will search for, so
+        # the run has to say it happened and where the original labels are kept.
+        print(
+            f"- Gene symbols normalized: {renamed} (originals kept in the input_gene_label "
+            "column of slice_harmonized.csv)"
+        )
     print("")
     print(f"Open browser/API with: degora serve {Path(summary['db_path']).resolve()}")
 
@@ -972,7 +989,7 @@ def main(argv: list[str] | None = None) -> int:
             "DiscoveryWorkspaceInUseError",
             "OutputDirectoryBusyError",
         } or (
-            exc.__class__.__module__.endswith((".discovery", ".discovery_run", ".reanalysis"))
+            exc.__class__.__module__.endswith((".api", ".discovery", ".discovery_run", ".reanalysis"))
             and isinstance(exc, ValueError)
         ):
             print(str(exc), file=sys.stderr)

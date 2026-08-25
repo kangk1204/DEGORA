@@ -14,6 +14,7 @@ from openpyxl.comments import Comment
 
 from . import runtime_version_info
 from .excel_io import read_config_sheet
+from .harmonize import canonical_gene_symbol
 from .formula_safety import EXCEL_ERROR_LITERALS, restore_formula_text_if_marked
 from .provenance import (
     normalize_ooxml_zip,
@@ -271,6 +272,11 @@ COLUMN_DEFINITIONS: dict[str, tuple[str, str, str]] = {
     "n_contrast_rows": ("Number of contrast rows collapsed into the source-unit evidence row.", "integer", "blank means unavailable"),
     "n_studies_in_source_unit": ("Number of study IDs collapsed into the source unit.", "integer", "blank means unavailable"),
     "notes": ("Free-text notes retained from the source catalog.", "text", "blank means no note"),
+    "resolved_gene_symbol": (
+        "The symbol DEGORA scored this panel gene as, after legacy and Excel-date symbol repair.",
+        "text",
+        "differs from gene_symbol when the panel used a legacy symbol such as SEPT9",
+    ),
     "present_in_degora_output": ("Whether a curated gene was present in the DEGORA ranked output.", "boolean", "false means absent from scored output"),
     "n_genes": ("Number of distinct genes contributed by this source unit.", "integer", "blank means unavailable"),
     "n_pairwise_comparisons": ("Number of other source units this one was compared against for coherence.", "integer", "blank means unavailable"),
@@ -389,13 +395,32 @@ def _read_gold_from_config(config_path: Path | None) -> tuple[pd.DataFrame, str,
             "GoldPanel is missing the required gene_symbol column; curated recall was not calculated",
         )
     gold = gold.copy()
+    named_rows = int(gold["gene_symbol"].astype("string").fillna("").str.strip().ne("").sum())
     if "locked" in gold.columns:
         locked = gold["locked"].astype("string").fillna("").str.strip().str.lower()
         keep = locked.isin({"", "1", "true", "t", "yes", "y", "locked"})
         gold = gold.loc[keep].copy()
+    # gene_symbol keeps what the user typed so their panel stays recognisable;
+    # resolved_gene_symbol is what DEGORA actually scores and is what the ranked
+    # output is matched on. Without the second column a panel written with legacy
+    # symbols reported every gene as absent.
     gold["gene_symbol"] = gold["gene_symbol"].astype("string").fillna("").str.upper().str.strip()
-    gold = gold.loc[gold["gene_symbol"].ne("")].drop_duplicates("gene_symbol").reset_index(drop=True)
+    gold["resolved_gene_symbol"] = [canonical_gene_symbol(value) for value in gold["gene_symbol"].tolist()]
+    gold = (
+        gold.loc[gold["resolved_gene_symbol"].astype("string").fillna("").ne("")]
+        .drop_duplicates("resolved_gene_symbol")
+        .reset_index(drop=True)
+    )
     if gold.empty:
+        if named_rows:
+            return (
+                gold,
+                "not_provided",
+                (
+                    f"GoldPanel lists {named_rows:,} gene(s) but none are locked; set locked=yes "
+                    "on the rows that should be used for curated recall"
+                ),
+            )
         return gold, "not_provided", "GoldPanel contains no locked gene symbols"
     return gold, "locked", ""
 
@@ -414,7 +439,15 @@ def _curated_lookup(gold: pd.DataFrame, genes: pd.DataFrame) -> pd.DataFrame:
         "source_units",
     ]
     present = [column for column in rank_columns if column in genes.columns]
-    lookup = gold.merge(genes[present], on="gene_symbol", how="left")
+    if "resolved_gene_symbol" not in gold.columns:
+        gold = gold.assign(
+            resolved_gene_symbol=[canonical_gene_symbol(value) for value in gold["gene_symbol"].tolist()]
+        )
+    lookup = gold.merge(
+        genes[present].rename(columns={"gene_symbol": "resolved_gene_symbol"}),
+        on="resolved_gene_symbol",
+        how="left",
+    )
     # Coerce to a real Series first: when the rank column is absent (e.g. a legacy
     # score CSV via the fallback path), lookup.get(...) returns None and
     # pd.to_numeric(None) yields a scalar, whose .notna()/.le() would raise.
@@ -473,7 +506,8 @@ def _summary_rows(
     ]
     if not gold.empty and "gene_symbol" in genes.columns:
         ranked = genes.sort_values(rank_col) if rank_col in genes.columns else genes
-        curated = set(gold["gene_symbol"].astype(str))
+        curated_column = "resolved_gene_symbol" if "resolved_gene_symbol" in gold.columns else "gene_symbol"
+        curated = set(gold[curated_column].astype(str))
         for cutoff in [10, 20, 50, 100]:
             hits = len(set(ranked.head(cutoff)["gene_symbol"].astype(str)) & curated)
             rows.append({"field": f"curated_hits_top{cutoff}", "value": hits})
