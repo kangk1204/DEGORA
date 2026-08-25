@@ -488,7 +488,16 @@ make smoke
 
 ## Release notes
 
-### Unreleased
+### 0.4.18
+
+The score contract is unchanged. `SCORE_VERSION` remains
+`degora_score_v1_2_source_unit_mean`, and a run over unchanged valid inputs
+produces the same `degora_gene_scores.csv` as v0.4.17. What changes is which
+inputs are accepted: a config that passed v0.4.17 can now be refused at
+validation when it carries a linear fold-change column, a p-value written as a
+bound, a text `duration_h` under `early`/`late`, a mapping onto a repeated
+header, or one result table declared as two independent source units. Each of
+those was producing a wrong ranking in silence, so the refusal is the fix.
 
 Fixes from an independent code audit of the v0.4.17 branch (three module
 audits, edge-case runs, and a live comparison of the GEO organism parser against
