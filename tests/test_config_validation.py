@@ -6,6 +6,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from degora import slice_runner
 from degora.slice_runner import DegoraConfigError, catalog_include_mask, read_catalog, run_slice, validate_catalog_inputs
 
 
@@ -1015,8 +1016,6 @@ def test_validate_catalog_warns_about_invalid_gold_panel_schema(tmp_path) -> Non
 def test_run_slice_reports_gold_panel_read_error_without_leaking_parser_details(
     tmp_path, monkeypatch
 ) -> None:
-    import degora.slice_runner as slice_runner
-
     source_path = tmp_path / "deg.csv"
     pd.DataFrame(
         {
