@@ -169,9 +169,12 @@ def duration_hours(value: Any) -> float:
 
 
 def _duration_numeric(values: pd.Series) -> pd.Series:
-    """Parse plain numeric duration labels for configured temporal aggregation."""
+    """Vectorised duration_hours: plain numbers parse, anything else is NaN."""
 
-    return pd.Series([duration_hours(value) for value in values.tolist()], index=values.index, dtype=float)
+    text = values.astype("string").str.strip()
+    plain = text.str.fullmatch(DURATION_NUMBER_RE.strip("^$")).fillna(False).astype(bool)
+    numeric = pd.to_numeric(text.where(plain), errors="coerce").astype(float)
+    return numeric.replace([np.inf, -np.inf], np.nan)
 
 
 def _apply_time_course_mode(frame: pd.DataFrame) -> pd.DataFrame:

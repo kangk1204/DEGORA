@@ -434,6 +434,55 @@ def _zero_gene_diagnostic(harmonized_path: Path, min_studies: int) -> str:
     )
 
 
+def _ablate(args: argparse.Namespace) -> int:
+    from .ablation import (
+        default_ablations,
+        format_summary,
+        load_harmonized,
+        parse_weight_spec,
+        read_gene_list,
+        run_ablations,
+        write_ablation_report,
+    )
+    from .score_db import ScoreAblation
+
+    results = Path(args.results)
+    harmonized = load_harmonized(results)
+    results_dir = results if results.is_dir() else results.parent
+    output_dir = Path(args.output_dir) if args.output_dir else results_dir / "ablation"
+    min_studies = _int_setting(args.min_studies, 2, source="the --min-studies option") if args.min_studies is not None else 2
+    try:
+        top_k = [int(value) for value in str(args.top_k).split(",") if value.strip()]
+    except ValueError as exc:
+        raise CliUsageError("--top-k must be a comma-separated list of whole numbers, such as 50,100") from exc
+    if not top_k or any(k < 1 for k in top_k):
+        raise CliUsageError("--top-k must name at least one cutoff of 1 or more")
+    variants = default_ablations()
+    for spec in args.weights:
+        if "=" not in spec:
+            raise CliUsageError(f"--weights expects NAME=component=value,...; got {spec!r}")
+        name, _sep, body = spec.partition("=")
+        if "=" not in body:
+            # `--weights support=0.4,...` with no leading name: name it after the spec.
+            name, body = "custom_" + spec.replace(",", "_").replace("=", ""), spec
+        try:
+            variants.append(ScoreAblation(name=name.strip(), component_weights=parse_weight_spec(body), notes="caller-supplied weights"))
+        except ValueError as exc:
+            raise CliUsageError(f"--weights {spec!r}: {exc}") from exc
+    gold = read_gene_list(args.gold_panel) if args.gold_panel else None
+    summary, ranks = run_ablations(harmonized, min_studies=min_studies, ablations=variants, gold_genes=gold, top_k=top_k)
+    written = write_ablation_report(summary, ranks, output_dir)
+    print(format_summary(summary))
+    print("")
+    print(f"Ablation summary: {written['summary_csv']}")
+    print(f"Per-gene ranks:   {written['ranks_csv']}")
+    print(
+        "Every variant scores the same genes over the same source units; spearman_vs_full and the top-k "
+        "overlaps describe how far the primary rank moves when a component or weighting is removed."
+    )
+    return 0
+
+
 def _run_from_config(args: argparse.Namespace, *, serve_after: bool = False) -> int:
     """Resolve the run's paths and settings, then hold the output directory for it."""
 
@@ -708,6 +757,36 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--allow-network", action="store_true", help="Allow non-loopback binding with token protection.")
     serve.add_argument("--token", help="Access token for non-loopback binding; generated when omitted.")
 
+    ablate = subparsers.add_parser(
+        "ablate",
+        help="Re-score a finished run without each score component and report how the primary rank moves.",
+        description=(
+            "Component ablation and weight sensitivity for quality_weighted_degora_rank. Re-scores the "
+            "harmonized table a run wrote (slice_harmonized.csv) with each of the five components removed, "
+            "with source-quality weighting off, with sample-size weighting off, and with any --weights "
+            "you pass; the gene universe and source-unit set stay fixed across every variant. Writes "
+            "degora_ablation_summary.csv and degora_ablation_ranks.csv."
+        ),
+    )
+    ablate.add_argument("results", help="Results folder written by `degora run` (or its slice_harmonized.csv).")
+    ablate.add_argument("--output-dir", help="Where to write the ablation tables (default: <results>/ablation).")
+    ablate.add_argument("--min-studies", type=int, default=None, help="Replication floor used by the run (default 2).")
+    ablate.add_argument(
+        "--weights",
+        action="append",
+        default=[],
+        metavar="NAME=SPEC",
+        help=(
+            "An extra weight vector to score, e.g. --weights equal=support=1,direction=1,evidence=1,rank=1,effect=1. "
+            "Repeatable. Missing components are dropped and the rest renormalised."
+        ),
+    )
+    ablate.add_argument(
+        "--gold-panel",
+        help="Gene list (one symbol per line, or a CSV whose first column is the symbol) or a DEGORA config .xlsx with a GoldPanel sheet; adds recall@k columns.",
+    )
+    ablate.add_argument("--top-k", default="50,100", help="Comma-separated top-k cutoffs for overlap and recall (default 50,100).")
+
     discover = subparsers.add_parser(
         "discover",
         help="Search PubMed plus linked public data, or use explicit legacy GEO mode.",
@@ -868,6 +947,8 @@ def main(argv: list[str] | None = None) -> int:
             return _run_from_config(args)
         if args.command == "launch":
             return _run_from_config(args, serve_after=args.serve)
+        if args.command == "ablate":
+            return _ablate(args)
         if args.command == "serve":
             from .api import serve as serve_db
 

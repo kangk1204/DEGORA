@@ -949,3 +949,114 @@ def test_quickstart_resolves_an_absolute_demo_dir_and_needs_git_only_to_clone() 
     assert "need_git()" in script
     assert 'command -v git >/dev/null 2>&1 || die "git is required. Install it' not in script
     assert "results are written beside it, not inside the checkout" in script
+
+
+# --------------------------------------------------------------------------- ablation CLI and vectorised lanes
+
+
+def _corpus_for_ablation(seed: int = 5) -> pd.DataFrame:
+    rng = np.random.default_rng(seed)
+    genes = [f"G{i:03d}" for i in range(80)]
+    truth = rng.normal(0, 1.5, 80)
+    rows = []
+    for unit, n in (("U1", 3), ("U2", 4), ("U3", 6)):
+        lfc = truth + rng.normal(0, 0.4, 80)
+        z = lfc / (0.6 / np.sqrt(n))
+        for gene, effect, zed in zip(genes, lfc, z):
+            rows.append(
+                {
+                    "study_id": unit,
+                    "paper_id": unit,
+                    "source_unit_id": unit,
+                    "gene_symbol": gene,
+                    "lfc": effect,
+                    "signed_z": zed,
+                    "pvalue": float(2 * stats.norm.sf(abs(zed))),
+                    "padj": np.nan,
+                    "normalized_rank": 0.5,
+                    "n_genes_in_study": 80,
+                    "n_ctrl": n,
+                    "n_treat": n,
+                    "table_scope": "full_results",
+                    "source_input_type": "author_deg_table",
+                }
+            )
+    frame = pd.DataFrame(rows)
+    frame["normalized_rank"] = frame.groupby("study_id")["signed_z"].rank(ascending=False) / 80
+    return frame
+
+
+def test_ablate_writes_a_summary_and_the_default_variant_equals_the_run(tmp_path, capsys) -> None:
+    from degora.ablation import run_ablations
+    from degora.cli import main
+
+    harmonized = _corpus_for_ablation()
+    results = tmp_path / "results"
+    results.mkdir()
+    harmonized.to_csv(results / "slice_harmonized.csv", index=False)
+    (tmp_path / "gold.txt").write_text("gene_symbol\nG001\nG002\nSEPT9\n", encoding="utf-8")
+
+    assert main(["ablate", str(results), "--gold-panel", str(tmp_path / "gold.txt"), "--weights", "equal=support=1,direction=1,evidence=1,rank=1,effect=1"]) == 0
+
+    summary = pd.read_csv(results / "ablation" / "degora_ablation_summary.csv")
+    assert summary["ablation"].tolist()[:2] == ["full", "without_support_score"]
+    assert "equal" in summary["ablation"].tolist()
+    full = summary.set_index("ablation").loc["full"]
+    assert full["spearman_vs_full"] == 1.0 and full["top50_overlap_with_full"] == 1.0
+    assert "recall_at_50" in summary.columns
+    ranks = pd.read_csv(results / "ablation" / "degora_ablation_ranks.csv")
+    assert set(ranks.columns) >= {"gene_symbol", "full", "without_effect_score", "equal"}
+    shipped, _evidence, _metadata = degora_score_table(harmonized, min_studies=2)
+    full_ranks = ranks.set_index("gene_symbol")["full"]
+    assert full_ranks.equals(shipped.set_index("gene_symbol")["quality_weighted_degora_rank"].reindex(full_ranks.index).astype(full_ranks.dtype))
+    out = capsys.readouterr().out
+    assert "spearman_vs_full" in out
+    _summary, per_variant = run_ablations(harmonized, min_studies=2)
+    assert set(per_variant) >= {"full", "without_source_quality_weighting", "without_sample_size_weighting"}
+
+
+def test_ablate_rejects_a_malformed_weight_spec(tmp_path, capsys) -> None:
+    from degora.cli import main
+
+    results = tmp_path / "results"
+    results.mkdir()
+    _corpus_for_ablation().to_csv(results / "slice_harmonized.csv", index=False)
+
+    assert main(["ablate", str(results), "--weights", "bad=support=x"]) == 2
+    assert "--weights" in capsys.readouterr().err
+
+
+def test_vectorised_rra_and_effect_meta_match_a_per_gene_loop() -> None:
+    from scipy.stats import beta, t as t_dist
+
+    from degora.score_db import _effect_meta_layer, _rra_beta_layer, _score_ready_harmonized, study_gene_evidence
+
+    evidence = study_gene_evidence(_score_ready_harmonized(_corpus_for_ablation())[0])
+    n_lists = int(evidence["source_unit_id"].nunique())
+
+    rra = _rra_beta_layer(evidence, total_source_units=n_lists, min_studies=2).set_index("gene_symbol")
+    for gene, group in evidence.groupby("gene_symbol"):
+        ranks = np.sort(group["normalized_rank"].to_numpy(dtype=float))
+        expected = min(float(beta.logcdf(r, k, n_lists - k + 1)) for k, r in enumerate(ranks, start=1))
+        assert rra.loc[gene, "rra_neglog10_rho"] == pytest.approx(-expected / np.log(10.0), abs=1e-9)
+
+    meta = _effect_meta_layer(evidence, min_studies=2).set_index("gene_symbol")
+    for gene, group in evidence.groupby("gene_symbol"):
+        y = group["lfc"].to_numpy(dtype=float)
+        vi = (group["lfc"].abs() / group["signed_z"].abs()).to_numpy(dtype=float) ** 2
+        w = 1.0 / vi
+        fixed = np.sum(w * y) / np.sum(w)
+        q = float(np.sum(w * (y - fixed) ** 2))
+        df = len(y) - 1
+        c = float(np.sum(w) - np.sum(w**2) / np.sum(w))
+        tau2 = max(0.0, (q - df) / c)
+        w_re = 1.0 / (vi + tau2)
+        pooled = float(np.sum(w_re * y) / np.sum(w_re))
+        pooled_se = float(np.sqrt(1.0 / np.sum(w_re)))
+        q_hksj = float(np.sum(w_re * (y - pooled) ** 2) / ((len(y) - 1) * np.sum(w_re)))
+        se_ci = max(np.sqrt(q_hksj), pooled_se)
+        crit = float(t_dist.ppf(0.975, len(y) - 1))
+        assert meta.loc[gene, "effect_meta_log2fc_re"] == pytest.approx(pooled, abs=1e-9)
+        assert meta.loc[gene, "effect_meta_tau2"] == pytest.approx(tau2, abs=1e-9)
+        assert meta.loc[gene, "effect_meta_ci_high"] == pytest.approx(pooled + crit * se_ci, abs=1e-9)
+        assert meta.loc[gene, "effect_meta_i2"] == pytest.approx(max(0.0, (q - df) / q) if q > 0 else 0.0, abs=1e-9)

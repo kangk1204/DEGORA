@@ -317,6 +317,37 @@ Two things decide whether the panel is used at all:
 not used in scoring. A panel is optional in the ordinary sense: leaving the sheet
 empty is a valid, complete run.
 
+## Component ablation and weight sensitivity
+
+`degora ablate` re-scores a finished run with each of the five score components
+removed, with source-quality weighting switched off, with sample-size weighting
+switched off, and with any weight vectors you name, and reports how far the
+primary rank moves under each variant:
+
+```bash
+degora ablate degora-demo/results --gold-panel degora-demo/degora_demo_config.xlsx
+degora ablate outputs/results/degora-run \
+  --weights equal=support=1,direction=1,evidence=1,rank=1,effect=1 \
+  --weights effect_heavy=support=0.2,direction=0.2,evidence=0.2,rank=0.1,effect=0.3
+```
+
+Every variant scores exactly the same genes over exactly the same source
+units: the gene universe and the eligible source-unit set are fixed by the run's
+harmonized table, and an ablation only changes how the per-source evidence is
+combined. The summary (`ablation/degora_ablation_summary.csv`) reports, per
+variant, the Spearman correlation of `quality_weighted_degora_rank` with the
+full ranking, the median and maximum rank shift, the top-50 and top-100 overlap
+with the full ranking, and recall@k against a GoldPanel or gene list when one is
+supplied; `degora_ablation_ranks.csv` holds the rank of every gene under every
+variant. Two things to keep in mind when reading it: `evidence_score` and
+`rank_score_component` are both derived from the p-value, so removing either
+alone moves the ranking less than their joint weight suggests; and
+`support_score` is constant in a corpus where every scored gene has the same
+number of source units (two source units with `min_studies=2`), where its weight
+cannot change the order at all. `without_sample_size_weighting` removes the
+per-source-unit sample-size weight; contrasts inside one source unit are still
+combined with their sqrt(n) weights, as documented for the collapse rule.
+
 ## Search public Human or Mouse records
 
 Search one species at a time:
@@ -616,6 +647,11 @@ Preparation, packaging, and the command line:
   under WSL.
 - `--min-studies 0` is reported as a command-line value, not as a spreadsheet
   cell.
+- `degora ablate` exposes the component-ablation and weight-sensitivity
+  machinery (`score_db.ScoreAblation`) that was reachable only from Python, and
+  the RRA and effect-size meta-analysis lanes are computed without a per-gene
+  Python loop, which makes a 15,000-gene scoring pass about four times faster
+  with results identical to the last digit.
 
 Fixes from a first-run review of v0.4.17 by a reader following this README with
 no prior knowledge of the tool.

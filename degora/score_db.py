@@ -1357,29 +1357,34 @@ def _rra_beta_layer(evidence: pd.DataFrame, *, total_source_units: int, min_stud
     frame = frame.dropna(subset=["gene_symbol", "source_unit_id", "normalized_rank"])
     if frame.empty:
         return pd.DataFrame(columns=columns)
-    rows: list[dict[str, Any]] = []
     n_lists = max(int(total_source_units), 1)
     ln10 = float(np.log(10.0))
     rank_floor = float(np.finfo(float).tiny)
-    for gene, group in frame.groupby("gene_symbol", sort=False):
-        ranks = np.sort(group.drop_duplicates("source_unit_id")["normalized_rank"].to_numpy(dtype=float))
-        if len(ranks) < min_studies:
-            continue
-        # Beta order-statistic RRA score in LOG space. The linear-space beta.cdf
-        # underflows to 0.0 for genes ranked near-top across many lists, which
-        # collapses the strongest genes into a single alphabetically-broken tie.
-        # Tracking log(rho) keeps the top-of-list ordering and a usable magnitude.
-        log_scores: list[float] = []
-        for order_index, rank_value in enumerate(ranks, start=1):
-            if order_index > n_lists:
-                break
-            log_scores.append(
-                float(beta.logcdf(max(rank_value, rank_floor), order_index, n_lists - order_index + 1))
-            )
-        if not log_scores:
-            continue
-        rows.append({"gene_symbol": str(gene), "_log_rho": float(np.min(log_scores))})
-    out = pd.DataFrame.from_records(rows, columns=["gene_symbol", "_log_rho"])
+    # One row per (gene, source unit), ordered by rank within the gene, so the
+    # k-th smallest rank of every gene is scored in one vectorised beta.logcdf
+    # call instead of a Python loop over tens of thousands of genes.
+    ordered = (
+        frame.drop_duplicates(["gene_symbol", "source_unit_id"])[["gene_symbol", "normalized_rank"]]
+        .sort_values(["gene_symbol", "normalized_rank"], kind="mergesort")
+        .reset_index(drop=True)
+    )
+    ordered["_order"] = ordered.groupby("gene_symbol", sort=False).cumcount() + 1
+    counts = ordered.groupby("gene_symbol", sort=False)["_order"].transform("size")
+    ordered = ordered.loc[counts.ge(min_studies) & ordered["_order"].le(n_lists)].copy()
+    if ordered.empty:
+        return pd.DataFrame(columns=columns)
+    # Beta order-statistic RRA score in LOG space. The linear-space beta.cdf
+    # underflows to 0.0 for genes ranked near-top across many lists, which
+    # collapses the strongest genes into a single alphabetically-broken tie.
+    # Tracking log(rho) keeps the top-of-list ordering and a usable magnitude.
+    order = ordered["_order"].to_numpy(dtype=float)
+    ordered["_log_score"] = beta.logcdf(
+        np.maximum(ordered["normalized_rank"].to_numpy(dtype=float), rank_floor),
+        order,
+        n_lists - order + 1.0,
+    )
+    out = ordered.groupby("gene_symbol", sort=False, as_index=False)["_log_score"].min().rename(columns={"_log_score": "_log_rho"})
+    out["gene_symbol"] = out["gene_symbol"].astype(str)
     if out.empty:
         return pd.DataFrame(columns=columns)
     out["_log_rho"] = pd.to_numeric(out["_log_rho"], errors="coerce")
@@ -1419,64 +1424,79 @@ def _effect_meta_layer(evidence: pd.DataFrame, *, min_studies: int) -> pd.DataFr
     if frame.empty:
         return pd.DataFrame(columns=columns)
 
-    rows: list[dict[str, Any]] = []
-    for gene, group in frame.groupby("gene_symbol", sort=False):
-        group = group.drop_duplicates("source_unit_id")
-        if len(group) < min_studies:
-            continue
-        y = group["lfc"].to_numpy(dtype=float)
-        se = group["_effect_se"].to_numpy(dtype=float)
-        vi = se**2
-        valid = np.isfinite(y) & np.isfinite(vi) & (vi > 0)
-        y = y[valid]
-        vi = vi[valid]
-        if len(y) < min_studies:
-            continue
-        w = np.divide(1.0, vi, out=np.zeros_like(vi, dtype=float), where=vi > 0)
-        sum_w = float(np.sum(w))
-        if not np.isfinite(sum_w) or sum_w <= EFFECT_META_MIN_WEIGHT_SUM:
-            continue
-        fixed = float(np.sum(w * y) / sum_w)
-        q = float(np.sum(w * (y - fixed) ** 2))
-        df = max(len(y) - 1, 0)
-        c = float(sum_w - (np.sum(w**2) / sum_w)) if sum_w > 0 else 0.0
-        tau2 = max(0.0, (q - df) / c) if c > 0 and df > 0 else 0.0
-        w_re = np.divide(1.0, vi + tau2, out=np.zeros_like(vi, dtype=float), where=(vi + tau2) > 0)
-        sum_w_re = float(np.sum(w_re))
-        if not np.isfinite(sum_w_re) or sum_w_re <= EFFECT_META_MIN_WEIGHT_SUM:
-            continue
-        pooled = float(np.sum(w_re * y) / sum_w_re)
-        pooled_se = float(np.sqrt(1.0 / sum_w_re))
-        if not all(np.isfinite(value) for value in [pooled, pooled_se, tau2, q]):
-            continue
-        k_eff = int(len(y))
-        # Hartung-Knapp-Sidik-Jonkman small-sample CI, truncated so it is never
-        # narrower than the normal random-effects SE. Most genes have only k=2-3
-        # source units, where the normal-approx z interval is anti-conservative.
-        if k_eff >= 2 and sum_w_re > 0:
-            q_hksj = float(np.sum(w_re * (y - pooled) ** 2) / ((k_eff - 1) * sum_w_re))
-            se_ci = max(float(np.sqrt(q_hksj)), pooled_se)
-            crit = float(t_dist.ppf(0.975, k_eff - 1))
-        else:
-            se_ci = pooled_se
-            crit = 1.96
-        ci_low = pooled - crit * se_ci
-        ci_high = pooled + crit * se_ci
-        i2 = max(0.0, (q - df) / q) if q > 0 and df > 0 else 0.0
-        rows.append(
-            {
-                "gene_symbol": str(gene),
-                "effect_meta_log2fc_re": pooled,
-                "effect_meta_se": se_ci,
-                "effect_meta_ci_low": ci_low,
-                "effect_meta_ci_high": ci_high,
-                "effect_meta_tau2": tau2,
-                "effect_meta_i2": i2,
-                "effect_meta_k": int(len(y)),
-                "effect_meta_se_source": "derived_from_log2fc_and_two_sided_pvalue",
-            }
-        )
-    return pd.DataFrame.from_records(rows, columns=columns)
+    # DerSimonian-Laird random-effects pooling, vectorised over genes: every
+    # per-gene sum is a groupby sum over the (gene, source unit) rows, which
+    # replaced a Python loop that dominated the run time of a large corpus.
+    frame = frame.drop_duplicates(["gene_symbol", "source_unit_id"]).copy()
+    frame["_y"] = frame["lfc"].astype(float)
+    frame["_vi"] = frame["_effect_se"].astype(float) ** 2
+    frame = frame.loc[np.isfinite(frame["_y"]) & np.isfinite(frame["_vi"]) & frame["_vi"].gt(0)].copy()
+    if frame.empty:
+        return pd.DataFrame(columns=columns)
+    frame["_w"] = 1.0 / frame["_vi"]
+    frame["_wy"] = frame["_w"] * frame["_y"]
+    frame["_w2"] = frame["_w"] ** 2
+    grouped = frame.groupby("gene_symbol", sort=False)
+    fixed = grouped[["_w", "_wy", "_w2"]].sum()
+    fixed["k"] = grouped.size()
+    fixed = fixed.loc[fixed["k"].ge(min_studies) & np.isfinite(fixed["_w"]) & fixed["_w"].gt(EFFECT_META_MIN_WEIGHT_SUM)]
+    if fixed.empty:
+        return pd.DataFrame(columns=columns)
+    fixed["fixed"] = fixed["_wy"] / fixed["_w"]
+    frame = frame.loc[frame["gene_symbol"].isin(fixed.index)].copy()
+    frame["_fixed"] = frame["gene_symbol"].map(fixed["fixed"]).astype(float)
+    frame["_q_part"] = frame["_w"] * (frame["_y"] - frame["_fixed"]) ** 2
+    q = frame.groupby("gene_symbol", sort=False)["_q_part"].sum()
+    fixed["q"] = q.reindex(fixed.index).astype(float)
+    fixed["df"] = (fixed["k"] - 1).clip(lower=0)
+    fixed["c"] = fixed["_w"] - fixed["_w2"] / fixed["_w"]
+    with np.errstate(divide="ignore", invalid="ignore"):
+        tau2 = (fixed["q"] - fixed["df"]) / fixed["c"]
+    fixed["tau2"] = np.where((fixed["c"] > 0) & (fixed["df"] > 0), np.maximum(tau2, 0.0), 0.0)
+    frame["_tau2"] = frame["gene_symbol"].map(fixed["tau2"]).astype(float)
+    frame["_w_re"] = 1.0 / (frame["_vi"] + frame["_tau2"])
+    frame["_w_re_y"] = frame["_w_re"] * frame["_y"]
+    random = frame.groupby("gene_symbol", sort=False)[["_w_re", "_w_re_y"]].sum()
+    fixed["sum_w_re"] = random["_w_re"].reindex(fixed.index).astype(float)
+    fixed["pooled"] = (random["_w_re_y"] / random["_w_re"]).reindex(fixed.index).astype(float)
+    fixed = fixed.loc[np.isfinite(fixed["sum_w_re"]) & fixed["sum_w_re"].gt(EFFECT_META_MIN_WEIGHT_SUM)]
+    if fixed.empty:
+        return pd.DataFrame(columns=columns)
+    fixed["pooled_se"] = np.sqrt(1.0 / fixed["sum_w_re"])
+    frame = frame.loc[frame["gene_symbol"].isin(fixed.index)].copy()
+    frame["_pooled"] = frame["gene_symbol"].map(fixed["pooled"]).astype(float)
+    frame["_hksj_part"] = frame["_w_re"] * (frame["_y"] - frame["_pooled"]) ** 2
+    hksj = frame.groupby("gene_symbol", sort=False)["_hksj_part"].sum().reindex(fixed.index).astype(float)
+    # Hartung-Knapp-Sidik-Jonkman small-sample CI, truncated so it is never
+    # narrower than the normal random-effects SE. Most genes have only k=2-3
+    # source units, where the normal-approx z interval is anti-conservative.
+    k_eff = fixed["k"].to_numpy(dtype=float)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        q_hksj = hksj.to_numpy(dtype=float) / ((k_eff - 1.0) * fixed["sum_w_re"].to_numpy(dtype=float))
+    small = k_eff >= 2
+    se_ci = np.where(small, np.maximum(np.sqrt(np.where(small, q_hksj, 0.0)), fixed["pooled_se"].to_numpy(dtype=float)), fixed["pooled_se"].to_numpy(dtype=float))
+    crit = np.where(small, t_dist.ppf(0.975, np.maximum(k_eff - 1.0, 1.0)), 1.96)
+    pooled = fixed["pooled"].to_numpy(dtype=float)
+    q_values = fixed["q"].to_numpy(dtype=float)
+    df_values = fixed["df"].to_numpy(dtype=float)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        i2 = np.where((q_values > 0) & (df_values > 0), np.maximum((q_values - df_values) / q_values, 0.0), 0.0)
+    out = pd.DataFrame(
+        {
+            "gene_symbol": fixed.index.astype(str),
+            "effect_meta_log2fc_re": pooled,
+            "effect_meta_se": se_ci,
+            "effect_meta_ci_low": pooled - crit * se_ci,
+            "effect_meta_ci_high": pooled + crit * se_ci,
+            "effect_meta_tau2": fixed["tau2"].to_numpy(dtype=float),
+            "effect_meta_i2": i2,
+            "effect_meta_k": fixed["k"].to_numpy(dtype=int),
+            "effect_meta_se_source": "derived_from_log2fc_and_two_sided_pvalue",
+        }
+    )
+    finite = np.isfinite(out["effect_meta_log2fc_re"]) & np.isfinite(out["effect_meta_se"]) & np.isfinite(out["effect_meta_tau2"])
+    out = out.loc[finite].reset_index(drop=True)
+    return out[columns]
 
 
 def _priority_components_from_evidence(
@@ -1679,6 +1699,19 @@ def _leave_one_source_out_stability(
     return pd.DataFrame.from_records(rows, columns=columns)
 
 
+def _loo_stability_not_computed(scores: pd.DataFrame, total_source_units: int) -> pd.DataFrame:
+    """LOO columns in their 'unavailable' shape, for callers that skip the diagnostic."""
+
+    out = scores[["gene_symbol"]].copy()
+    out["loo_total_folds"] = int(total_source_units)
+    out["loo_rank_evaluable_folds"] = 0
+    out["loo_penalty_folds"] = int(total_source_units)
+    out["loo_component_available"] = False
+    for column in ["loo_median_rank", "loo_rank_iqr", "loo_rank_stability_score", "loo_top50_fraction", "loo_top100_fraction"]:
+        out[column] = np.nan
+    return out
+
+
 def _evidence_tier(
     top_percent: pd.Series,
     n_source_units: pd.Series,
@@ -1726,6 +1759,7 @@ def degora_score_table(
     *,
     min_studies: int = 2,
     ablation: ScoreAblation | None = None,
+    include_loo_stability: bool = True,
 ) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, Any]]:
     """Return gene scores, study-gene evidence rows, and score metadata.
 
@@ -1733,6 +1767,13 @@ def degora_score_table(
     configuration; ``None`` reproduces the shipped ranking. See
     :class:`ScoreAblation` for why the gene universe and the source-unit set stay
     fixed across every variant.
+
+    ``include_loo_stability=False`` skips the leave-one-source-out diagnostic,
+    which re-scores the corpus once per source unit and dominates the run time
+    of a large corpus. The primary rank does not depend on it; the LOO columns
+    are then reported as unavailable, exactly as they are when no fold is
+    rank-evaluable, and the reliability summary uses its three mandatory
+    diagnostics. Ablation sweeps use this.
     """
 
     min_studies = validate_min_studies(min_studies)
@@ -1952,12 +1993,15 @@ def degora_score_table(
     ).reset_index(drop=True)
     priority_rank_map = pd.Series(np.arange(1, len(priority_ranked) + 1), index=priority_ranked["gene_symbol"])
     scores["priority_rank"] = scores["gene_symbol"].map(priority_rank_map).fillna(0).astype(int)
-    stability = _leave_one_source_out_stability(
-        evidence,
-        scores,
-        support_denominator=denominator,
-        min_studies=min_studies,
-    )
+    if include_loo_stability:
+        stability = _leave_one_source_out_stability(
+            evidence,
+            scores,
+            support_denominator=denominator,
+            min_studies=min_studies,
+        )
+    else:
+        stability = _loo_stability_not_computed(scores, total_source_units)
     scores = scores.merge(stability, on="gene_symbol", how="left")
     for column in ["loo_median_rank", "loo_rank_iqr", "loo_rank_stability_score", "loo_top50_fraction", "loo_top100_fraction"]:
         scores[column] = pd.to_numeric(scores[column], errors="coerce")
