@@ -488,31 +488,49 @@ def _read_locked_gold_panel(path: Path) -> dict[str, Any]:
             "genes": [],
             "reason": "catalog is not an Excel workbook with a GoldPanel sheet",
         }
-    with pd.ExcelFile(path) as workbook:
-        if "GoldPanel" not in workbook.sheet_names:
-            return {
-                "status": "not_provided",
-                "source": "GoldPanel",
-                "gene_column": "",
-                "genes": [],
-                "reason": "Excel workbook has no GoldPanel sheet",
-            }
-        gold = read_config_sheet(workbook, "GoldPanel")
+    try:
+        with pd.ExcelFile(path) as workbook:
+            if "GoldPanel" not in workbook.sheet_names:
+                return {
+                    "status": "not_provided",
+                    "source": "GoldPanel",
+                    "gene_column": "",
+                    "genes": [],
+                    "reason": "Excel workbook has no GoldPanel sheet",
+                }
+            gold = read_config_sheet(workbook, "GoldPanel")
+    except (ImportError, KeyError, OSError, TypeError, ValueError, zipfile.BadZipFile) as exc:
+        # Parser messages can contain local paths or workbook cell text. Record only
+        # the exception type so persisted metrics remain safe to share.
+        return {
+            "status": "read_error",
+            "source": "GoldPanel",
+            "gene_column": "gene_symbol",
+            "genes": [],
+            "reason": (
+                f"GoldPanel could not be read ({type(exc).__name__}); "
+                "curated recall was not calculated"
+            ),
+        }
     if "gene_symbol" not in gold.columns:
         return {
             "status": "invalid",
             "source": "GoldPanel",
             "gene_column": "gene_symbol",
             "genes": [],
-            "reason": "GoldPanel sheet is missing the gene_symbol column",
+            "reason": (
+                "GoldPanel is missing the required gene_symbol column; "
+                "curated recall was not calculated"
+            ),
         }
+    gold = gold.copy()
     if "locked" in gold.columns:
         locked = gold["locked"].astype("string").fillna("").str.strip().str.lower()
         gold = gold.loc[locked.isin({"1", "true", "t", "yes", "y", "locked"}) | locked.eq("")]
     genes = (
         gold["gene_symbol"]
-        .dropna()
-        .astype(str)
+        .astype("string")
+        .fillna("")
         .str.strip()
         .str.upper()
         .loc[lambda series: series.ne("")]
@@ -1403,6 +1421,14 @@ def validate_catalog_inputs(
     # disagree with aggregate.py / score_db.py.
     unit_series = _source_unit_series(catalog)
     source_units = set(unit_series[unit_series.ne("")].tolist())
+    gold_panel = _read_locked_gold_panel(catalog_path)
+    warnings = [
+        *catalog.attrs.get("promoted_alias_warnings", []),
+        *_microarray_warnings(catalog),
+        *_mixed_species_warnings(catalog),
+    ]
+    if gold_panel["status"] in {"invalid", "read_error"}:
+        warnings.append(gold_panel["reason"])
 
     return {
         "config_path": str(catalog_path),
@@ -1414,13 +1440,13 @@ def validate_catalog_inputs(
         "required_contrasts_columns": BEGINNER_REQUIRED_CONTRAST_COLUMNS,
         "required_source_table_mappings": _format_source_mapping_contract(REQUIRED_SOURCE_TABLE_MAPPINGS),
         "optional_source_table_mappings": _format_source_mapping_contract(OPTIONAL_SOURCE_TABLE_MAPPINGS),
+        "gold_panel_status": gold_panel["status"],
+        "gold_panel_source": gold_panel["source"],
+        "gold_panel_gene_count": len(gold_panel["genes"]),
+        "gold_panel_reason": gold_panel["reason"],
         # Surface the same non-fatal microarray advisories that run_slice emits, so the
         # `degora validate` preflight flags them before a full run rather than after.
-        "warnings": [
-            *catalog.attrs.get("promoted_alias_warnings", []),
-            *_microarray_warnings(catalog),
-            *_mixed_species_warnings(catalog),
-        ],
+        "warnings": list(dict.fromkeys(str(message) for message in warnings if str(message).strip())),
     }
 
 

@@ -224,6 +224,10 @@ def _run_warning_messages(metrics: dict[str, Any]) -> list[str]:
     warning_values: list[Any] = []
     for key in ("warnings", "identifier_space_warnings", "rank_universe_warnings"):
         warning_values.extend(metrics.get(key, []) or [])
+    if metrics.get("gold_panel_status") in {"invalid", "read_error"}:
+        warning_values.append(
+            metrics.get("gold_panel_reason") or "GoldPanel could not support curated recall metrics"
+        )
 
     try:
         clipped_rows = int(metrics.get("pvalue_clipped_rows", 0) or 0)
@@ -535,10 +539,14 @@ def _run_pipeline(
         workbook_size = workbook_path.stat().st_size if workbook_path.exists() else 0
         progress.done(f"{workbook_size / (1024 * 1024):.1f} MB" if workbook_size else "")
         if workbook_summary.get("gold_panel_status") in {"invalid", "read_error"}:
-            _print_run_warnings(
-                {"warnings": [workbook_summary.get("gold_panel_reason", "GoldPanel could not be audited")]},
-                metrics_path=Path(workbook_summary["manifest"]),
-            )
+            workbook_reason = str(
+                workbook_summary.get("gold_panel_reason", "GoldPanel could not be audited")
+            ).strip()
+            if workbook_reason and workbook_reason != str(metrics.get("gold_panel_reason", "")).strip():
+                _print_run_warnings(
+                    {"warnings": [workbook_reason]},
+                    metrics_path=Path(workbook_summary["manifest"]),
+                )
 
     print("")
     print("DEGORA run complete")

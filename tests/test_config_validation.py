@@ -980,6 +980,88 @@ def test_run_slice_uses_excel_gold_panel_and_records_source_inputs(tmp_path) -> 
     assert str(tmp_path) not in json.dumps(provenance)
 
 
+def test_validate_catalog_warns_about_invalid_gold_panel_schema(tmp_path) -> None:
+    source_path = tmp_path / "deg.csv"
+    pd.DataFrame(
+        {
+            "gene": ["GENEA", "GENEB"],
+            "log2FoldChange": [2.0, 0.5],
+            "pvalue": [1e-6, 0.2],
+        }
+    ).to_csv(source_path, index=False)
+    config_path = tmp_path / "invalid_gold.xlsx"
+    contrasts = pd.DataFrame(
+        {
+            "study_id": ["S1"],
+            "source_unit_id": ["P1"],
+            "source_path": [str(source_path)],
+            "gene_column": ["gene"],
+            "lfc_column": ["log2FoldChange"],
+            "p_column": ["pvalue"],
+            "include": ["yes"],
+        }
+    )
+    with pd.ExcelWriter(config_path, engine="openpyxl") as writer:
+        contrasts.to_excel(writer, sheet_name="Contrasts", index=False)
+        pd.DataFrame({"marker": ["GENEA"]}).to_excel(writer, sheet_name="GoldPanel", index=False)
+
+    validation = validate_catalog_inputs(config_path)
+
+    assert validation["gold_panel_status"] == "invalid"
+    assert validation["gold_panel_gene_count"] == 0
+    assert any("curated recall was not calculated" in message for message in validation["warnings"])
+
+
+def test_run_slice_reports_gold_panel_read_error_without_leaking_parser_details(
+    tmp_path, monkeypatch
+) -> None:
+    import degora.slice_runner as slice_runner
+
+    source_path = tmp_path / "deg.csv"
+    pd.DataFrame(
+        {
+            "gene": ["GENEA", "GENEB"],
+            "log2FoldChange": [2.0, 0.5],
+            "pvalue": [1e-6, 0.2],
+        }
+    ).to_csv(source_path, index=False)
+    config_path = tmp_path / "read_error_gold.xlsx"
+    contrasts = pd.DataFrame(
+        {
+            "study_id": ["S1"],
+            "source_unit_id": ["P1"],
+            "source_path": [str(source_path)],
+            "gene_column": ["gene"],
+            "lfc_column": ["log2FoldChange"],
+            "p_column": ["pvalue"],
+            "include": ["yes"],
+        }
+    )
+    with pd.ExcelWriter(config_path, engine="openpyxl") as writer:
+        contrasts.to_excel(writer, sheet_name="Contrasts", index=False)
+        pd.DataFrame({"gene_symbol": ["GENEA"]}).to_excel(writer, sheet_name="GoldPanel", index=False)
+
+    original_read = slice_runner.read_config_sheet
+
+    def fail_only_for_gold_panel(workbook, sheet_name):
+        if sheet_name == "GoldPanel":
+            raise ValueError(f"synthetic parser detail at {tmp_path}/secret-cell")
+        return original_read(workbook, sheet_name)
+
+    monkeypatch.setattr(slice_runner, "read_config_sheet", fail_only_for_gold_panel)
+
+    metrics = run_slice(config_path, tmp_path / "out", tmp_path / "harmonized", min_studies=1)
+    persisted = json.loads((tmp_path / "out" / "slice_metrics.json").read_text())
+
+    assert metrics["gold_panel_status"] == "read_error"
+    assert metrics["gold_panel_gene_count"] == 0
+    assert "ValueError" in metrics["gold_panel_reason"]
+    assert "secret-cell" not in metrics["gold_panel_reason"]
+    assert str(tmp_path) not in metrics["gold_panel_reason"]
+    assert persisted["gold_panel_status"] == "read_error"
+    assert persisted["gold_panel_reason"] == metrics["gold_panel_reason"]
+
+
 def test_run_slice_prefers_config_directory_for_relative_source_paths(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
