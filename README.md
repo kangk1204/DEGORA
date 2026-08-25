@@ -321,6 +321,11 @@ degora serve path/to/degora_scores.db
 
 Open the **Discover** tab, choose **Human** or **Mouse**, search, review the candidates, and select the records to prepare. Author-provided result tables are preferred. Matrix-derived fallback analysis requires explicit group mapping, contrast direction, and biological-replicate confirmation.
 
+Browser discovery analysis uses a fixed `min_studies=2`: a gene must retain
+eligible evidence from at least two independent source units. The CLI command
+`degora discovery-analyze --min-studies N` exposes the validated threshold when
+an intentionally different replication floor is required.
+
 The review panel asks each prepared table only for the confirmations that actually apply to it, and keeps the settings most tables never touch behind a collapsed **Advanced settings** panel that opens by itself if any of them is already set. Where a linked series reports how many samples it holds, that total is shown beside the group-size boxes and the two numbers you enter are checked against it; the split between groups is never guessed, because a results table has one row per gene and the number feeds the source weight directly. A table whose columns were recognised and left alone is asked one thing; a table whose effect column does not say it is log2, or whose adjusted p-value is standing in for a raw one, is asked about that as well. Contrast direction is the exception: it is asked for every table, because reversing it inverts every up/down call while leaving results that look entirely reasonable.
 
 The browser opens on **Discover**. Search results are globally ranked before the first page of 10 is shown. **Narrow these results** filters the records already found by title, author, journal or year without running a new search, and reports how many of the total match. The compact table displays publication metadata, linked-data availability, estimated DEG-input readiness, and an **Inspect** action. **Run separate Human + Mouse searches** launches two independent searches; it never pools their records or scores.
@@ -384,6 +389,14 @@ make smoke
 ```
 
 ## Release notes
+
+### Unreleased
+
+- GitHub Actions now uses the official Node 24 action releases pinned to immutable
+  commit SHAs instead of floating Node 20 major tags.
+- The browser documentation now states its fixed two-independent-source-unit
+  analysis floor. A regression test locks that API policy, and the `run_slice`
+  directory-creation comment now matches the actual failure boundary.
 
 ### 0.4.17
 

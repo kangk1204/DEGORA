@@ -1464,8 +1464,10 @@ def run_slice(catalog_path: Path, output_dir: Path, harmonized_dir: Path, min_st
             problems=[f"Got min_studies={min_studies!r}."],
             fixes=["Use 1 to score single-source genes, or 2+ to require independent replication."],
         ) from exc
-    # Both of these run before the lock: taking it creates the output directory, and
-    # a rejected argument or an unusable path must not leave one behind.
+    # min_studies validation is disk-free. Create both directories before taking the
+    # output lock so path errors remain actionable; later path or catalog failures may
+    # leave an empty directory because atomicity applies to published artifacts, not
+    # to the directory's existence.
     for label, directory in (("output", output_dir), ("harmonized", harmonized_dir)):
         try:
             directory.mkdir(parents=True, exist_ok=True)

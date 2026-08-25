@@ -488,6 +488,7 @@ def _analyze_handler(monkeypatch, tmp_path, *, decisions, captured):
     import degora.discovery_run as discovery_run
 
     def fake_run(prepared, selections, output, *, species, min_studies, extra_metadata=None, force=False):
+        captured["min_studies"] = min_studies
         captured["extra_metadata"] = dict(extra_metadata or {})
         return {"db_path": str(output / "x.db"), "top_genes": [], "species": {"key": species}}
 
@@ -558,6 +559,7 @@ def test_a_fully_checked_selection_needs_no_extra_confirmation(tmp_path, monkeyp
         }
     )
 
+    assert captured["min_studies"] == 2
     assert captured["extra_metadata"]["discovery_species_records_needing_confirmation"] == "0"
 
 

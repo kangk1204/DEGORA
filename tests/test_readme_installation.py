@@ -35,6 +35,10 @@ def test_readme_and_installed_package_metadata_are_consistent() -> None:
     if workflow:
         assert "scipy==1.11.1" in workflow
         assert "scipy==1.11.0" not in workflow
+        assert "actions/checkout@v" not in workflow
+        assert "actions/setup-python@v" not in workflow
+        assert re.search(r"actions/checkout@[0-9a-f]{40}\b", workflow)
+        assert re.search(r"actions/setup-python@[0-9a-f]{40}\b", workflow)
     assert '"pyarrow>=14.0.1,<25"' in pyproject
     assert "pyarrow>=14.0.1,<25" in requirements.splitlines()
 
