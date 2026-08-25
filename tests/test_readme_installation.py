@@ -1,10 +1,11 @@
-from importlib import metadata
-from pathlib import Path
 import re
 import sys
+from importlib import metadata
+from pathlib import Path
 
 import pytest
 
+import degora
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -41,11 +42,14 @@ def test_readme_and_installed_package_metadata_are_consistent() -> None:
     python_match = re.search(r'^requires-python = ">=([0-9.]+)"$', pyproject, flags=re.MULTILINE)
     assert version_match is not None
     assert python_match is not None
+    project_version = version_match.group(1)
+    assert degora.__version__ == project_version
+    assert f"### {project_version}" in readme
     try:
         installed_version = metadata.version("degora")
     except metadata.PackageNotFoundError:
         pytest.skip("install DEGORA before checking installed package metadata")
-    assert installed_version == version_match.group(1)
+    assert installed_version == project_version
     required_python = tuple(int(part) for part in python_match.group(1).split("."))
     assert sys.version_info[: len(required_python)] >= required_python
     assert f"Python {python_match.group(1)} or newer" in readme
@@ -66,6 +70,8 @@ def test_xls_support_ships_with_the_package() -> None:
     dependencies = pyproject.split("[project.optional-dependencies]", 1)[0]
     assert '"xlrd>=2.0.1,<3"' in dependencies
 
-    from degora.harmonize import read_deg_table  # noqa: F401 - the .xls branch lives here
+    from degora.harmonize import (
+        read_deg_table,  # noqa: F401 - the .xls branch lives here
+    )
 
     assert importlib.util.find_spec("xlrd") is not None

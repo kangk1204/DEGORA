@@ -33,8 +33,7 @@ Without Git, download and unzip either the main-branch ZIP or a tagged release Z
 GitHub names those folders `DEGORA-main` and `DEGORA-<version>`, respectively:
 
 ```bash
-cd DEGORA-main       # main-branch ZIP
-# or: cd DEGORA-0.4.14  # example tagged-release ZIP
+cd DEGORA-main  # main-branch ZIP; a tagged ZIP uses its downloaded folder name
 ```
 
 Confirm that the interpreter you will use is supported:
@@ -155,7 +154,7 @@ Useful options:
 ```
 
 Use `--ref` to review a specific branch or release tag in one command, for
-example `bash degora_quickstart.sh --ref v0.4.15`. It fetches the name from
+example `bash degora_quickstart.sh --ref main`. It fetches the name from
 `origin`, fast-forwards a local copy that is behind, and stops rather than
 serving stale code when a local branch of the same name has diverged.
 
@@ -386,7 +385,12 @@ make smoke
 
 ## Release notes
 
-### Unreleased
+### 0.4.17
+
+The primary score contract is unchanged: `SCORE_VERSION` remains
+`degora_score_v1_2_source_unit_mean`. Version 0.4.17 supersedes the published
+v0.4.16 beginner-input and optional-GoldPanel behavior described below without
+changing an unchanged valid config's scores.
 
 Guided initialization no longer promotes value-only `rank`, row-number, count,
 statistic, pathway, metabolite, cell-line, or compound columns to gene identifiers.
@@ -414,7 +418,20 @@ inside weighted scoring. The workbook dictionary now labels the legacy
 `direction_posterior_mean` field as a shrinkage index rather than a calibrated
 posterior probability.
 
+An optional GoldPanel that cannot be read or lacks the required `gene_symbol`
+column is no longer treated as though no panel was supplied. Validation and run
+commands emit one sanitized, non-fatal warning, while run metrics, manifests,
+and workbooks retain the `read_error` or `invalid` status and a bounded reason.
+Blank GoldPanel cells do not create a synthetic `NAN` gene.
+
 ### 0.4.16
+
+Known issue in the published v0.4.16 tag: guided initialization could accept an
+ordinal or other non-gene column such as `rank` as the gene identifier, allowing
+two plausible-looking tables to finish successfully with row numbers ranked as
+genes. Invalid or unreadable optional GoldPanel content could also be reported as
+absent. Version 0.4.17 refuses or explicitly questions the identifier mapping and
+surfaces the GoldPanel status; the historical v0.4.16 tag remains unchanged.
 
 The primary default-`mean` score contract is unchanged, so `SCORE_VERSION`
 remains `degora_score_v1_2_source_unit_mean`. Configs that explicitly use
