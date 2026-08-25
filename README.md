@@ -539,7 +539,9 @@ Input boundaries that silently changed results:
   the column mappings are identical (the same file, or byte-identical files),
   and warned about when they differ. The same table under U1 and U2 used to
   validate, run, and give every gene "2 / 2 source units" with perfect
-  concordance.
+  concordance. CI's own `.xls` check had relied on exactly that: its catalog
+  declared one workbook under two units, so it now writes two workbooks and
+  asserts that every scored gene carries evidence from both.
 - A GoldPanel `locked` column typed as 1/0 with a blank cell beside it is read
   correctly. pandas delivers `1.0`, which matched nothing in the flag set, so
   the rows the reader had marked were dropped and the blank rows kept.
