@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -359,25 +360,44 @@ def _read_json(path: Path) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
-def _read_gold_from_config(config_path: Path | None) -> pd.DataFrame:
-    if config_path is None or not config_path.exists() or config_path.suffix.lower() not in {".xlsx", ".xls"}:
-        return pd.DataFrame()
+def _read_gold_from_config(config_path: Path | None) -> tuple[pd.DataFrame, str, str]:
+    """Read optional curated genes without disguising a broken panel as an absent one."""
+
+    if config_path is None:
+        return pd.DataFrame(), "not_provided", "no run config was supplied for GoldPanel lookup"
+    if not config_path.exists():
+        return pd.DataFrame(), "not_provided", "the run config is unavailable for GoldPanel lookup"
+    if config_path.suffix.lower() not in {".xlsx", ".xls"}:
+        return pd.DataFrame(), "not_provided", "the run config is not an Excel workbook"
     try:
         with pd.ExcelFile(config_path) as workbook:
             if "GoldPanel" not in workbook.sheet_names:
-                return pd.DataFrame()
+                return pd.DataFrame(), "not_provided", "the Excel config has no GoldPanel sheet"
             gold = read_config_sheet(workbook, "GoldPanel")
-    except Exception:
-        return pd.DataFrame()
+    except (ImportError, KeyError, OSError, TypeError, ValueError, zipfile.BadZipFile) as exc:
+        # Do not include the exception message: parser failures can echo a local path
+        # or workbook cell text into an otherwise portable public manifest.
+        return (
+            pd.DataFrame(),
+            "read_error",
+            f"GoldPanel could not be read ({type(exc).__name__}); curated recall was not calculated",
+        )
     if "gene_symbol" not in gold.columns:
-        return pd.DataFrame()
+        return (
+            pd.DataFrame(),
+            "invalid",
+            "GoldPanel is missing the required gene_symbol column; curated recall was not calculated",
+        )
     gold = gold.copy()
     if "locked" in gold.columns:
         locked = gold["locked"].astype("string").fillna("").str.strip().str.lower()
         keep = locked.isin({"", "1", "true", "t", "yes", "y", "locked"})
         gold = gold.loc[keep].copy()
-    gold["gene_symbol"] = gold["gene_symbol"].astype(str).str.upper().str.strip()
-    return gold.loc[gold["gene_symbol"].ne("")].drop_duplicates("gene_symbol").reset_index(drop=True)
+    gold["gene_symbol"] = gold["gene_symbol"].astype("string").fillna("").str.upper().str.strip()
+    gold = gold.loc[gold["gene_symbol"].ne("")].drop_duplicates("gene_symbol").reset_index(drop=True)
+    if gold.empty:
+        return gold, "not_provided", "GoldPanel contains no locked gene symbols"
+    return gold, "locked", ""
 
 
 def _curated_lookup(gold: pd.DataFrame, genes: pd.DataFrame) -> pd.DataFrame:
@@ -420,6 +440,8 @@ def _summary_rows(
     *,
     evidence_row_count: int | None = None,
     path_base: Path | None = None,
+    gold_panel_status: str = "not_provided",
+    gold_panel_reason: str = "",
 ) -> pd.DataFrame:
     version_info = version_info or runtime_version_info()
     path_base = path_base or result_dir
@@ -445,6 +467,8 @@ def _summary_rows(
         },
         {"field": "n_studies", "value": int(len(studies))},
         {"field": "n_curated_genes", "value": int(len(gold))},
+        {"field": "gold_panel_status", "value": gold_panel_status},
+        {"field": "gold_panel_reason", "value": gold_panel_reason},
         {"field": "top_genes", "value": ";".join(map(str, top))},
     ]
     if not gold.empty and "gene_symbol" in genes.columns:
@@ -655,7 +679,7 @@ def export_run_workbook(
             # Mirror the JSON/gold readers: a truncated or hand-edited TSV must not
             # abort the whole workbook export; fall back to an empty Source_quality sheet.
             diagnostics = pd.DataFrame()
-    gold = _read_gold_from_config(config_path)
+    gold, gold_panel_status, gold_panel_reason = _read_gold_from_config(config_path)
     lookup = _curated_lookup(gold, genes)
     summary = _summary_rows(
         result_dir,
@@ -666,6 +690,8 @@ def export_run_workbook(
         version_info,
         evidence_row_count=evidence_total_rows,
         path_base=output.parent,
+        gold_panel_status=gold_panel_status,
+        gold_panel_reason=gold_panel_reason,
     )
     if evidence_capped:
         summary = pd.concat(
@@ -733,6 +759,11 @@ def export_run_workbook(
         "script": "degora.excel_export.export_run_workbook",
         "path_base": "manifest_directory",
         "command": portable_command(command, manifest_base),
+        "gold_panel": {
+            "status": gold_panel_status,
+            "reason": gold_panel_reason,
+            "gene_count": int(len(gold)),
+        },
         "inputs": [portable_path(path, manifest_base) for path in inputs],
         "outputs": [portable_path(path, manifest_base) for path in [output, manifest, validation]],
         "sheets": {
@@ -758,6 +789,8 @@ def export_run_workbook(
                 f"n_gene_evidence_rows={evidence_total_rows}",
                 f"n_source_units={studies['source_unit_id'].nunique() if 'source_unit_id' in studies.columns else 0}",
                 f"n_curated_genes={len(gold)}",
+                f"gold_panel_status={gold_panel_status}",
+                f"gold_panel_reason={gold_panel_reason}",
             ]
         )
         + "\n",
@@ -774,4 +807,6 @@ def export_run_workbook(
         "rows_gene_scores": int(len(genes)),
         "rows_gene_evidence": evidence_total_rows,
         "rows_curated_lookup": int(len(lookup)),
+        "gold_panel_status": gold_panel_status,
+        "gold_panel_reason": gold_panel_reason,
     }

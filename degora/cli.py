@@ -534,6 +534,11 @@ def _run_pipeline(
             ) from exc
         workbook_size = workbook_path.stat().st_size if workbook_path.exists() else 0
         progress.done(f"{workbook_size / (1024 * 1024):.1f} MB" if workbook_size else "")
+        if workbook_summary.get("gold_panel_status") in {"invalid", "read_error"}:
+            _print_run_warnings(
+                {"warnings": [workbook_summary.get("gold_panel_reason", "GoldPanel could not be audited")]},
+                metrics_path=Path(workbook_summary["manifest"]),
+            )
 
     print("")
     print("DEGORA run complete")

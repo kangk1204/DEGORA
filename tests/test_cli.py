@@ -488,6 +488,26 @@ def test_run_returns_clean_failure_when_default_excel_export_fails(tmp_path, mon
     assert "--no-excel" in message
 
 
+def test_run_warns_when_gold_panel_cannot_support_recall_metrics(tmp_path, capsys) -> None:
+    source_a = tmp_path / "source_a.csv"
+    source_b = tmp_path / "source_b.csv"
+    _write_source(source_a, ["ISG15", "IFIT1", "RPL13A"], 1.0)
+    _write_source(source_b, ["ISG15", "IFIT1", "RPL13A"], 0.8)
+    config = tmp_path / "config.xlsx"
+    _write_config(config, source_a, source_b)
+    with pd.ExcelWriter(config, mode="a", engine="openpyxl") as writer:
+        pd.DataFrame({"marker": ["ISG15"]}).to_excel(writer, sheet_name="GoldPanel", index=False)
+
+    assert main(["run", str(config)]) == 0
+
+    message = capsys.readouterr().err
+    assert "GoldPanel is missing the required gene_symbol column" in message
+    assert "curated recall was not calculated" in message
+    assert "DEGORA_output.manifest.json" in message
+    manifest = json.loads((tmp_path / "results" / "DEGORA_output.manifest.json").read_text())
+    assert manifest["gold_panel"]["status"] == "invalid"
+
+
 def test_validate_missing_config_returns_clean_error(tmp_path, capsys) -> None:
     exit_code = main(["validate", str(tmp_path / "does_not_exist.xlsx")])
 

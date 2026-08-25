@@ -192,6 +192,75 @@ def test_workbook_summary_preserves_dirty_revision_provenance(tmp_path, monkeypa
     assert summary["degora_code_revision"] == "abc1234-dirty"
 
 
+def test_broken_gold_panel_is_reported_in_every_workbook_audit_surface(tmp_path) -> None:
+    result_dir = _minimal_result_dir(tmp_path)
+    broken_config = tmp_path / "broken.xlsx"
+    broken_config.write_bytes(b"not an Excel archive")
+
+    exported = export_run_workbook(
+        result_dir,
+        config_path=broken_config,
+        command="pytest broken GoldPanel",
+    )
+
+    assert exported["gold_panel_status"] == "read_error"
+    assert "could not be read" in exported["gold_panel_reason"]
+    assert str(tmp_path) not in exported["gold_panel_reason"]
+
+    workbook = load_workbook(exported["output"], read_only=True, data_only=True)
+    summary = {
+        row[0]: row[1]
+        for row in workbook["Run_summary"].iter_rows(min_row=2, values_only=True)
+        if row[0]
+    }
+    assert summary["gold_panel_status"] == "read_error"
+    assert "curated recall was not calculated" in summary["gold_panel_reason"]
+
+    manifest = json.loads(Path(exported["manifest"]).read_text(encoding="utf-8"))
+    assert manifest["gold_panel"]["status"] == "read_error"
+    assert manifest["gold_panel"]["gene_count"] == 0
+    validation = Path(exported["validation"]).read_text(encoding="utf-8")
+    assert "gold_panel_status=read_error" in validation
+
+
+def test_invalid_gold_panel_schema_is_not_reported_as_absent(tmp_path) -> None:
+    result_dir = _minimal_result_dir(tmp_path)
+    config = tmp_path / "invalid-gold.xlsx"
+    with pd.ExcelWriter(config, engine="openpyxl") as writer:
+        pd.DataFrame({"marker": ["TP53"]}).to_excel(writer, sheet_name="GoldPanel", index=False)
+
+    exported = export_run_workbook(
+        result_dir,
+        config_path=config,
+        command="pytest invalid GoldPanel",
+    )
+
+    assert exported["gold_panel_status"] == "invalid"
+    assert "gene_symbol" in exported["gold_panel_reason"]
+    assert exported["rows_curated_lookup"] == 0
+
+
+def test_blank_gold_panel_cells_do_not_turn_into_a_nan_gene(tmp_path) -> None:
+    result_dir = _minimal_result_dir(tmp_path)
+    config = tmp_path / "blank-gold.xlsx"
+    with pd.ExcelWriter(config, engine="openpyxl") as writer:
+        pd.DataFrame(
+            {"gene_symbol": [None, "", " TP53 "], "locked": ["yes", "yes", "yes"]}
+        ).to_excel(writer, sheet_name="GoldPanel", index=False)
+
+    exported = export_run_workbook(
+        result_dir,
+        config_path=config,
+        command="pytest blank GoldPanel cells",
+    )
+
+    assert exported["gold_panel_status"] == "locked"
+    assert exported["rows_curated_lookup"] == 1
+    workbook = load_workbook(exported["output"], read_only=True, data_only=True)
+    genes = [row[0] for row in workbook["Curated_lookup"].iter_rows(min_row=2, values_only=True)]
+    assert genes == ["TP53"]
+
+
 def _minimal_result_dir(root, gene_symbol: str = "TOP"):
     result_dir = root / "results"
     result_dir.mkdir(parents=True)
