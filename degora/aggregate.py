@@ -131,7 +131,7 @@ def _normalize_time_course_mode(value: Any) -> str:
     if value is None or pd.isna(value):
         return "mean"
     label = str(value).strip().lower().replace("-", "_").replace(" ", "_")
-    if label in {"", "auto", "all", "source_mean", "average"}:
+    if label in {"", "auto", "all", "mean", "source_mean", "average"}:
         return "mean"
     if label in {"first", "earliest", "early"}:
         return "early"
@@ -139,7 +139,9 @@ def _normalize_time_course_mode(value: Any) -> str:
         return "late"
     if label in {"peak", "peak_mean", "strongest_window"}:
         return "peak_mean"
-    return "mean"
+    raise ValueError(
+        f"unsupported time_course_mode={value!r}; expected mean, early, late, or peak_mean"
+    )
 
 
 def _duration_numeric(values: pd.Series) -> pd.Series:
@@ -219,6 +221,70 @@ def _apply_time_course_mode(frame: pd.DataFrame) -> pd.DataFrame:
 
     out = pd.concat([part for part in selected if not part.empty], ignore_index=True)
     return out if not out.empty else frame.iloc[0:0].copy()
+
+
+TIME_COURSE_RETENTION_WARNING_FRACTION = 0.5
+
+
+def time_course_selection_report(harmonized: pd.DataFrame) -> list[dict[str, Any]]:
+    """Report what `early`/`late` preselection kept and dropped, per source unit.
+
+    The selection is defensible - a gene not measured at the unit's earliest time
+    point genuinely has no early observation there - but it was invisible. A unit
+    pairing a 200-gene 24h table with a 2-gene 30-minute pilot keeps two rows and
+    says nothing, and the genes it drops can fall below min_studies and leave the
+    ranking with no warning, no count, and no diagnostic.
+    """
+
+    if harmonized.empty or "source_unit_id" not in harmonized.columns:
+        return []
+    before = harmonized
+    after = _apply_time_course_mode(harmonized.copy())
+    if after.empty:
+        return []
+    modes = (
+        after.groupby("source_unit_id", sort=True)["time_course_mode"].first()
+        if "time_course_mode" in after.columns
+        else pd.Series(dtype=object)
+    )
+    rows: list[dict[str, Any]] = []
+    for unit, mode in modes.items():
+        if str(mode) not in {"early", "late"}:
+            continue
+        kept = after.loc[after["source_unit_id"].eq(unit)]
+        original = before.loc[before["source_unit_id"].eq(unit)]
+        genes_before = int(original["gene_symbol"].nunique())
+        genes_after = int(kept["gene_symbol"].nunique())
+        rows.append(
+            {
+                "source_unit_id": str(unit),
+                "time_course_mode": str(mode),
+                "rows_before": int(len(original)),
+                "rows_after": int(len(kept)),
+                "genes_before": genes_before,
+                "genes_after": genes_after,
+                "gene_retention": (genes_after / genes_before) if genes_before else 1.0,
+            }
+        )
+    return rows
+
+
+def time_course_selection_warnings(report: list[dict[str, Any]]) -> list[str]:
+    """Warn where preselection left a source unit contributing a small minority."""
+
+    warnings: list[str] = []
+    for entry in report:
+        if entry["genes_before"] <= 0 or entry["gene_retention"] >= TIME_COURSE_RETENTION_WARNING_FRACTION:
+            continue
+        warnings.append(
+            f"time_course_mode={entry['time_course_mode']} left source_unit_id="
+            f"{entry['source_unit_id']!r} with {entry['genes_after']} of {entry['genes_before']} genes "
+            f"({entry['gene_retention']:.0%}): only its "
+            f"{'earliest' if entry['time_course_mode'] == 'early' else 'latest'} timed contrast is used, "
+            "and genes measured at no other time in that unit contribute nothing. Genes that fall below "
+            "min_studies as a result leave the ranking."
+        )
+    return warnings
 
 
 def source_unit_rows_for_aggregation(harmonized: pd.DataFrame) -> pd.DataFrame:

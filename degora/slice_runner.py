@@ -12,7 +12,14 @@ from typing import Any, Callable
 
 import pandas as pd
 
-from .aggregate import _source_unit_series, slice_consensus, validate_min_studies
+from .formula_safety import neutralize_formula_text
+from .aggregate import (
+    _source_unit_series,
+    slice_consensus,
+    time_course_selection_report,
+    time_course_selection_warnings,
+    validate_min_studies,
+)
 from .excel_io import read_config_sheet
 from .harmonize import (
     TableMapping,
@@ -529,8 +536,46 @@ def _canonicalize_catalog_headers(catalog: pd.DataFrame) -> pd.DataFrame:
     return catalog.rename(columns=rename) if rename else catalog
 
 
+def _promoted_alias_warnings(catalog: pd.DataFrame) -> list[str]:
+    """Report a legacy header that decided a setting the canonical column left blank.
+
+    Promotion is silent by design for headers that only rename a value. It is not
+    safe to be silent for time_course_mode: a blank canonical column means `mean`,
+    so promoting a legacy `temporal_mode` of `early` moves a run off the default
+    and can drop every gene a source unit did not measure at its earliest point.
+    A reader told only that "configs that explicitly use early or late can change"
+    reads their blank column and concludes the change does not reach them.
+    """
+
+    warnings: list[str] = []
+    for alias, canonical in CATALOG_ALIASES.items():
+        if canonical != "time_course_mode" or alias not in catalog.columns:
+            continue
+        if canonical in catalog.columns and catalog[canonical].map(_nonempty).notna().any():
+            continue
+        promoted = sorted(
+            {
+                str(value).strip()
+                for value in catalog[alias].tolist()
+                if _nonempty(value) and _normalize_time_course_setting(value) not in {None, "mean"}
+            }
+        )
+        if promoted:
+            warnings.append(
+                f"The legacy '{alias}' column set time_course_mode to {', '.join(promoted)} because "
+                "the 'time_course_mode' column is absent or blank. A blank column means 'mean', so "
+                "this run is not using the default: early and late keep only the source unit's "
+                "earliest or latest timed contrast, and genes measured at no other time drop out. "
+                f"Put the value in 'time_course_mode' to state it, or clear '{alias}' to run as mean."
+            )
+    return warnings
+
+
 def _normalize_catalog_columns(catalog: pd.DataFrame) -> pd.DataFrame:
     frame = _canonicalize_catalog_headers(catalog.copy())
+    # Computed before promotion fills the canonical column, and carried on the
+    # frame so validate and run can both report it without re-reading the file.
+    promoted_warnings = _promoted_alias_warnings(frame)
     for alias, canonical in CATALOG_ALIASES.items():
         if alias not in frame.columns:
             continue
@@ -541,10 +586,19 @@ def _normalize_catalog_columns(catalog: pd.DataFrame) -> pd.DataFrame:
         # the documented source_unit_id alias usable when a beginner template also
         # contains a blank legacy paper_id column.
         blank_canonical = frame[canonical].map(_nonempty).isna()
+        # A column that is blank in every row arrives typed as float64, because
+        # that is what a CSV or workbook of empty cells reads as. Writing the
+        # alias's text into it is an upcast, which pandas 3 refuses outright
+        # instead of widening - so the column is widened here, deliberately,
+        # before the values land. Without this a blank paper_id column beside a
+        # filled source_unit_id ends a run in a raw TypeError.
+        if blank_canonical.any():
+            frame[canonical] = frame[canonical].astype("object")
         frame.loc[blank_canonical, canonical] = frame.loc[blank_canonical, alias]
     for column, default in OPTIONAL_CATALOG_DEFAULTS.items():
         if column not in frame.columns:
             frame[column] = default
+    frame.attrs["promoted_alias_warnings"] = promoted_warnings
     return frame
 
 
@@ -662,9 +716,15 @@ def _validate_source_unit_time_course_modes(
         if len(modes) <= 1:
             continue
         rows = ", ".join(str(_user_row_number(index)) for index in group.index)
+        blank_note = (
+            " A blank time_course_mode cell means 'mean', so leaving one row blank beside "
+            "another row's value is a conflict, not an omission."
+            if "mean" in modes and group["time_course_mode"].map(_nonempty).isna().any()
+            else ""
+        )
         problems.append(
             f"source_unit_id={source_unit_id!r} uses conflicting normalized modes {modes} "
-            f"across config rows {rows}."
+            f"across config rows {rows}.{blank_note}"
         )
     if problems:
         raise DegoraConfigError(
@@ -1333,7 +1393,11 @@ def validate_catalog_inputs(
         "optional_source_table_mappings": _format_source_mapping_contract(OPTIONAL_SOURCE_TABLE_MAPPINGS),
         # Surface the same non-fatal microarray advisories that run_slice emits, so the
         # `degora validate` preflight flags them before a full run rather than after.
-        "warnings": [*_microarray_warnings(catalog), *_mixed_species_warnings(catalog)],
+        "warnings": [
+            *catalog.attrs.get("promoted_alias_warnings", []),
+            *_microarray_warnings(catalog),
+            *_mixed_species_warnings(catalog),
+        ],
     }
 
 
@@ -1394,7 +1458,11 @@ def _run_slice_locked(catalog_path: Path, output_dir: Path, harmonized_dir: Path
 
     harmonized_tables = []
     source_inputs: list[Path] = []
-    input_warnings: list[str] = [*_microarray_warnings(catalog), *_mixed_species_warnings(catalog)]
+    input_warnings: list[str] = [
+        *catalog.attrs.get("promoted_alias_warnings", []),
+        *_microarray_warnings(catalog),
+        *_mixed_species_warnings(catalog),
+    ]
     filter_summaries: dict[str, dict[str, Any]] = {}
 
     for row in catalog.to_dict(orient="records"):
@@ -1456,7 +1524,7 @@ def _run_slice_locked(catalog_path: Path, output_dir: Path, harmonized_dir: Path
     harmonized_stem = f"{output_dir.name}_harmonized"
     harmonized_csv = harmonized_dir / f"{harmonized_stem}.csv"
     harmonized_parquet = harmonized_dir / f"{harmonized_stem}.parquet"
-    all_harmonized.to_csv(harmonized_csv, index=False)
+    neutralize_formula_text(all_harmonized).to_csv(harmonized_csv, index=False)
     optional_output_warnings: list[str] = []
     parquet_warning = _try_write_parquet(all_harmonized, harmonized_parquet)
     if parquet_warning:
@@ -1464,10 +1532,10 @@ def _run_slice_locked(catalog_path: Path, output_dir: Path, harmonized_dir: Path
 
     consensus = slice_consensus(all_harmonized, min_studies=min_studies)
     consensus_path = output_dir / "slice_consensus.csv"
-    consensus.to_csv(consensus_path, index=False)
+    neutralize_formula_text(consensus).to_csv(consensus_path, index=False)
 
     result_harmonized_path = output_dir / "slice_harmonized.csv"
-    all_harmonized.to_csv(result_harmonized_path, index=False)
+    neutralize_formula_text(all_harmonized).to_csv(result_harmonized_path, index=False)
     rank_universe_warnings = sorted(
         {
             str(value)
@@ -1491,6 +1559,12 @@ def _run_slice_locked(catalog_path: Path, output_dir: Path, harmonized_dir: Path
     )
     input_warnings.extend(gene_symbol_collapse_warnings)
     input_warnings.extend(unusable_row_warnings)
+
+    # What early/late preselection kept, and where it left a source unit
+    # contributing a small minority of the genes it started with.
+    time_course_report = time_course_selection_report(all_harmonized)
+    time_course_report_warnings = time_course_selection_warnings(time_course_report)
+    input_warnings.extend(time_course_report_warnings)
 
     gold_panel = _read_locked_gold_panel(catalog_path)
     if gold_panel["status"] == "locked":
@@ -1533,6 +1607,8 @@ def _run_slice_locked(catalog_path: Path, output_dir: Path, harmonized_dir: Path
         if "table_scope" in all_harmonized.columns
         else {},
         "identifier_space_warnings": _identifier_space_warnings(all_harmonized, min_studies=min_studies),
+        "time_course_selection": time_course_report,
+        "time_course_selection_warnings": time_course_report_warnings,
         "rank_universe_warnings": rank_universe_warnings,
         "gene_symbol_collapse_warnings": gene_symbol_collapse_warnings,
         "unusable_row_warnings": unusable_row_warnings,

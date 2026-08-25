@@ -225,6 +225,12 @@ def test_demo_command_writes_runnable_workspace(tmp_path, capsys) -> None:
     )
     assert any(
         row[0] == "Gene_scores"
+        and row[2] == "direction_posterior_mean"
+        and "not a calibrated posterior probability" in row[3]
+        for row in dictionary_rows
+    )
+    assert any(
+        row[0] == "Gene_scores"
         and row[2] == "evidence_reliability_score"
         and row[4] == "0-100, higher is stronger"
         and "evidence_reliability_components_used" in row[5]
@@ -428,6 +434,31 @@ def test_init_returns_clean_error_when_no_table_is_confirmed(tmp_path, monkeypat
 
     message = capsys.readouterr().err
     assert "no table was confirmed" in message
+    assert not output.exists()
+
+
+def test_init_cli_cannot_publish_rank_values_as_gene_symbols(tmp_path, monkeypatch, capsys) -> None:
+    deg_dir = tmp_path / "deg"
+    deg_dir.mkdir()
+    for index in (1, 2):
+        pd.DataFrame(
+            {
+                "rank": list(range(1, 121)),
+                "log2FoldChange": [1.2 - row / 100 for row in range(120)],
+                "pvalue": [0.001 + row / 10000 for row in range(120)],
+            }
+        ).to_csv(deg_dir / f"rank_results_{index}.csv", index=False)
+    output = tmp_path / "config.csv"
+
+    def answer(prompt: str) -> str:
+        if "Which species" in prompt:
+            return "human"
+        return pytest.fail(f"non-gene tables must be skipped before prompting: {prompt}")
+
+    monkeypatch.setattr("builtins.input", answer)
+
+    assert main(["init", str(output), "--deg-dir", str(deg_dir)]) == 2
+    assert "no table was confirmed" in capsys.readouterr().err
     assert not output.exists()
 
 

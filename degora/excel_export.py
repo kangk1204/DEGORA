@@ -27,18 +27,7 @@ EXCEL_MAX_ROWS = 1_048_576
 DEFAULT_WORKBOOK_NAME = "DEGORA_output.xlsx"
 COMMENT_AUTHOR = "DEGORA"
 FORMULA_PREFIX_WHITESPACE = " \t\r\n"
-EXCEL_ERROR_LITERALS = frozenset(
-    {
-        "#DIV/0!",
-        "#N/A",
-        "#NAME?",
-        "#NULL!",
-        "#NUM!",
-        "#REF!",
-        "#VALUE!",
-        "#GETTING_DATA",
-    }
-)
+from .formula_safety import EXCEL_ERROR_LITERALS  # re-exported: discovery_export imports it here
 
 # Large corpora (e.g. the cross-platform hypoxia benchmark) can produce hundreds of
 # thousands of per-source evidence rows. Writing them all into a single Excel sheet is slow
@@ -167,7 +156,11 @@ COLUMN_DEFINITIONS: dict[str, tuple[str, str, str]] = {
     "quality_weighted_direction_confidence_index": ("Quality-weighted version of direction confidence.", "0-1, higher is stronger", "blank means unavailable"),
     "direction_concordant_source_units": ("Number of source units agreeing with the consensus direction.", "integer", "blank means unavailable"),
     "direction_total_source_units": ("Number of source units used for direction assessment.", "integer", "blank means unavailable"),
-    "direction_posterior_mean": ("Beta-binomial style posterior mean for direction agreement.", "0-1", "blank means unavailable"),
+    "direction_posterior_mean": (
+        "Legacy field name for the Beta(1,1)-shrunk direction-agreement index; not a calibrated posterior probability.",
+        "0-1",
+        "blank means unavailable",
+    ),
     "loo_total_folds": ("Number of global source-unit omission folds in the LOO diagnostic.", "non-negative integer", "equals evaluable plus penalty folds"),
     "loo_rank_evaluable_folds": ("Number of LOO folds in which the gene remained eligible and received a priority rank.", "non-negative integer", "0 means numeric LOO diagnostics are unavailable"),
     "loo_penalty_folds": ("Number of LOO folds in which the gene fell below min_studies and received the penalty-rank state.", "non-negative integer", "disjoint from evaluable folds"),

@@ -934,6 +934,16 @@ def main(argv: list[str] | None = None) -> int:
             print(f"DEGORA {args.species} discovery run complete: {result['db_path']}")
             print(f"Top genes: {', '.join(result['top_genes'][:10])}")
             return 0
+    except KeyboardInterrupt:
+        # Ctrl+C is a decision, not a fault. It derives from BaseException, so the
+        # handler below never saw it and a reader who stopped a slow search was
+        # shown a traceback for doing so. 130 is the shell's conventional code.
+        print("", file=sys.stderr)
+        print("Stopped. Nothing was written for the interrupted step.", file=sys.stderr)
+        return 130
+    except BrokenPipeError:
+        # `degora ... | head` closes the pipe; that is the caller's choice.
+        return 0
     except (FileExistsError, FileNotFoundError, PermissionError) as exc:
         print(str(exc), file=sys.stderr)
         return 2

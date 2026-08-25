@@ -274,19 +274,6 @@ def _can_be_gene_label_column(name: Any, values: Iterable[Any]) -> bool:
     return True
 
 
-def _rescue_gene_mapping_from_values(header: dict[str, Any], plausible: dict[str, tuple[str, ...]]) -> None:
-    """Use value-recognised identifiers when a generic header hides the gene column."""
-
-    if header["mapping"].get("gene_column"):
-        return
-    candidates = tuple(plausible.get("gene_column") or ())
-    if len(candidates) != 1:
-        return
-    candidate = candidates[0]
-    header["gene_columns"] = [candidate]
-    header["mapping"]["gene_column"] = candidate
-
-
 def _plausible_columns(frame: pd.DataFrame) -> dict[str, tuple[str, ...]]:
     """Which columns could hold each role, judged by their values, not their names.
 
@@ -310,7 +297,7 @@ def _plausible_columns(frame: pd.DataFrame) -> dict[str, tuple[str, ...]]:
             distinct = sample[name].nunique(dropna=True)
             if (
                 identifier_space(sample[name]) == "Entrez ID"
-                and not NON_GENE_IDENTIFIER_RE.search(str(name).strip())
+                and _can_be_gene_label_column(name, sample[name])
                 and len(finite)
                 and distinct / len(finite) >= 0.5
             ):
@@ -509,7 +496,6 @@ def infer_source_table(path: str | Path) -> SourceInference:
 
     plausible = _plausible_columns(frame)
     header = classify_header(frame.columns)
-    _rescue_gene_mapping_from_values(header, plausible)
     thresholded_probability_columns: list[str] = []
     for role, candidates_key in (("p_column", "p_columns"), ("padj_column", "padj_columns")):
         candidates = list(header.get(candidates_key) or ())

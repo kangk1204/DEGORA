@@ -764,7 +764,15 @@ def _execute_discovery_analysis(
     """Build an active catalog and run DEGORA for exactly one species."""
 
     spec = normalize_species(species)
-    prepared_species = str(prepared.get("species", {}).get("key") or "")
+    # A hand-edited bundle can carry species as a bare string or null. Reading
+    # .get on that raised AttributeError and ended the command in a traceback,
+    # for input the reader can correct.
+    prepared_species_field = prepared.get("species")
+    prepared_species = (
+        str(prepared_species_field.get("key") or "")
+        if isinstance(prepared_species_field, dict)
+        else ""
+    )
     if prepared_species != spec.key:
         raise DiscoveryError("prepared bundle species does not match the requested analysis species")
     entries = list(selections)

@@ -203,14 +203,82 @@ def test_beginner_init_rejects_sample_id_even_when_values_look_like_gene_symbols
 
 
 @pytest.mark.parametrize(
+    ("column", "values"),
+    [
+        ("rank", list(range(1, 121))),
+        ("row_number", list(range(1, 121))),
+        ("baseMean", list(range(100, 220))),
+        ("mean_count", list(range(100, 220))),
+        ("stat", list(range(1, 121))),
+        ("score", list(range(1, 121))),
+        ("index", list(range(1, 121))),
+        ("position", list(range(1, 121))),
+        ("pathway", [f"PATHWAY_{i}" for i in range(120)]),
+        ("metabolite", [f"METABOLITE_{i}" for i in range(120)]),
+        ("cell_line", [f"CELL_{i}" for i in range(120)]),
+        ("compound", [f"COMPOUND_{i}" for i in range(120)]),
+    ],
+)
+def test_beginner_does_not_auto_accept_non_gene_row_labels(
+    tmp_path,
+    column: str,
+    values: list[object],
+) -> None:
+    path = tmp_path / "non_gene_labels.tsv"
+    pd.DataFrame(
+        {
+            column: values,
+            "log2FoldChange": [1.2 - i / 100 for i in range(120)],
+            "pvalue": [0.001 + i / 10000 for i in range(120)],
+        }
+    ).to_csv(path, sep="\t", index=False)
+
+    inference = infer_source_table(path)
+
+    assert inference.plausible["gene_column"] == ()
+    assert inference.mapping.get("gene_column", "") == ""
+    assert not inference.looks_like_a_deg_table
+
+
+def test_beginner_init_cannot_publish_rank_values_as_gene_symbols(tmp_path) -> None:
+    deg = tmp_path / "deg"
+    deg.mkdir()
+    for index in (1, 2):
+        pd.DataFrame(
+            {
+                "rank": list(range(1, 121)),
+                "log2FoldChange": [1.2 - i / 100 for i in range(120)],
+                "pvalue": [0.001 + i / 10000 for i in range(120)],
+            }
+        ).to_csv(deg / f"rank_results_{index}.csv", index=False)
+
+    output = tmp_path / "config.csv"
+    with pytest.raises(BeginnerInitError, match="no table was confirmed"):
+        run_init(
+            output,
+            deg,
+            ask=lambda question, default="": (
+                "human"
+                if "species" in question.lower()
+                else pytest.fail(f"non-gene tables must be skipped before asking: {question}")
+            ),
+            echo=lambda _line: None,
+        )
+
+    assert not output.exists()
+
+
+@pytest.mark.parametrize(
     ("identifier", "values", "space"),
     [
         ("ID", [f"ENSG{i:011d}.{i % 9 + 1}" for i in range(120)], "Ensembl ID"),
+        ("ID", [100000 + i for i in range(120)], "Entrez ID"),
         ("feature", [100000 + i for i in range(120)], "Entrez ID"),
         ("identifier", [f"{1000 + i}_at" for i in range(120)], "Affymetrix probe ID"),
+        ("identifier", [200000 + i for i in range(120)], "Entrez ID"),
     ],
 )
-def test_beginner_rescues_value_recognised_gene_identifiers_from_generic_headers(
+def test_beginner_asks_before_using_value_recognised_identifiers_with_generic_headers(
     tmp_path,
     identifier: str,
     values: list[object],
@@ -228,8 +296,10 @@ def test_beginner_rescues_value_recognised_gene_identifiers_from_generic_headers
     inference = infer_source_table(path)
 
     assert inference.looks_like_a_deg_table
-    assert inference.mapping["gene_column"] == identifier
-    assert inference.identifier_space == space
+    assert inference.mapping.get("gene_column", "") == ""
+    assert inference.plausible["gene_column"] == (identifier,)
+    assert inference.identifier_space_for(identifier) == space
+    assert [choice.role for choice in inference.needs_a_question] == ["gene_column"]
 
 
 @pytest.mark.parametrize("identifier", ["gene_id", "entrez_id", "ensembl_gene_id", "probe_id", "transcript_id", "ID_REF"])

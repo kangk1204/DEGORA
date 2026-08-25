@@ -14,6 +14,8 @@ from typing import Any, Callable, Mapping
 
 import numpy as np
 import pandas as pd
+
+from .formula_safety import neutralize_formula_text
 from scipy.stats import beta, norm
 from scipy.stats import t as t_dist
 
@@ -2362,13 +2364,13 @@ def _write_score_database_locked(
         staged_db_path.parent.mkdir()
         staged_summary_path = staging / summary_path.name
 
-        gene_scores.to_csv(staged_score_csv, index=False)
+        neutralize_formula_text(gene_scores).to_csv(staged_score_csv, index=False)
         staged_metadata_json.write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         diagnostics = pd.DataFrame.from_records(
             metadata.get("source_quality_diagnostics", []),
             columns=SOURCE_QUALITY_DIAGNOSTIC_COLUMNS,
         )
-        diagnostics.to_csv(staged_diagnostics_tsv, sep="\t", index=False)
+        neutralize_formula_text(diagnostics).to_csv(staged_diagnostics_tsv, sep="\t", index=False)
         staged_diagnostics_json.write_text(
             json.dumps(diagnostics.to_dict(orient="records"), indent=2, sort_keys=True) + "\n",
             encoding="utf-8",

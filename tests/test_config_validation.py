@@ -457,6 +457,26 @@ def test_read_catalog_fills_blank_legacy_paper_id_from_explicit_source_unit(tmp_
     assert catalog.loc[0, "source_unit_id"] == "UNIT_A"
 
 
+def test_read_catalog_fills_empty_legacy_paper_id_from_explicit_source_unit(tmp_path) -> None:
+    config_path = tmp_path / "empty_legacy_paper.csv"
+    pd.DataFrame(
+        {
+            "study_id": ["S1"],
+            "paper_id": [""],
+            "source_unit_id": ["UNIT_A"],
+            "source_path": ["x.csv"],
+            "gene_column": ["gene"],
+            "lfc_column": ["log2FoldChange"],
+            "p_column": ["pvalue"],
+        }
+    ).to_csv(config_path, index=False)
+
+    catalog = read_catalog(config_path)
+
+    assert catalog.loc[0, "paper_id"] == "UNIT_A"
+    assert catalog.loc[0, "source_unit_id"] == "UNIT_A"
+
+
 def test_validate_catalog_counts_explicit_source_units_over_shared_paper_id(tmp_path) -> None:
     source_path = tmp_path / "deg.csv"
     pd.DataFrame({"gene": ["GENEA"], "log2FoldChange": [1.0], "pvalue": [0.01]}).to_csv(source_path, index=False)

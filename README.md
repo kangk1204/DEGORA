@@ -223,6 +223,12 @@ p-value, and whether the table lists every gene tested or only the significant
 ones. It shows what it found and what else each column could have been, and asks
 only where a file is genuinely ambiguous. Files that are not DEG result tables --
 a sample sheet sitting in the same folder -- are recognised and skipped.
+Only explicit gene/probe/transcript headers (including recovered R row labels) are
+selected automatically. A generic
+`ID`, `identifier`, or `feature` column whose values resemble identifiers must be
+confirmed, because numeric values alone cannot distinguish Entrez IDs from ranks
+or row numbers. Known non-gene labels such as `rank`, `baseMean`, `pathway`, and
+`compound` are not offered as gene columns.
 
 One thing is never inferred. For every table it asks whether a positive value
 means the gene went **up in the treated samples**. Getting that backwards inverts
@@ -354,6 +360,9 @@ The included synthetic demo is numerically and semantically reproducible from th
 ## Interpretation boundaries
 
 - DEGORA prioritizes genes; its scores are not posterior probabilities.
+- The primary output rank is `quality_weighted_degora_rank`. The earlier
+  `degora_rank` column is the unweighted audit/reference lane, even when a CSV
+  viewer displays it first.
 - Related contrasts are collapsed by source unit before cross-source aggregation.
 - `time_course_mode` chooses which contrasts of a source unit are kept before that collapse, and every row sharing a source unit must use the same mode. `mean` keeps all of them; `early` and `late` keep all gene rows at that source unit's globally smallest and largest numeric `duration_h`; `peak_mean` keeps each gene's strongest half by `|signed_z|`, at least two. `peak_mean` selects on statistical strength, not effect size: `signed_z` is derived from the p-value, so a time point with a large fold change but a weak p-value is not the peak.
 - A row with `pvalue = 1` or zero effect is neutral evidence and does not contribute directional signed-z support. Values below `1e-300` are floored and reported in the run warnings.
@@ -376,6 +385,24 @@ make smoke
 ```
 
 ## Release notes
+
+### Unreleased
+
+Guided initialization no longer promotes value-only `rank`, row-number, count,
+statistic, pathway, metabolite, cell-line, or compound columns to gene identifiers.
+Generic identifier headers remain recoverable through an explicit column question;
+only gene/probe/transcript-specific headers are automatic. Low-level aggregation
+also rejects an unknown `time_course_mode` instead of silently treating a typo as
+`mean`.
+
+Catalog normalization now fills an empty legacy `paper_id` column from
+`source_unit_id` without a pandas 3 dtype error.
+
+Custom ablation weights are stored as the normalized floating-point values that
+passed validation, so numeric strings cannot survive construction and fail later
+inside weighted scoring. The workbook dictionary now labels the legacy
+`direction_posterior_mean` field as a shrinkage index rather than a calibrated
+posterior probability.
 
 ### 0.4.16
 

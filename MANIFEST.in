@@ -1,0 +1,5 @@
+# The README documents scripts/degora_quickstart.sh, so an sdist that ships the
+# README without it hands the reader instructions for a file they do not have.
+include scripts/degora_quickstart.sh
+include Makefile
+include LICENSE

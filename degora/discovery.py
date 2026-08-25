@@ -767,10 +767,18 @@ GENE_EXACT_RE = re.compile(
 # write.csv export, where the gene names arrive as an unnamed index. Leaving it
 # out meant DEGORA could not recognise a column it had just created itself.
 GENE_LOOSE_RE = re.compile(
-    r"gene|symbol|hgnc|hugo|ensembl|entrez|probe|transcript|^row_name(_\d+)?$|id_ref", re.I
+    # `feature_id` is an unambiguous identifier column in expression data, and
+    # matched nothing here: the trailing-`_id` branch had been narrowed to
+    # `id_ref`. Sample- and run-scoped ids are refused before this is
+    # consulted, so admitting a trailing `_id` cannot let one through.
+    r"gene|symbol|hgnc|hugo|ensembl|entrez|probe|transcript|^row_name(_\d+)?$|id_ref|(?:^|[_.])id$",
+    re.I,
 )
 NON_GENE_IDENTIFIER_RE = re.compile(
     r"^(?:id|identifier)$|"
+    r"^(?:rank|row[_. -]?(?:number|num|index)|index|position|base[_. -]?mean|"
+    r"mean[_. -]?(?:count|expression|abundance)|stat(?:istic)?|score|pathway|"
+    r"gene[_. -]?set|metabolite|cell[_. -]?line|compound)$|"
     r"(?:^|[_ .-])(?:sample|subject|patient|donor|run|file|series)(?:[_ .-]?(?:id|name|accession|identifier))?$|"
     r"^(?:gsm|srr|err|drr)(?:[_ .-]?(?:id|accession|identifier))?$",
     re.I,

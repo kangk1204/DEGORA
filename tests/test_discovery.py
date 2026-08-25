@@ -206,7 +206,28 @@ def test_deg_header_prefers_hugo_symbol_over_generic_gene_identifier() -> None:
 
 @pytest.mark.parametrize(
     "identifier",
-    ["id", "sample_id", "subject_id", "patient_id", "donor_id", "run_id", "file_id", "series_id"],
+    [
+        "id",
+        "sample_id",
+        "subject_id",
+        "patient_id",
+        "donor_id",
+        "run_id",
+        "file_id",
+        "series_id",
+        "rank",
+        "row_number",
+        "baseMean",
+        "mean_count",
+        "stat",
+        "score",
+        "index",
+        "position",
+        "pathway",
+        "metabolite",
+        "cell_line",
+        "compound",
+    ],
 )
 def test_generic_or_sample_identifiers_are_not_gene_headers(identifier: str) -> None:
     payload = (

@@ -337,6 +337,24 @@ def test_source_unit_collapse_rejects_conflicting_time_course_modes() -> None:
         collapse_gene_source_units(harmonized)
 
 
+def test_source_unit_collapse_rejects_unknown_time_course_mode() -> None:
+    harmonized = pd.DataFrame(
+        {
+            "study_id": ["T1"],
+            "source_unit_id": ["P1"],
+            "gene_symbol": ["GENE"],
+            "signed_z": [1.0],
+            "lfc": [0.5],
+            "normalized_rank": [0.2],
+            "duration_h": ["1"],
+            "time_course_mode": ["earleist"],
+        }
+    )
+
+    with pytest.raises(ValueError, match="unsupported time_course_mode='earleist'"):
+        collapse_gene_source_units(harmonized)
+
+
 def test_peak_mean_selects_on_statistical_strength_not_effect_size() -> None:
     """Pin what "peak" means, because the two readings disagree.
 
