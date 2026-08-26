@@ -1049,5 +1049,28 @@ def test_a_gzipped_workbook_matrix_reaches_the_welch_derivation(tmp_path: Path) 
         bundle_root=bundle, derived_dir=tmp_path / "derived", sequence=1, replay_command="degora",
     )
 
-    assert Path(row["source_path"]).exists()
-    assert summary.get("n_genes", summary.get("genes", 0)) or True
+    derived = pd.read_csv(row["source_path"])
+    assert len(derived) == 40, "every gene of the gzipped workbook reached the derived table"
+    assert {"gene_symbol", "log2FoldChange", "pvalue", "padj"} <= set(derived.columns)
+
+
+
+def test_the_result_warning_list_carries_each_warning_once(tmp_path: Path) -> None:
+    """Validation and the run both inspect the tables; each warning arrived from both."""
+
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    prepared = _prepared_bundle(bundle)
+    # Make the first author table up-only with small and large values: the
+    # effect-scale check reports that shape from validation and from the run,
+    # and before deduplication the same sentence appeared twice in the result.
+    first = prepared["studies"][0]["files"][0]
+    path = Path(first["inspection"]["local_path"])
+    genes = [f"G{i}" for i in range(40)]
+    pd.DataFrame({"gene": genes, "log2FoldChange": [0.2 + i * 0.1 for i in range(40)], "pvalue": [0.001] * 40, "padj": [0.01] * 40}).to_csv(path, index=False)
+    first["inspection"]["full_file_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    result = run_discovery_analysis(prepared, _selections(), tmp_path / "analysis", species="human", min_studies=1)
+
+    warnings = result["warnings"]
+    assert any("no negative values" in w for w in warnings), warnings
+    assert len(warnings) == len(set(warnings))

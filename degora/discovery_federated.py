@@ -655,7 +655,11 @@ def _readiness(record: dict[str, Any], target: SpeciesSpec) -> dict[str, Any]:
             if str(record.get("detail_assessment") or "") == "not_evaluated"
             else "repository_record_without_tabular_file"
         )
-    elif not tier or tier == "unknown":
+    elif not tier or tier in {"unknown", "likely_ready", "likely", "verified_ready", "target_species_verified", "mixed_rescued"}:
+        # A promise carried in from upstream - a stored snapshot, a provider row -
+        # that the record cannot back with a file candidate or an accession is
+        # not kept. This is the only way a 1959 publication could wear a
+        # likely_ready badge: not through a year, through a tier taken on trust.
         state = "metadata_only"
         tier = "metadata_only"
         basis.append("publication_metadata_only")

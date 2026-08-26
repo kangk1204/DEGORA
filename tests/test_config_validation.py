@@ -217,7 +217,7 @@ def test_run_slice_explains_bad_table_scope(tmp_path) -> None:
         run_slice(config_path, tmp_path / "out", tmp_path / "harmonized", min_studies=1)
 
     message = str(exc_info.value)
-    assert "table-scope settings are not valid" in message
+    assert "optional contrast settings are not valid" in message
     assert "full_results" in message
     assert "deg_only" in message
 

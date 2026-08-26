@@ -33,6 +33,7 @@ from .formula_safety import (
     restore_formula_text_if_marked,
 )
 from .harmonize import (
+    is_workbook_path,
     TableMapping,
     bounded_value_examples,
     canonical_gene_symbol,
@@ -338,6 +339,71 @@ def _spread_sample(identifiers: set[str], size: int = 200) -> list[str]:
         return ordered
     step = len(ordered) / size
     return [ordered[int(index * step)] for index in range(size)]
+
+
+def run_warning_messages(metrics: dict[str, Any]) -> list[str]:
+    messages: list[str] = []
+    seen: set[str] = set()
+
+    warning_values: list[Any] = []
+    for key in ("warnings", "identifier_space_warnings", "rank_universe_warnings"):
+        warning_values.extend(metrics.get(key, []) or [])
+    if metrics.get("gold_panel_status") in {"invalid", "read_error"}:
+        warning_values.append(
+            metrics.get("gold_panel_reason") or "GoldPanel could not support curated recall metrics"
+        )
+    elif metrics.get("gold_panel_status") == "not_provided" and int(metrics.get("n_panel_rows", 0) or 0):
+        # A filled GoldPanel whose rows all say locked=no is dropped in full. That
+        # was visible only inside DEGORA_output.validation.txt, so a user who set
+        # up a panel had no way to learn from the run that it was never used.
+        warning_values.append(
+            metrics.get("gold_panel_reason")
+            or "GoldPanel rows were found but none are locked; curated recall was not calculated"
+        )
+
+    # Rows dropped for a missing or unparsable gene, effect or p-value used to be
+    # reported only past a 10% share. Eight '<1E-16' rows in a 300-row table are
+    # under that share and are the eight most significant genes in the table, so
+    # every non-zero count is named here, compactly, whatever its share.
+    dropped_counts = metrics.get("unusable_row_counts") or {}
+    input_counts = metrics.get("input_row_counts") or {}
+    already_detailed = " ".join(str(value) for value in warning_values)
+    if isinstance(dropped_counts, dict):
+        compact: list[str] = []
+        for study_id, count in dropped_counts.items():
+            try:
+                dropped = int(count)
+            except (TypeError, ValueError):
+                continue
+            if not dropped or f"{study_id}: {dropped:,} of" in already_detailed:
+                continue
+            total = input_counts.get(study_id) if isinstance(input_counts, dict) else None
+            of_total = f" of {int(total):,}" if isinstance(total, (int, float)) and total else ""
+            compact.append(f"{study_id}: {dropped:,}{of_total} row(s)")
+        if compact:
+            warning_values.append(
+                "Rows without a usable gene identifier, numeric log2 fold change or numeric p-value were "
+                "dropped before ranking - " + "; ".join(compact) + ". See unusable_row_counts in slice_metrics.json."
+            )
+
+    try:
+        clipped_rows = int(metrics.get("pvalue_clipped_rows", 0) or 0)
+    except (TypeError, ValueError):
+        clipped_rows = 0
+    if clipped_rows:
+        text = (
+            f"{clipped_rows} row(s) reported pvalue < 1e-300; values were floored "
+            "to 1e-300 before signed-z scoring."
+        )
+        warning_values.append(text)
+
+    for value in warning_values:
+        text = str(value).strip()
+        if text and text not in seen:
+            messages.append(text)
+            seen.add(text)
+
+    return messages
 
 
 def _identifier_space_warnings(harmonized: pd.DataFrame, *, min_studies: int = 2) -> list[str]:
@@ -901,7 +967,7 @@ def _validate_optional_scope_values(catalog: pd.DataFrame, include_mask: pd.Seri
 
     if problems:
         raise DegoraConfigError(
-            "table-scope settings are not valid",
+            "optional contrast settings are not valid (table_scope, time_course_mode, rank_universe_size)",
             context=f"config file: {path}",
             problems=problems,
             fixes=fixes,
@@ -993,6 +1059,24 @@ def _validate_time_course_durations(catalog: pd.DataFrame, include_mask: pd.Seri
         )
 
 
+def _ignored_workbook_settings(row: dict[str, Any], source_path: Path) -> list[str]:
+    """Say when a filled sheet_name applies to nothing.
+
+    A sheet_name on a CSV row was silently ignored. Silence hides the two
+    mistakes it usually means - the reader intended a workbook, or pointed the
+    row at the wrong file - so it is reported, and the run goes on.
+    """
+
+    sheet = _nonempty(row.get("sheet_name"))
+    if sheet is None or is_workbook_path(source_path):
+        return []
+    return [
+        f"{row['study_id']}: sheet_name={str(sheet).strip()!r} is set but {source_path.name} is not a workbook, so "
+        "it is ignored. If the DEG table lives in an Excel sheet, point source_path at the .xlsx/.xls file; "
+        "otherwise clear sheet_name."
+    ]
+
+
 def _source_table_identity(row: dict[str, Any], catalog_path: Path) -> tuple[str, str, str]:
     """(resolved path, sheet, header row) - what a source table is, before column mapping."""
 
@@ -1001,8 +1085,14 @@ def _source_table_identity(row: dict[str, Any], catalog_path: Path) -> tuple[str
         resolved = str(source_path.resolve())
     except OSError:
         resolved = str(source_path)
-    sheet = _nonempty(row.get("sheet_name")) or ""
-    header = _nonempty(row.get("header_row")) or ""
+    # A sheet name means nothing for a CSV; carrying it into the identity let
+    # the same CSV declared twice, once with a stray sheet_name, pass the
+    # duplicate-table check as two different tables.
+    sheet = (_nonempty(row.get("sheet_name")) or "") if is_workbook_path(source_path) else ""
+    # header_row blank and header_row=1 read the same file the same way; as raw
+    # text they made two identities of one table.
+    header_row = normalize_header_row(row.get("header_row"))
+    header = "" if header_row in (None, 1) else str(header_row)
     return resolved, sheet, header
 
 
@@ -1703,6 +1793,20 @@ def _effect_scale_problems(
     return problems, warnings
 
 
+def _looks_like_adjusted_p(p_column: str, mapping: TableMapping) -> bool:
+    """True when the p_column is the adjusted column - by name, or because it is also padj_column."""
+
+    from .discovery import PADJ_RE
+
+    if mapping.padj_column and str(mapping.padj_column).strip().lower() == p_column.strip().lower():
+        return True
+    # PADJ_RE alone, as the classifier init and the browser use: p_val_adj and
+    # pvals_adj also match the nominal pattern, and requiring them not to hid
+    # exactly the Seurat and scanpy headers this is for. No nominal header
+    # (pvalue, P.Value, pval, p) matches PADJ_RE, so nothing is misclassified.
+    return bool(PADJ_RE.search(p_column))
+
+
 def _validate_numeric_source_columns(
     frame: pd.DataFrame,
     mapping: TableMapping,
@@ -1735,6 +1839,16 @@ def _validate_numeric_source_columns(
             continue
         raw = frame[resolved]
         numeric = pd.to_numeric(raw, errors="coerce")
+        if catalog_column == "p_column" and _looks_like_adjusted_p(str(source_column), mapping):
+            # degora init refuses to pick this by default and explains it; the
+            # browser requires adjusted_p_as_pvalue_confirmed; a hand-written
+            # catalog said nothing. Same fact, same words, on the third path.
+            warnings.append(
+                f"{row['study_id']}: p_column={source_column!r} is an adjusted p-value/FDR column, so every "
+                "p-value DEGORA reads from this table is already adjusted. That is a usable answer when the "
+                "table has no unadjusted p-value; if it has one, map p_column to it and keep the adjusted "
+                "column in padj_column."
+            )
         if catalog_column == "lfc_column":
             scale_problems, scale_warnings = _effect_scale_problems(
                 raw,
@@ -1965,6 +2079,7 @@ def validate_catalog_inputs(
             ) from exc
         _validate_source_columns(raw_frame, mapping, row, source_path, catalog_path)
         source_warnings.extend(_validate_numeric_source_columns(raw_frame, mapping, row, source_path, catalog_path))
+        source_warnings.extend(_ignored_workbook_settings(row, source_path))
         filtered_frame, _ = apply_gene_type_filter(
             raw_frame,
             _nonempty(row.get("gene_type_column")),
@@ -2170,6 +2285,7 @@ def _run_slice_locked(catalog_path: Path, output_dir: Path, harmonized_dir: Path
             ) from exc
         _validate_source_columns(raw_frame, mapping, row, source_path, catalog_path)
         input_warnings.extend(_validate_numeric_source_columns(raw_frame, mapping, row, source_path, catalog_path))
+        input_warnings.extend(_ignored_workbook_settings(row, source_path))
         filtered_frame, filter_summary = apply_gene_type_filter(
             raw_frame,
             _nonempty(row.get("gene_type_column")),

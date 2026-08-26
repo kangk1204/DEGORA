@@ -1396,6 +1396,15 @@ def _inspect_upstream_rows(rows: list[list[Any]], *, declared_role: str, sheet: 
         if not gene_candidates:
             continue
         gene_column = sorted(gene_candidates, key=_gene_column_priority)[0]
+        # The space the gene column is written in, from its values - stamped on
+        # matrix candidates as it already was on author tables, so the reader
+        # sees an Ensembl matrix beside a symbol table at selection, not after a run.
+        gene_position = columns.index(gene_column) if gene_column in columns else -1
+        gene_space = (
+            identifier_space([values[gene_position] for values in following if gene_position < len(values)])
+            if gene_position >= 0
+            else ""
+        )
         statistic_columns = [name for name in numeric_columns if DE_STAT_COLUMN_RE.search(name)]
         sample_columns = [name for name in numeric_columns if name != gene_column and _looks_like_sample_column(name)]
         blocked_unknown_statistics = declared_role == "unknown_matrix" and bool(statistic_columns)
@@ -1418,6 +1427,7 @@ def _inspect_upstream_rows(rows: list[list[Any]], *, declared_role: str, sheet: 
             "header_row": index + 1,
             "sheet_name": sheet,
             "gene_column": gene_column,
+            "gene_identifier_space": gene_space,
             "sample_columns": sample_columns,
             "statistic_columns": statistic_columns,
             "numeric_fractions": numeric_fractions,
@@ -1430,6 +1440,7 @@ def _inspect_upstream_rows(rows: list[list[Any]], *, declared_role: str, sheet: 
         "reason": "no tabular matrix header was detected",
         "declared_role": declared_role,
         "gene_column": "",
+            "gene_identifier_space": "",
         "sample_columns": [],
         "requires": ["control_samples", "treatment_samples", "contrast_direction"],
     }

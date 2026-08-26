@@ -527,6 +527,60 @@ make smoke
 
 ## Release notes
 
+### 0.4.27
+
+The score contract is unchanged. This release answers a review of options and
+exception handling on v0.4.26 - 32 cases, none wrong - which left one medium
+finding and a few small ones, and two independent verification reports.
+
+**The browser's completion card says what the run warned about.** A run that
+mixed identifier spaces produced three warnings - a unit written in Ensembl
+IDs while the corpus is in symbols, an overlap of 869 of 19,592 identifiers, a
+10% minority space - and the CLI printed them, while the browser card printed
+the number of source units and eight gene names. The analysis result now
+carries one `warnings` list, assembled by the same function the CLI uses, and
+the card renders it: identifier-space warnings, rank-universe caveats,
+selection warnings and input warnings, in the same words on both surfaces.
+
+**A hand-written catalog whose `p_column` is the adjusted column is told so.**
+`degora init` refuses to pick an adjusted column as the p-value by default and
+explains why; the browser requires `adjusted_p_as_pvalue_confirmed`; a catalog
+with `p_column=padj` passed `validate` and `run` with nothing said. It is a
+warning now, in the same words as the other two paths: every p-value read from
+that table is already adjusted, which is a usable answer when the table has no
+unadjusted one.
+
+**Matrix candidates carry `gene_identifier_space` too.** v0.4.23 said every
+candidate carried it; author tables did and matrices did not, so an Ensembl
+matrix beside a symbol table was visible only after a run. The inspector
+stamps it on matrices from their values.
+
+**Smaller.** The header of the refusal for an invalid `time_course_mode` named
+table scope; it names what the check covers. A `sheet_name` on a CSV source
+was ignored in silence; it is reported as ignored, with the two things it
+usually means, and it no longer lets the same CSV declared twice pass the
+duplicate-table check as two files. A readiness tier carried in from upstream
+that the record cannot back with a file candidate or an accession is not kept -
+the only way a 1959 publication could wear a `likely_ready` badge. The hidden
+preparation marker (`.degora-discovery-bundle.json`) handed to
+`discovery-analyze` is named for what it is instead of failing on a species
+mismatch, and the preparation summary prints the real analysis input path.
+
+**And what an independent review of these changes turned up.** The adjusted-p
+warning missed the Seurat and scanpy headers (`p_val_adj`, `pvals_adj`) it was
+written for, because a clause required them not to look like a p-value; the
+classifier's rule decides alone now. The result's `warnings` list carried each
+source-table warning twice, once from validation and once from the run; it is
+deduplicated in order. `discovery-analyze` printed only the selection warnings;
+it prints the whole list. `gene_identifier_space` was stored on every candidate
+and shown on none; the candidate row says it (`identifiers: Ensembl ID`). A
+blank `header_row` and `header_row=1` made two identities of one table. A
+tautological test assertion was replaced with one that would fail.
+
+A review's proposed year floor for readiness was not adopted: `likely_ready`
+already requires a found file candidate, and a cutoff would only hide real
+evidence.
+
 ### 0.4.26
 
 The score contract is unchanged. This release writes down the order of evidence

@@ -12,14 +12,14 @@ from typing import Any, Iterable
 
 import pandas as pd
 
-from .discovery import DiscoveryError, normalize_species
+from .discovery import DISCOVERY_BUNDLE_ARTIFACT_TYPE, DiscoveryError, normalize_species
 from .excel_export import DEFAULT_WORKBOOK_NAME, export_run_workbook
 from .formula_safety import formula_guard_metadata, neutralize_formula_text
 from .harmonize import _read_excel_any, _restore_unnamed_row_labels
 from .provenance import shell_command, write_source_sidecar
 from .reanalysis import derive_welch_deg
 from .score_db import write_score_database
-from .slice_runner import CATALOG_COLUMNS, run_slice, validate_catalog_inputs
+from .slice_runner import CATALOG_COLUMNS, run_slice, run_warning_messages, validate_catalog_inputs
 
 MAX_ACTIVE_CANDIDATES = 40
 MAX_CONTRAST_LABEL = 180
@@ -1117,6 +1117,21 @@ def _execute_discovery_analysis(
         "author_derivations": author_derivations,
         "fallback_derivations": fallback_summaries,
         "selection_warnings": selection_warnings,
+        # One deduplicated list of everything the run, the catalog validation and
+        # the selection step warned about, in that order. Validation and the run
+        # both inspect the source tables, so the same warning arrives from both;
+        # the browser's completion card and `discovery-analyze` print this list.
+        "warnings": list(
+            dict.fromkeys(
+                text
+                for text in (
+                    *run_warning_messages(metrics),
+                    *map(str, selection_warnings),
+                    *map(str, (validation or {}).get("warnings", []) or []),
+                )
+                if str(text).strip()
+            )
+        ),
         "cross_species_pooling": False,
     }
 
@@ -1132,6 +1147,16 @@ def run_discovery_analysis(
     extra_metadata: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Run a species-specific activation with rollback on every failed attempt."""
+    if isinstance(prepared, dict) and prepared.get("artifact_type") == DISCOVERY_BUNDLE_ARTIFACT_TYPE and "studies" not in prepared:
+        # The hidden .degora-discovery-bundle.json is the preparation folder's
+        # marker: it names the folder as prepared, and carries no studies. Handed
+        # to the analysis it failed on the first field it looked for, species,
+        # with a message about a mismatch that was not the problem.
+        raise DiscoveryError(
+            "this file is the preparation folder's marker (.degora-discovery-bundle.json), not the analysis "
+            "input. Pass discovery_audit.json from the same folder - the file `degora discover --select` "
+            "names as the analysis input."
+        )
 
     output = Path(output_dir).resolve()
     existed_empty, backup = _begin_output_transaction(output, force=force)

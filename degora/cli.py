@@ -251,68 +251,10 @@ def _path_setting(value: str | None, default: Path, *, base: Path | None = None)
 
 
 def _run_warning_messages(metrics: dict[str, Any]) -> list[str]:
-    messages: list[str] = []
-    seen: set[str] = set()
+    from .slice_runner import run_warning_messages
 
-    warning_values: list[Any] = []
-    for key in ("warnings", "identifier_space_warnings", "rank_universe_warnings"):
-        warning_values.extend(metrics.get(key, []) or [])
-    if metrics.get("gold_panel_status") in {"invalid", "read_error"}:
-        warning_values.append(
-            metrics.get("gold_panel_reason") or "GoldPanel could not support curated recall metrics"
-        )
-    elif metrics.get("gold_panel_status") == "not_provided" and int(metrics.get("n_panel_rows", 0) or 0):
-        # A filled GoldPanel whose rows all say locked=no is dropped in full. That
-        # was visible only inside DEGORA_output.validation.txt, so a user who set
-        # up a panel had no way to learn from the run that it was never used.
-        warning_values.append(
-            metrics.get("gold_panel_reason")
-            or "GoldPanel rows were found but none are locked; curated recall was not calculated"
-        )
+    return run_warning_messages(metrics)
 
-    # Rows dropped for a missing or unparsable gene, effect or p-value used to be
-    # reported only past a 10% share. Eight '<1E-16' rows in a 300-row table are
-    # under that share and are the eight most significant genes in the table, so
-    # every non-zero count is named here, compactly, whatever its share.
-    dropped_counts = metrics.get("unusable_row_counts") or {}
-    input_counts = metrics.get("input_row_counts") or {}
-    already_detailed = " ".join(str(value) for value in warning_values)
-    if isinstance(dropped_counts, dict):
-        compact: list[str] = []
-        for study_id, count in dropped_counts.items():
-            try:
-                dropped = int(count)
-            except (TypeError, ValueError):
-                continue
-            if not dropped or f"{study_id}: {dropped:,} of" in already_detailed:
-                continue
-            total = input_counts.get(study_id) if isinstance(input_counts, dict) else None
-            of_total = f" of {int(total):,}" if isinstance(total, (int, float)) and total else ""
-            compact.append(f"{study_id}: {dropped:,}{of_total} row(s)")
-        if compact:
-            warning_values.append(
-                "Rows without a usable gene identifier, numeric log2 fold change or numeric p-value were "
-                "dropped before ranking - " + "; ".join(compact) + ". See unusable_row_counts in slice_metrics.json."
-            )
-
-    try:
-        clipped_rows = int(metrics.get("pvalue_clipped_rows", 0) or 0)
-    except (TypeError, ValueError):
-        clipped_rows = 0
-    if clipped_rows:
-        text = (
-            f"{clipped_rows} row(s) reported pvalue < 1e-300; values were floored "
-            "to 1e-300 before signed-z scoring."
-        )
-        warning_values.append(text)
-
-    for value in warning_values:
-        text = str(value).strip()
-        if text and text not in seen:
-            messages.append(text)
-            seen.add(text)
-
-    return messages
 
 
 def _print_run_warnings(
@@ -1103,6 +1045,10 @@ def main(argv: list[str] | None = None) -> int:
                     print(f"  {line}")
                 if exports.get("draft_catalog_csv"):
                     print(f"Draft catalog (inactive): {exports['draft_catalog_csv']}")
+                # The folder also holds a hidden marker file with a bundle-like name;
+                # naming the real input here keeps a reader from handing the marker
+                # to discovery-analyze and reading a species error for it.
+                print(f"Analysis input: {Path(output) / 'discovery_audit.json'}  (degora discovery-analyze <this file> <selections.json> ...)")
                 print(
                     "Review required before analysis: confirm species, source-unit independence, table scope, "
                     "contrast direction, sample groups, and source provenance. Human and Mouse remain separate."
@@ -1195,7 +1141,9 @@ def main(argv: list[str] | None = None) -> int:
                 min_studies=min_studies,
                 force=args.force,
             )
-            for warning in result.get("selection_warnings", []):
+            # The full list the result carries - run, validation and selection
+            # warnings, deduplicated - not only the selection ones.
+            for warning in result.get("warnings") or result.get("selection_warnings", []):
                 print(f"WARNING: {warning}", file=sys.stderr)
             print(f"DEGORA {args.species} discovery run complete: {result['db_path']}")
             print(f"Top genes: {', '.join(result['top_genes'][:10])}")

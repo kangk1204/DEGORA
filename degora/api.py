@@ -409,6 +409,8 @@ INDEX_HTML = """<!doctype html>
       font-size: 10.5px;
       line-height: 1.4;
     }
+    .analysis-warnings { margin: 8px 0 12px; padding: 8px 12px 8px 28px; background: #fff7e6; border: 1px solid #f0c36d; border-radius: 8px; color: #6b4e00; font-size: 13px; }
+    .analysis-warnings li { margin: 4px 0; }
     .independence-warning {
       grid-column: 1 / -1;
       margin: 0 0 10px;
@@ -1125,6 +1127,7 @@ INDEX_HTML = """<!doctype html>
         <div class="analysis-banner">
           <h3 id="analysisCompleteTitle">Analysis complete</h3>
           <p id="analysisCompleteText"></p>
+          <ul id="analysisCompleteWarnings" class="analysis-warnings" role="status" hidden></ul>
           <div class="analysis-actions">
             <button id="openAnalysis" type="button">Open evidence atlas</button>
             <button class="action-secondary" id="downloadAnalysisExcel" type="button" disabled>Download Excel</button>
@@ -2679,7 +2682,7 @@ INDEX_HTML = """<!doctype html>
       ) || duplicateGenePolicy === "keep_first";
       return `<div class="candidate-row" data-candidate-id="${esc(candidate.candidate_id)}" data-activation-key="${esc(activationKey)}" data-clone="${clone ? "true" : "false"}" data-accession="${esc(study.accession)}" data-source-unit="${esc(study.source_unit_id || study.accession)}" data-mode="author" data-author-status="${esc(status)}" data-series-samples="${esc(String(seriesSamples || ""))}" data-detected-sheet-name="${esc(detectedAuthorValue(candidate, "sheet_name"))}" data-detected-gene-column="${esc(detectedAuthorValue(candidate, "gene_column"))}" data-detected-lfc-column="${esc(detectedAuthorValue(candidate, "lfc_column"))}" data-detected-p-column="${esc(detectedAuthorValue(candidate, "p_column"))}" data-detected-padj-column="${esc(detectedAuthorValue(candidate, "padj_column"))}">
         <input class="candidate-enable" type="checkbox" aria-label="Use ${esc(candidate.name)}" ${checked ? "checked" : ""}>
-        <div><span class="candidate-name">${esc(candidate.name)}${clone ? " · additional cohort/contrast" : ""}</span><span class="candidate-note">Author DEG candidate · ${esc(status)} · ${esc(geneColumn)} / ${esc(lfcColumn)} / ${esc(pColumn)}</span><div class="candidate-tools"><span class="status-pill">${status === "ready_for_review" ? "One-click mapping accepted" : "Mapping review required"}</span><button class="action-secondary clone-author-candidate" type="button">Add cohort/contrast</button></div></div>
+        <div><span class="candidate-name">${esc(candidate.name)}${clone ? " · additional cohort/contrast" : ""}</span><span class="candidate-note">Author DEG candidate · ${esc(status)} · ${esc(geneColumn)} / ${esc(lfcColumn)} / ${esc(pColumn)}${identifierSpaceNote(candidate)}</span><div class="candidate-tools"><span class="status-pill">${status === "ready_for_review" ? "One-click mapping accepted" : "Mapping review required"}</span><button class="action-secondary clone-author-candidate" type="button">Add cohort/contrast</button></div></div>
         <div class="candidate-fields">
           <label>Contrast label<input class="contrast-label" value="${esc(contrast)}" placeholder="Enter exact paper/GEO contrast" autocomplete="off"></label>
           <label>Table scope<select class="table-scope"><option value="auto" ${draft.tableScope === "auto" || draft.tableScope === undefined ? "selected" : ""}>Auto review</option><option value="full_results" ${draft.tableScope === "full_results" ? "selected" : ""}>Full results</option><option value="deg_only" ${draft.tableScope === "deg_only" ? "selected" : ""}>Significant genes only</option></select></label>
@@ -2831,7 +2834,7 @@ INDEX_HTML = """<!doctype html>
       }).join("");
       return `<div class="candidate-row" data-candidate-id="${esc(candidate.candidate_id)}" data-accession="${esc(study.accession)}" data-source-unit="${esc(study.source_unit_id || study.accession)}" data-mode="fallback" data-role="${esc(role)}">
         <input class="candidate-enable" type="checkbox" aria-label="Use ${esc(candidate.name)}" ${draft.enabled ? "checked" : ""}>
-        <div><span class="candidate-name">${esc(candidate.name)}</span><span class="candidate-note">Labeled fallback · ${esc(role)} · choose biological groups explicitly</span></div>
+        <div><span class="candidate-name">${esc(candidate.name)}</span><span class="candidate-note">Labeled fallback · ${esc(role)} · choose biological groups explicitly${identifierSpaceNote(candidate)}</span></div>
         <div class="candidate-fields">
           <label>Contrast label<input class="contrast-label" value="${esc(contrast)}" placeholder="Enter exact paper/GEO contrast" autocomplete="off"></label>
           ${matrixTypeControl}
@@ -2859,6 +2862,15 @@ INDEX_HTML = """<!doctype html>
         return 4;
       }
       return 9;
+    }
+
+    // The space the gene column is written in, judged from its values at
+    // preparation. Stored on every candidate since 0.4.23/0.4.27 and shown here,
+    // where the reader decides, so an Ensembl matrix beside a symbol table is a
+    // visible mismatch before a run rather than a warning after one.
+    function identifierSpaceNote(candidate) {
+      const space = (candidate.inspection || {}).gene_identifier_space;
+      return space ? ` · identifiers: ${esc(String(space))}` : "";
     }
 
     function renderPreparedState() {
@@ -2980,6 +2992,14 @@ INDEX_HTML = """<!doctype html>
       if (state.run) {
         $("analysisCompleteTitle").textContent = `${speciesLabel(activeSpecies)} DEGORA analysis complete`;
         $("analysisCompleteText").textContent = `${state.run.n_source_units || state.run.source_units?.length || 0} independent source units were analyzed separately from the other species. Top genes: ${(state.run.top_genes || []).slice(0, 8).join(", ")}.`;
+        // Everything the run warned about, as the CLI prints it. A unit written
+        // in another identifier space, a DEG-only table with no rank universe, a
+        // sample that changes role between contrasts - all of it was computed and
+        // stored, and none of it reached this card.
+        const runWarnings = [...new Set((state.run.warnings || []).map((item) => String(item)).filter(Boolean))];
+        const warningList = $("analysisCompleteWarnings");
+        warningList.hidden = !runWarnings.length;
+        warningList.innerHTML = runWarnings.map((item) => `<li>${esc(item)}</li>`).join("");
       }
       updateAnalysisEligibility();
       renderDiscoveryHeaderMeta();
