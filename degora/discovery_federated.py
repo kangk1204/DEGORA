@@ -529,7 +529,7 @@ def _prepare_record(record: dict[str, Any], target: SpeciesSpec) -> dict[str, An
     row["species_decision"] = _species_decision(row, target)
     row["mixed_rescued"] = row["species_decision"] == "mixed_rescued"
     row["mixed_quarantined"] = row["species_decision"] == "mixed_quarantined"
-    row["data_readiness"] = _readiness(row, target)
+    row["data_readiness"] = _with_likely_input(_readiness(row, target), row)
     row["canonical_id"] = canonical_record_id(row)
     row["record_kind"] = row.get("record_kind") or "publication"
     row["paper_title"] = _clean_text(row.get("paper_title") or row.get("title"))
@@ -589,7 +589,7 @@ def _merge_group(group: list[dict[str, Any]], target: SpeciesSpec) -> dict[str, 
     merged["mixed_rescued"] = merged["species_decision"] == "mixed_rescued"
     merged["mixed_quarantined"] = merged["species_decision"] == "mixed_quarantined"
     merged["candidates"] = _merge_candidates(ordered)
-    merged["data_readiness"] = _merged_readiness(ordered, merged, target)
+    merged["data_readiness"] = _with_likely_input(_merged_readiness(ordered, merged, target), merged)
     merged["source_unit_id"] = _merged_source_unit_id(ordered, merged)
     explicit_source_units = _sorted_strings(
         row.get("source_unit_id") for row in ordered if _clean_text(row.get("source_unit_id"))
@@ -1044,10 +1044,63 @@ def _merged_source_unit_id(ordered: list[dict[str, Any]], merged: dict[str, Any]
     return merged["canonical_id"]
 
 
-def _default_rank_key(record: dict[str, Any]) -> tuple[int, float, int, str]:
+LIKELY_INPUT_LABELS = {
+    0: "author DEG table",
+    2: "raw count matrix",
+    3: "log2 normalised matrix",
+    4: "normalised matrix",
+    9: "no tabular file seen",
+}
+
+
+def likely_input(record: dict[str, Any]) -> tuple[int, str]:
+    """The best input this record is likely to yield, judged from its file names.
+
+    Nothing has been opened at search time, so this is an estimate in the same
+    order preparation ranks what it has opened: the authors' own results table,
+    then raw counts, then a log2 matrix, then a linear one. It breaks ties inside
+    a readiness tier so that, of two records that look equally ready, the one
+    that names a DEG table comes before the one that names only a count matrix.
+    """
+
+    from .discovery import _LINEAR_NAME_RE, _LOG2_NAME_RE, _RAW_COUNT_NAME_RE, classify_filename
+
+    best = 9
+    for candidate in _normalize_candidates(record):
+        name = _clean_text(candidate.get("name") or candidate.get("filename")) or _clean_text(candidate.get("source_url") or candidate.get("url"))
+        if not name:
+            continue
+        tier = str(classify_filename(name).get("tier") or "")
+        if tier == "strong":
+            rank = 0
+        elif tier in {"upstream", "weak"}:
+            if _LOG2_NAME_RE.search(name):
+                rank = 3
+            elif _LINEAR_NAME_RE.search(name):
+                rank = 4
+            elif _RAW_COUNT_NAME_RE.search(name):
+                rank = 2
+            else:
+                rank = 4
+        else:
+            continue
+        best = min(best, rank)
+    return best, LIKELY_INPUT_LABELS[best]
+
+
+def _with_likely_input(readiness: dict[str, Any], record: dict[str, Any]) -> dict[str, Any]:
+    rank, label = likely_input(record)
+    readiness = dict(readiness)
+    readiness["likely_input_rank"] = rank
+    readiness["likely_input"] = label
+    return readiness
+
+
+def _default_rank_key(record: dict[str, Any]) -> tuple[int, int, float, int, str]:
     readiness = record.get("data_readiness")
     priority = readiness.get("priority", 5) if isinstance(readiness, dict) else _READINESS_PRIORITY.get(str(readiness), 5)
-    return (int(priority), _number_or_inf(record.get("relevance_rank")), -_year(record), _canonical_for_sort(record))
+    input_rank = readiness.get("likely_input_rank", 9) if isinstance(readiness, dict) else 9
+    return (int(priority), int(input_rank), _number_or_inf(record.get("relevance_rank")), -_year(record), _canonical_for_sort(record))
 
 
 def _default_sort_order(sort_by: str | None) -> str:

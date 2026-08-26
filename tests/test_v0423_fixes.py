@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 
 import pandas as pd
 import pytest
@@ -325,3 +327,35 @@ def test_the_browser_shows_the_preferred_file_first_and_collapses_the_rest() -> 
     assert ".sort((a, b) => a.rank - b.rank || a.index - b.index)" in INDEX_HTML
     assert '<details class="alternative-candidates">' in INDEX_HTML
     assert "open only if the file above is not the one to use" in INDEX_HTML
+
+
+def test_search_estimates_the_likely_input_from_file_names_in_the_documented_order() -> None:
+    from degora.discovery_federated import likely_input
+
+    assert likely_input({"candidates": [{"name": "GSE2_DESeq2_results_ATRA_vs_ctrl.csv.gz"}]}) == (0, "author DEG table")
+    assert likely_input({"candidates": [{"name": "GSE3_raw_counts.txt.gz"}]}) == (2, "raw count matrix")
+    assert likely_input({"candidates": [{"name": "GSE4_log2_TMM_matrix.txt.gz"}]}) == (3, "log2 normalised matrix")
+    assert likely_input({"candidates": [{"name": "GSE1_RAW.tar"}, {"name": "GSE1_Normalized_FPKM_gene_counts_matrix.txt.gz"}]}) == (4, "normalised matrix")
+    assert likely_input({"candidates": [{"name": "GSE5_RAW.tar"}]}) == (9, "no tabular file seen")
+
+
+def test_within_a_readiness_tier_a_record_naming_a_deg_table_sorts_before_a_count_matrix() -> None:
+    from degora.discovery_federated import rank_publication_records
+
+    counts = {"canonical_id": "accession:GSE1", "relevance_rank": 1, "year": 2026,
+              "data_readiness": {"priority": 1, "verification_state": "verified_ready", "likely_input_rank": 2, "likely_input": "raw count matrix"}}
+    deg = {"canonical_id": "accession:GSE2", "relevance_rank": 2, "year": 2026,
+           "data_readiness": {"priority": 1, "verification_state": "verified_ready", "likely_input_rank": 0, "likely_input": "author DEG table"}}
+    ranked = rank_publication_records([counts, deg], "data_readiness", "desc")
+
+    assert [row["canonical_id"] for row in ranked] == ["accession:GSE2", "accession:GSE1"]
+
+
+def test_the_readiness_line_and_readme_state_the_preference_order() -> None:
+    from degora.api import INDEX_HTML
+
+    assert "`likely ${detail.likely_input} · `" in INDEX_HTML
+    readme = Path("README.md").read_text(encoding="utf-8")
+    assert "### What DEGORA prefers, in order" in readme
+    for phrase in ("The authors' own results table, covering every gene tested", "A raw count matrix", "A linear normalised matrix"):
+        assert phrase in readme

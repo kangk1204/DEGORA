@@ -1728,8 +1728,13 @@ INDEX_HTML = """<!doctype html>
       // metadata, and the top-ranked one can hold no usable file at all, so say
       // what the estimate rests on: how many candidate files were actually seen.
       const files = Array.isArray(degAssessment(study).candidate_files) ? degAssessment(study).candidate_files : [];
+      // What the record is likely to yield, judged from its file names - the
+      // same order preparation ranks what it has opened. An estimate, said as one.
+      const likely = detail.likely_input && detail.likely_input !== "no tabular file seen"
+        ? `likely ${detail.likely_input} · `
+        : "";
       const seen = files.length
-        ? `${files.length} candidate file${files.length === 1 ? "" : "s"}`
+        ? `${likely}${files.length} candidate file${files.length === 1 ? "" : "s"}, nothing inspected yet`
         : "nothing inspected yet";
       const headline = verified
         ? "data confirmed"

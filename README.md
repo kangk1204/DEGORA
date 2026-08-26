@@ -394,6 +394,44 @@ degora serve path/to/degora_scores.db
 
 Open the **Discover** tab, choose **Human** or **Mouse**, search, review the candidates, and select the records to prepare. Author-provided result tables are preferred. Matrix-derived fallback analysis requires explicit group mapping, contrast direction, and biological-replicate confirmation.
 
+### What DEGORA prefers, in order
+
+DEGORA's score is built from published evidence, and some evidence carries more
+of it than other evidence. The order below is what the search sorts by within a
+readiness tier, what preparation puts first when a series ships several files,
+and what a config should aim for. It is an order of evidence quality, not of
+frequency: a series usually ships one of each.
+
+1. **The authors' own results table, covering every gene tested** - a
+   `full_results` table with a log2 fold change, an unadjusted p-value and, if
+   available, an adjusted one, keyed by gene symbol. The authors' statistics
+   reflect their design, covariates and model; a full table gives
+   `normalized_rank` its true denominator.
+2. **The authors' results table for significant genes only** (`deg_only`) -
+   the same statistics, but the rank universe is unknown unless
+   `rank_universe_size` is given, so its normalised ranks are optimistic and its
+   Stouffer p-values are ranking aids rather than genome-wide inference.
+3. **A raw count matrix** - the least processed matrix. DEGORA normalises it
+   itself and derives a contrast with a Welch test once the reader has assigned
+   control and treatment samples and confirmed they are biological replicates.
+4. **A log2-normalised matrix** (TMM, VST, rlog) - already normalised; used as
+   given after the scale is confirmed.
+5. **A linear normalised matrix** (FPKM, TPM, CPM) - transformed with
+   log2(x + 1) before testing.
+
+Across all of these: a contrast whose group sizes are known is weighted
+`min(sqrt(n_ctrl + n_treat), 4)`, and one whose sizes are unknown is weighted
+1.0 - below a two-sample contrast. Gene identifiers join across studies only
+when they are written the same way, so symbols join the most, and time points
+or normalisations of one series count as one source unit, never as several.
+
+At search time nothing has been opened, so the results table shows this order
+as an estimate from file names ("likely author DEG table", "likely raw count
+matrix") and sorts by it inside each readiness tier. Preparation opens the
+files and ranks what it finds; when one series carries several files of the
+same samples, the preferred one is shown first and the rest sit behind one
+collapsed line.
+
 Browser discovery analysis uses a fixed `min_studies=2`: a gene must retain
 eligible evidence from at least two independent source units. The CLI command
 `degora discovery-analyze --min-studies N` exposes the validated threshold when
@@ -488,6 +526,25 @@ make smoke
 ```
 
 ## Release notes
+
+### 0.4.26
+
+The score contract is unchanged. This release writes down the order of evidence
+DEGORA prefers and makes the search reflect it.
+
+**A "What DEGORA prefers, in order" section in the README.** The authors' own
+full-results table first, then a significant-genes-only table, then a raw count
+matrix, a log2-normalised matrix, and a linear one - an order of evidence
+quality, with the reason for each rank, the group-size weighting, and how
+identifiers and source units are counted.
+
+**The search shows and sorts by the likely input.** Nothing is opened at search
+time, so each record now carries an estimate from its file names - "likely
+author DEG table", "likely raw count matrix" - shown on the readiness line and
+used to break ties inside a readiness tier, so that of two records that look
+equally ready the one naming a DEG table comes first. This is the same order
+preparation applies once it has opened the files, and that the prepared-evidence
+card uses when a series ships several.
 
 ### 0.4.25
 
