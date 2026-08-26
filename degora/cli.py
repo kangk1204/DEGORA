@@ -188,6 +188,35 @@ def _select_publication_records(records: list[dict[str, Any]], selections: list[
     return matched
 
 
+def _prepare_record_lines(studies: list[Any]) -> list[str]:
+    """One line per prepared record that has nothing ready, saying why and what helps."""
+
+    lines: list[str] = []
+    for study in studies:
+        if not isinstance(study, dict) or int(study.get("ready_for_review_count", 0) or 0):
+            continue
+        name = str(study.get("accession") or study.get("canonical_id") or study.get("source_unit_id") or "record")
+        files = [item for item in study.get("files", []) if isinstance(item, dict)]
+        statuses = [str((item.get("inspection") or {}).get("status") or "") for item in files]
+        upstream = int(study.get("upstream_matrix_count", 0) or 0)
+        if "requires_pvalue_mapping" in statuses:
+            lines.append(
+                f"{name}: a results table with adjusted p-values only - confirm in the browser that padj "
+                "may stand in for the p-value, then it can be activated."
+            )
+        elif upstream or any("matrix" in str((item.get("inspection") or {}).get("reason") or "") for item in files):
+            lines.append(
+                f"{name}: only expression matrices were found (no author DEG table) - open it in the browser "
+                "and choose at least two control and two treatment samples to derive a contrast."
+            )
+        elif files:
+            reasons = sorted({str((item.get("inspection") or {}).get("reason") or "") for item in files} - {""})
+            lines.append(f"{name}: no usable table - " + ("; ".join(reasons[:2]) if reasons else "see discovery_audit.json"))
+        else:
+            lines.append(f"{name}: no supplementary files were found for this record.")
+    return lines
+
+
 def _print_publication_page(
     records: list[dict[str, Any]],
     *,
@@ -958,7 +987,11 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "discover":
             output = Path(args.output_dir).resolve()
             if output.exists() and any(output.iterdir()) and not args.force:
-                raise FileExistsError(f"discovery output already exists and is not empty: {output}")
+                raise FileExistsError(
+                    f"discovery output already exists and is not empty: {output}. Each search writes its own "
+                    "folder: pass a new --output-dir (for example one named after the query), or use the "
+                    "browser's Discover tab, which pages through one snapshot without re-searching."
+                )
             if args.source == "geo":
                 from .discovery import export_search_page, prepare_geo_studies, search_geo
 
@@ -1050,6 +1083,10 @@ def main(argv: list[str] | None = None) -> int:
                     f"Ready for review: {ready} table(s) across those records"
                     + ("" if ready else " - nothing can be activated yet; see discovery_audit.json for the per-file reason")
                 )
+                # The judgement behind "0 table(s)" is right and sits in the JSON; a
+                # reader needs the one line per record that says what to do next.
+                for line in _prepare_record_lines(result.get("studies", [])):
+                    print(f"  {line}")
                 if exports.get("draft_catalog_csv"):
                     print(f"Draft catalog (inactive): {exports['draft_catalog_csv']}")
                 print(
@@ -1069,6 +1106,21 @@ def main(argv: list[str] | None = None) -> int:
                     f"Wrote federated {args.species} PubMed+linked-data snapshot with "
                     f"{len(records)} globally ranked record(s) evaluated under the {args.limit}-record cap."
                 )
+                if not records:
+                    # A fact with no next step. Which step depends on why: a source
+                    # that did not answer is not the same as a term nothing matches.
+                    if snapshot.get("provider_status") not in (None, "complete"):
+                        print(
+                            "No records, and at least one source did not answer (see the warning below); "
+                            "retry before concluding that the query has no matches.",
+                            file=sys.stderr,
+                        )
+                    else:
+                        print(
+                            "No records matched. Try a broader or more common English term (a condition, a "
+                            "perturbation, a pathway), check the spelling, and try the other species.",
+                            file=sys.stderr,
+                        )
                 print(
                     f"Display page {page['page']} contains {len(page.get('records', []))} row(s); "
                     f"page size is {DISCOVERY_PAGE_SIZE}."

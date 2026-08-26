@@ -2242,7 +2242,11 @@ def _validate_preparation_target(target: Path, *, force: bool) -> None:
     if not force:
         raise FileExistsError(f"preparation output already exists and is not empty: {target}")
     if not _recognized_prepared_bundle(target):
-        raise DiscoveryError("refusing --force because the output is not a recognized DEGORA prepared bundle")
+        raise DiscoveryError(
+            "refusing --force because the output is not a recognized DEGORA prepared bundle. --force replaces "
+            "a previous preparation in place; it does not re-run a search. To search again, pass a new "
+            "--output-dir, or page through the existing snapshot in the browser's Discover tab."
+        )
 
 
 def _retarget_materialized_paths(result: dict[str, Any], staging: Path, target: Path) -> None:

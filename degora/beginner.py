@@ -661,20 +661,24 @@ def _ask_column_choice(
     suffix = f", and {hidden} more (type another listed choice)" if hidden > 0 else ""
     echo(f"  Options: {', '.join(shown)}{suffix}")
 
+    # One option is an answer, not a choice: the gene prompt offers [SYMBOL] and
+    # Enter takes it, while a padj-only table's p prompt offered "padj" with no
+    # default and counted Enter as a failure - three of them dropped the table.
+    default = choice.chosen or (options[0] if len(options) == 1 else "")
     last_problem = ""
     for attempt in range(1, 4):
-        picked = ask(f"  Which column is the {role_label}?", choice.chosen).strip()
+        picked = ask(f"  Which column is the {role_label}?", default).strip() or default
         candidate = dict(inference.mapping)
         candidate.update(overrides)
         if picked:
             candidate[choice.role] = picked
         last_problem = _mapping_problem(candidate, inference.columns, require_complete=False)
-        if not last_problem and not picked and not choice.chosen:
+        if not last_problem and not picked:
             last_problem = f"the {role_label} is required"
         if not last_problem and picked and picked not in options:
             last_problem = f"{picked!r} is not one of the available {role_label} choices"
         if not last_problem:
-            return picked if picked else choice.chosen
+            return picked
         remaining = 3 - attempt
         if remaining:
             echo(f"  That answer cannot be used: {last_problem}. Try again ({remaining} left).")

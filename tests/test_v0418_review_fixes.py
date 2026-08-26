@@ -536,3 +536,105 @@ def test_discover_names_ignored_terms_and_a_partial_snapshot(monkeypatch, capsys
     assert "Ignored (not English): 태반" in err
     assert "WARNING: this snapshot is partial" in err
     assert "HTTP 429" in err
+
+
+def test_a_single_option_prompt_takes_enter_as_that_option(tmp_path) -> None:
+    """The p prompt offered "padj" alone with no default; Enter counted as a failure."""
+
+    from degora.beginner import run_init
+
+    deg = tmp_path / "deg"
+    deg.mkdir()
+    pd.DataFrame(
+        {
+            "row_name": [f"G{i}" for i in range(120)],
+            "baseMean": [100.0 + i for i in range(120)],
+            "log2 fold change": [2.0 - i * 0.01 for i in range(120)],
+            "padj": [i / 200.0 for i in range(120)],
+        }
+    ).to_csv(deg / "padj_only.tsv", sep="\t", index=False)
+    other = deg / "other.csv"
+    _clean(seed=8).to_csv(other, index=False)
+    # Enter (blank) for the p column, then the direction and metadata.
+    answers = iter(["human", "yes", "a vs b", "P1", "3", "3", "", "yes", "a vs b", "P2", "3", "3"])
+    lines: list[str] = []
+    summary = run_init(tmp_path / "cfg.csv", deg, ask=lambda q, default="": next(answers), echo=lines.append)
+
+    assert summary["n_contrasts"] == 2
+    assert not any("cannot be used" in line for line in lines)
+    config = pd.read_csv(tmp_path / "cfg.csv")
+    assert config.set_index("study_id").loc["padj_only", "p_column"] == "padj"
+
+
+def test_zero_records_come_with_a_next_step(monkeypatch, capsys, tmp_path) -> None:
+    import sys
+    import types
+
+    from degora.cli import main
+
+    def search_publications(query, species, limit=1000, providers=None, progress=None):
+        return {"records": [], "total": 0, "query": query, "species": {"key": "human", "label": "Human"},
+                "provider_status": "complete", "diagnostics": {"errors": []}, "ignored_terms": []}
+
+    module = types.ModuleType("degora.discovery_federated")
+    module.search_publications = search_publications
+    module.page_publication_snapshot = lambda *_a, **_k: {"records": [], "total": 0, "page": 1, "page_size": 10}
+    module.resolve_publication_records = lambda *_a, **_k: []
+    module.filter_publication_records = lambda records, text_filter="": list(records)
+    monkeypatch.setitem(sys.modules, "degora.discovery_federated", module)
+    monkeypatch.setitem(sys.modules, "degora.discovery_export", types.SimpleNamespace(
+        export_publication_search=lambda *_a, **_k: {"search_csv": str(tmp_path / "x.csv"), "search_json": str(tmp_path / "x.json"), "search_xlsx": str(tmp_path / "x.xlsx")}))
+
+    main(["discover", "qqzzxx nonexistent syndrome", "--species", "human", "--limit", "5", "--output-dir", str(tmp_path / "out")])
+
+    assert "No records matched. Try a broader" in capsys.readouterr().err
+
+
+def test_an_existing_output_folder_says_what_to_do(tmp_path, capsys) -> None:
+    from degora.cli import main
+
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "publication_search.csv").write_text("x\n", encoding="utf-8")
+
+    assert main(["discover", "hypoxia", "--species", "human", "--limit", "5", "--output-dir", str(out)]) == 2
+    err = capsys.readouterr().err
+    assert "pass a new --output-dir" in err
+    assert "Discover tab" in err
+
+
+def test_prepare_summary_names_why_a_record_has_nothing_ready() -> None:
+    from degora.cli import _prepare_record_lines
+
+    studies = [
+        {"accession": "GSE343715", "ready_for_review_count": 0, "upstream_matrix_count": 3,
+         "files": [{"inspection": {"status": "upstream_matrix", "reason": "matrix columns were detected; choose at least two control and two treatment samples"}}]},
+        {"accession": "GSE302293", "ready_for_review_count": 0, "upstream_matrix_count": 0,
+         "files": [{"inspection": {"status": "requires_pvalue_mapping", "reason": "adjusted significance detected but nominal p-value is missing"}}]},
+        {"accession": "GSE1", "ready_for_review_count": 2, "files": []},
+        {"accession": "GSE2", "ready_for_review_count": 0, "files": []},
+    ]
+
+    lines = _prepare_record_lines(studies)
+
+    assert lines[0].startswith("GSE343715: only expression matrices were found")
+    assert lines[1].startswith("GSE302293: a results table with adjusted p-values only")
+    assert lines[2].startswith("GSE2: no supplementary files")
+    assert len(lines) == 3  # the record with tables ready is not listed
+
+
+def test_a_guarded_value_in_a_workbook_is_treated_like_one_in_a_csv(tmp_path) -> None:
+    """'=ISG15 in an xlsx was re-guarded to ''=ISG15 on every round trip, silently."""
+
+    from degora.harmonize import TableMapping, read_deg_table
+
+    path = tmp_path / "guarded.xlsx"
+    pd.DataFrame({"gene": ["'=ISG15", "TP53"], "log2FoldChange": [1.0, 2.0], "pvalue": [0.01, 0.02]}).to_excel(path, index=False)
+
+    # No sidecar and a guard-like value in the gene column: refused, as the CSV path is.
+    with pytest.raises(ValueError, match="formula-guard"):
+        read_deg_table(path, TableMapping("gene", "log2FoldChange", "pvalue"))
+    # The same value in a column that is not used is left alone.
+    pd.DataFrame({"gene": ["ISG15"], "notes": ["'=see fig 2"], "log2FoldChange": [1.0], "pvalue": [0.01]}).to_excel(path, index=False)
+    frame = read_deg_table(path, TableMapping("gene", "log2FoldChange", "pvalue"))
+    assert frame["notes"].tolist() == ["'=see fig 2"]

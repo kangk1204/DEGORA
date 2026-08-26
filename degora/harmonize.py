@@ -363,6 +363,12 @@ def read_deg_table(path: str | Path, mapping: TableMapping, *, nrows: int | None
         if isinstance(payload, io.BytesIO):
             payload.seek(0)
         raw_header = pd.read_excel(payload, sheet_name=sheet_name, header=None, skiprows=skip, nrows=1)
+        # Same rule as the CSV branch. Without it a guarded value in a workbook
+        # was re-guarded on every round trip - '=ISG15 became ''=ISG15 - with
+        # nothing said, while the CSV path restored or refused it.
+        frame = restore_formula_text_if_marked(
+            frame, path, columns=[mapping.gene_column, mapping.lfc_column, mapping.p_column, mapping.padj_column or ""]
+        )
         return _record_duplicate_headers(frame, raw_header.iloc[0].tolist() if len(raw_header) else [])
 
     raw_sep = mapping.sep

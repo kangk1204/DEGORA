@@ -489,6 +489,50 @@ make smoke
 
 ## Release notes
 
+### 0.4.20
+
+The score contract is unchanged, and a run over unchanged valid inputs produces
+the same `degora_gene_scores.csv` as v0.4.19. This release answers a review of
+the first-time journey - keyword, selection, preparation, `init`, `validate`,
+`run` - on a fresh clone with live searches. What failed loudly was already
+clear; these are the places that failed quietly.
+
+**A search with no records says what to try.** "0 globally ranked record(s)"
+was a fact with no next step. A query that matched nothing now suggests a
+broader English term, a spelling check and the other species; a query where a
+source did not answer says so instead, because retrying is the right move
+there and rewording is not.
+
+**"0 table(s)" says why, per record.** A record that looked ready in the search
+and prepared to nothing had its reason in `discovery_audit.json` and nowhere
+else. The preparation summary now prints one line per record with nothing
+ready: expression matrices only (choose sample groups in the browser), a
+results table with adjusted p-values only (confirm padj in the browser), no
+usable table, or no files. The judgement was already right; the reader could
+not see it.
+
+**A prompt with one option takes Enter.** The gene prompt offered `[SYMBOL]`
+and Enter took it; a padj-only table's p prompt offered `padj` alone with no
+default, so Enter counted as a failure and three of them dropped the table -
+the most common keystroke on the most common table. One option is now the
+default.
+
+**The messages for an existing output folder, and for `--force`, name the
+remedy.** Both were true and neither said that each search writes its own
+folder, that `--force` replaces a preparation rather than re-running a search,
+or that the browser's Discover tab pages through one snapshot without
+searching again.
+
+**A guarded value in a workbook is treated like one in a CSV.** The formula
+guard restored or refused an apostrophe-guarded value read from a CSV, but the
+workbook path did neither, so `'=ISG15` in an `.xlsx` came out as `''=ISG15`
+and gained an apostrophe on every round trip with nothing said. Both formats
+now follow one rule, scoped to the columns a run uses.
+
+The v0.4.18 note's statement that scores are unchanged is now qualified: an
+input carrying a dotted gene symbol changes, in the right direction, because
+`CAND1.11` is no longer merged into `CAND1`.
+
 ### 0.4.19
 
 The score contract is unchanged. `SCORE_VERSION` remains
@@ -589,8 +633,12 @@ v0.4.16 without any job noticing.
 
 The score contract is unchanged. `SCORE_VERSION` remains
 `degora_score_v1_2_source_unit_mean`, and a run over unchanged valid inputs
-produces the same `degora_gene_scores.csv` as v0.4.17. What changes is which
-inputs are accepted: a config that passed v0.4.17 can now be refused at
+produces the same `degora_gene_scores.csv` as v0.4.17 - with one qualification:
+an input carrying a dotted gene symbol changes, in the right direction. A
+source table that listed `CAND1.11` beside `CAND1` had the two merged into one
+gene for seven releases, because `.11` was stripped as a version suffix; kept
+apart, `CAND1` moves from up to down and every other rank shifts by at most
+one. What changes is which inputs are accepted: a config that passed v0.4.17 can now be refused at
 validation when it carries a linear fold-change column, a p-value written as a
 bound, a text `duration_h` under `early`/`late`, a mapping onto a repeated
 header, or one result table declared as two independent source units. Each of
