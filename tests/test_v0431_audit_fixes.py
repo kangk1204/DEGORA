@@ -66,7 +66,7 @@ def test_an_analysis_runs_as_a_job_and_returns_the_run_through_it(tmp_path: Path
     handler = object.__new__(DegoraRequestHandler)
     handler.server = type("Server", (), {"discovery_job_manager": manager})()
     seen: list[dict] = []
-    handler._discovery_analyze = lambda payload: (seen.append(payload) or {"run_id": "r1", "n_source_units": 2})
+    handler._discovery_analyze = lambda payload, progress=None: (seen.append(payload) or {"run_id": "r1", "n_source_units": 2})
 
     request = {"bundle_id": "a" * 16, "species": "human", "selections": [], "species_confirmed": True}
     started = handler._discovery_analyze_job(request)

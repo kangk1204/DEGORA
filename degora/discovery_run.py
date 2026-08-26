@@ -8,7 +8,7 @@ import re
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 import pandas as pd
 
@@ -931,10 +931,66 @@ def _fallback_row(
         )
         row["notes"] = f"{row['notes']} {note}"
         summary["estimated_counts_note"] = f"{accession}: {note}"
+    if min(len(control_samples), len(treatment_samples)) < 3:
+        # Two against two is the floor, not a comfortable design; a Welch test
+        # on two replicates ranks genes only loosely.
+        label = str(entry.get("contrast_label") or "").strip() or str(candidate.get("name") or candidate_id_label(candidate))
+        summary["small_group_note"] = (
+            f"{accession}: {label!r} compares {len(control_samples)} control against {len(treatment_samples)} "
+            "treatment samples; a Welch test on two replicates has little power, so its p-values rank genes only "
+            "loosely. Treat this contrast as exploratory."
+        )
     return row, summary
 
 
 DISCOVERY_RUN_MARKER = ".degora-discovery-run.json"
+DISCOVERY_RUN_INTERRUPTED_MARKER = ".degora-discovery-run-interrupted.json"
+
+
+def _report(progress: Callable[[float, str], None] | None, fraction: float, message: str) -> None:
+    if progress is not None:
+        progress(fraction, message)
+
+
+def candidate_id_label(candidate: dict[str, Any]) -> str:
+    return str(candidate.get("candidate_id") or "candidate")
+
+
+def mark_unfinished_discovery_runs(discovery_root: str | Path) -> list[Path]:
+    """Label run folders that never reached their success marker.
+
+    A run stopped by a cooperative Stop is rolled back; one killed with the
+    server is not, and its folder looked like any other. The label says what
+    happened; nothing is deleted.
+    """
+
+    marked: list[Path] = []
+    root = Path(discovery_root)
+    if not root.is_dir():
+        return marked
+    for runs_dir in sorted(root.glob("*/runs")):
+        for run_dir in sorted(path for path in runs_dir.iterdir() if path.is_dir()):
+            if (run_dir / DISCOVERY_RUN_MARKER).exists() or (run_dir / DISCOVERY_RUN_INTERRUPTED_MARKER).exists():
+                continue
+            try:
+                (run_dir / DISCOVERY_RUN_INTERRUPTED_MARKER).write_text(
+                    json.dumps(
+                        {
+                            "artifact_type": "degora_discovery_run_interrupted",
+                            "note": (
+                                "This analysis never reached its success marker: the server stopped while it was "
+                                "running. Its files may be incomplete; run the analysis again."
+                            ),
+                        },
+                        indent=2,
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+            except OSError:
+                continue
+            marked.append(run_dir)
+    return marked
 DISCOVERY_RUN_ARTIFACT_TYPE = "degora_discovery_analysis"
 DISCOVERY_RUN_FORMAT_VERSION = 1
 
@@ -1002,6 +1058,8 @@ def _execute_discovery_analysis(
     min_studies: int = 2,
     force: bool = False,
     extra_metadata: dict[str, str] | None = None,
+    progress: Callable[[float, str], None] | None = None,
+    excel: bool = True,
 ) -> dict[str, Any]:
     """Build an active catalog and run DEGORA for exactly one species."""
 
@@ -1058,6 +1116,8 @@ def _execute_discovery_analysis(
     seen_activations: set[tuple[str, ...]] = set()
     selection_warnings = _check_fallback_selection_consistency(entries, prepared)
     for sequence, entry in enumerate(entries, start=1):
+        # Each stage reports here; a job's callback is also where a Stop is noticed.
+        _report(progress, 0.05 + 0.55 * (sequence - 1) / max(len(entries), 1), f"Deriving contrast {sequence} of {len(entries)}.")
         candidate_id = _text(entry.get("candidate_id"), field="candidate_id", required=True, maximum=64)
         pair = candidate_index.get(candidate_id)
         if pair is None:
@@ -1120,7 +1180,12 @@ def _execute_discovery_analysis(
     # beside the identifier-space and DEG-only notes the reader already gets.
     selection_warnings = [
         *selection_warnings,
-        *(summary["estimated_counts_note"] for summary in fallback_summaries if summary.get("estimated_counts_note")),
+        *(
+            summary[key]
+            for summary in fallback_summaries
+            for key in ("estimated_counts_note", "small_group_note")
+            if summary.get(key)
+        ),
     ]
     source_units = sorted({str(row["source_unit_id"]) for row in rows})
     if len(source_units) < min_studies:
@@ -1154,9 +1219,11 @@ def _execute_discovery_analysis(
     validation = validate_catalog_inputs(catalog_path)
     results_dir = output / "results"
     harmonized_dir = output / "harmonized"
+    _report(progress, 0.62, f"Scoring {len(rows)} contrast(s) across {len(source_units)} source unit(s).")
     metrics = run_slice(catalog_path, results_dir, harmonized_dir, min_studies=min_studies)
     harmonized_path = results_dir / "slice_harmonized.csv"
     db_path = results_dir / f"degora_{spec.key}_scores.db"
+    _report(progress, 0.85, "Writing the score database.")
     score_summary = write_score_database(
         harmonized_path,
         results_dir,
@@ -1183,13 +1250,16 @@ def _execute_discovery_analysis(
             "selected sources share a gene identifier space and that contrast direction "
             "and table scope are correct, then prepare and analyze again."
         )
-    excel_workbook = export_run_workbook(
-        results_dir,
-        results_dir / DEFAULT_WORKBOOK_NAME,
-        config_path=catalog_path,
-        db_path=db_path,
-        command=replay_command,
-    )
+    excel_workbook = ""
+    if excel:
+        _report(progress, 0.92, "Writing the Excel workbook.")
+        excel_workbook = export_run_workbook(
+            results_dir,
+            results_dir / DEFAULT_WORKBOOK_NAME,
+            config_path=catalog_path,
+            db_path=db_path,
+            command=replay_command,
+        )
     (output / DISCOVERY_RUN_MARKER).write_text(
         json.dumps(
             {
@@ -1213,6 +1283,11 @@ def _execute_discovery_analysis(
         "db_path": str(db_path),
         "score_csv": str(score_summary["score_csv"]),
         "excel_workbook": excel_workbook,
+        # What the run cannot check and took from the reviewer.
+        "reviewer_attestations": (
+            "direction_confirmed, biological_replicates_confirmed, the group assignments and any lfc_scale "
+            "are the reviewer's statements; DEGORA records them with the run and cannot verify them."
+        ),
         "top_genes": score_summary.get("top_genes", []),
         "source_units": source_units,
         "n_source_units": len(source_units),
@@ -1250,8 +1325,15 @@ def run_discovery_analysis(
     min_studies: int = 2,
     force: bool = False,
     extra_metadata: dict[str, str] | None = None,
+    progress: Callable[[float, str], None] | None = None,
+    excel: bool = True,
 ) -> dict[str, Any]:
-    """Run a species-specific activation with rollback on every failed attempt."""
+    """Run a species-specific activation with rollback on every failed attempt.
+
+    ``progress`` receives (fraction, message) at each stage; a job's callback may
+    raise there to stop the run, and the output folder is rolled back like any
+    other failure, so a stopped run leaves nothing behind.
+    """
     if isinstance(prepared, dict) and prepared.get("artifact_type") == DISCOVERY_BUNDLE_ARTIFACT_TYPE and "studies" not in prepared:
         # The hidden .degora-discovery-bundle.json is the preparation folder's
         # marker: it names the folder as prepared, and carries no studies. Handed
@@ -1274,6 +1356,8 @@ def run_discovery_analysis(
             min_studies=min_studies,
             force=force,
             extra_metadata=extra_metadata,
+            progress=progress,
+            excel=excel,
         )
     except BaseException:
         _rollback_output_transaction(output, existed_empty=existed_empty, backup=backup)

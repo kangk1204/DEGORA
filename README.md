@@ -435,7 +435,13 @@ collapsed line.
 Browser discovery analysis uses a fixed `min_studies=2`: a gene must retain
 eligible evidence from at least two independent source units. The CLI command
 `degora discovery-analyze --min-studies N` exposes the validated threshold when
-an intentionally different replication floor is required.
+an intentionally different replication floor is required. `--min-studies 1`
+scores genes from a single source unit: the run warns that such a ranking shows
+no replication and is exploratory prioritisation, not replicated evidence.
+
+Every `POST` to `/api/discovery/...` must carry the header `X-DEGORA-Action: 1`
+(the page adds it; a `curl` call without it is refused with a message naming
+the header). It is a cross-site request forgery guard for the local server.
 
 The review panel asks each prepared table only for the confirmations that actually apply to it, and keeps the settings most tables never touch behind a collapsed **Advanced settings** panel that opens by itself if any of them is already set. Where a linked series reports how many samples it holds, that total is shown beside the group-size boxes and the two numbers you enter are checked against it; the split between groups is never guessed, because a results table has one row per gene and the number feeds the source weight directly. A table whose columns were recognised and left alone is asked one thing; a table whose effect column does not say it is log2, or whose adjusted p-value is standing in for a raw one, is asked about that as well. Contrast direction is the exception: it is asked for every table, because reversing it inverts every up/down call while leaving results that look entirely reasonable.
 
@@ -512,7 +518,8 @@ The included synthetic demo is numerically and semantically reproducible from th
 - Leave-one-source-out stability is a `priority_rank` diagnostic over global source-unit omission folds. Each fold applies the same `min_studies` eligibility rule and deterministic tie-break as the full priority lane. Median, IQR, and top-N fractions summarize rank-evaluable folds only; the stability score still treats ineligible folds as negative evidence. If no fold keeps a gene eligible, numeric LOO fields are reported as unavailable rather than as zero; the conditional reliability summary then uses the other three mandatory diagnostics with their weights renormalized. These LOO columns are therefore nullable. `evidence_reliability_components_used` records whether three or four diagnostics contributed. Compare reliability values across runs or corpora only when the contributing diagnostic count and LOO eligibility conditions match. The default browser/API ordering remains `quality_weighted_degora_rank`, and reliability does not determine that ordering.
 - Missing group sizes receive the documented neutral replicate multiplier of 0.75. `validate` rejects a zero, negative, fractional or non-numeric group size, so the 0.35 zero-count branch is reachable only through the Python API.
 - `sign_convention` records provenance only. DEGORA does not infer or automatically reverse the input effect direction, so the supplied effect must already represent treatment relative to control.
-- `lfc_scale` is optional. Write `log2` to state that `lfc_column` already holds log2 fold changes when its header does not say so (a column named `lfc`, `beta` or `effect`). Without it, a column with no negative values and values on both sides of 1 is refused as a linear fold change; with it, that shape is reported and the run proceeds. `degora init` writes it from the answer to its scale question. DEGORA never converts a scale itself.
+- `lfc_scale` is optional. Write `log2` to state that `lfc_column` already holds log2 fold changes when its header does not say so (a column named `lfc`, `beta` or `effect`). Without it, a column with no negative values and values on both sides of 1 is refused as a linear fold change; with it, that shape is reported and the run proceeds. `degora init` writes it from the answer to its scale question. DEGORA never converts a scale itself. The shape checks need at least 10 numeric values; a smaller table is taken at its declared or named scale, and the run says so.
+- `direction_confirmed`, `biological_replicates_confirmed`, the sample groups of a matrix contrast and `lfc_scale` are the reviewer's statements. DEGORA records them with every run (`reviewer_attestations` in the discovery run summary) and cannot verify them; a wrong attestation produces a ranking that looks ordinary.
 - Public-data fallback uses a documented Welch workflow and does not automatically correct study-level batch or condition confounding.
 - Result-table semantics, contrast direction, group labels, and species must be reviewed before activation.
 - The Search workflow keeps Human and Mouse in separate workspaces and never pools them, and a prepared discovery bundle is refused if its species does not match the run. Scoring itself matches on gene symbol and is **not** species-specific: a hand-written config naming sources from two species produces one pooled ranking, in which those sources can satisfy the `min_studies` replication rule between them. The run warns when it sees more than one `species` value, and every evidence row records the species it came from.
@@ -526,6 +533,49 @@ make smoke
 ```
 
 ## Release notes
+
+### 0.4.32
+
+The score contract is unchanged. A sweep of every sub-report behind the
+0.4.29 audits, checked line by line against 0.4.31, left two defects in the
+0.4.31 fixes and a list of smaller residuals; this release closes them.
+
+**Validate says what run says about an infinite effect.** 0.4.31 set aside a
+row whose log2 fold change was `Inf`, but only at run time; `degora validate`
+still printed "config OK". It now warns with the count and examples. And when
+the infinite rows were the only rows set aside, the unusable-row sentence
+contradicted itself ("dropped before ranking - (a row can be missing more than
+one) ... the dropped cells were empty"); the infinite rows now have their one
+sentence and the generic one is reserved for the rest.
+
+**The analysis job reports every stage and can be stopped.** The job reported
+two stages; the run now reports each contrast as it is derived, the scoring,
+the database and the workbook, and the browser shows them. "Stop this
+analysis" ends a running job at the next stage and the output folder is rolled
+back, so a stopped run leaves nothing behind; the notice says so. `degora
+discovery-analyze` prints the same stages and takes `--no-excel`.
+
+**A run killed with the server is labelled.** A cooperative stop rolls back;
+a server killed mid-run left a folder that looked finished. On start, the
+server writes `.degora-discovery-run-interrupted.json` into any run folder
+that never reached its success marker - nothing is deleted. The Excel workbook
+is written beside its target and moved into place, so a kill mid-write no
+longer leaves a zero-byte workbook under the final name.
+
+**What a run cannot check is said.** `--min-studies` on `run`, `launch` and
+`discovery-analyze` has help text, and a run at `min_studies=1` warns that its
+ranking shows no replication. A fold-change column with fewer than 10 numeric
+values is taken at its declared or named scale, and the run says so instead of
+passing in silence. A matrix contrast with two replicates in a group is called
+exploratory. Every discovery run summary carries `reviewer_attestations`,
+naming the statements DEGORA records and cannot verify; the README says the
+same. The README documents the `X-DEGORA-Action: 1` header a `curl` user
+needs, and `degora discover --page N` past the last page says so.
+
+**Smaller.** The search API's type contract is tested over HTTP for a list,
+an object, a boolean, a number and null. SciPy's precision-loss warning on a
+synthetic fixture is filtered in the test configuration, and a test that left
+a file handle open closes it.
 
 ### 0.4.31
 

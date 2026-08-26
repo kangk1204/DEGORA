@@ -151,7 +151,8 @@ def test_run_slice_treats_parquet_engine_absence_as_optional_output_warning(tmp_
     assert (tmp_path / "h" / "o_harmonized.csv").exists()
     assert not (tmp_path / "h" / "o_harmonized.parquet").exists()
     assert not (tmp_path / "h" / "o_harmonized.parquet.source").exists()
-    assert metrics["warnings"] == []
+    # A two-row, single-source fixture now draws the small-table and min_studies=1 notes; parquet stays silent.
+    assert not [text for text in metrics["warnings"] if "parquet" in str(text).lower()]
     assert "no usable parquet engine" in metrics["optional_output_warnings"][0]
     persisted = json.loads((tmp_path / "o" / "slice_metrics.json").read_text())
     assert persisted["optional_output_warnings"] == metrics["optional_output_warnings"]

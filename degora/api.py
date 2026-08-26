@@ -1127,6 +1127,7 @@ INDEX_HTML = """<!doctype html>
           <div class="selection-action">
             <button class="action-secondary" id="backToResults" type="button">Back to studies</button>
             <button id="runDiscoveryAnalysis" type="button">Run species-specific DEGORA</button>
+            <button type="button" class="job-cancel" id="cancelAnalysisJob" hidden>Stop this analysis</button>
           </div>
         </div>
         <div id="discoveryError" class="error-box" role="alert" hidden></div>
@@ -1603,6 +1604,8 @@ INDEX_HTML = """<!doctype html>
       analysisProgress: null,
       analysisMessage: "",
       analysisJobStartedAt: 0,
+      analysisJobId: "",
+      analysisCancelled: false,
       analysisRequest: 0
     });
     const discoveryStates = { human: newSpeciesState(), mouse: newSpeciesState() };
@@ -3573,6 +3576,9 @@ INDEX_HTML = """<!doctype html>
       const state = activeDiscoveryState();
       $("runDiscoveryAnalysis").disabled = !eligible || state.analyzing;
       $("runDiscoveryAnalysis").textContent = state.analyzing ? analysisRunningLabel(state) : "Run species-specific DEGORA";
+      const stop = $("cancelAnalysisJob");
+      stop.hidden = !state.analyzing;
+      if (!state.analyzing) { stop.disabled = false; stop.textContent = "Stop this analysis"; }
       if (units.size < 2) {
         // "Select candidates from at least two independent studies" is true and
         // useless when only one of the prepared studies has a candidate to
@@ -3671,6 +3677,8 @@ INDEX_HTML = """<!doctype html>
           species_confirmation_required_for: pendingSpecies.length
         });
         if (requestId !== state.analysisRequest) return;
+        state.analysisJobId = started.job_id;
+        if (activeSpecies === requestSpecies) renderPreparedState();
         const result = await pollAnalysisJob(requestSpecies, requestId, started.job_id);
         if (requestId !== state.analysisRequest || result === null) return;
         state.run = result;
@@ -3696,7 +3704,31 @@ INDEX_HTML = """<!doctype html>
         state.analyzing = false;
         state.analysisProgress = null;
         state.analysisMessage = "";
+        state.analysisJobId = "";
+        if (state.analysisCancelled) {
+          // The server rolled the output folder back; nothing is left to look at.
+          state.analysisCancelled = false;
+          state.notice = "Analysis stopped; nothing was written. The prepared files are kept - run it again when ready.";
+          state.noticeLevel = "info";
+          if (activeSpecies === requestSpecies) renderDiscoveryNotice(state);
+        }
         if (activeSpecies === requestSpecies) renderPreparedState();
+      }
+    }
+
+    async function cancelAnalysisJob() {
+      const state = activeDiscoveryState();
+      if (!state.analyzing || !state.analysisJobId) return;
+      const button = $("cancelAnalysisJob");
+      button.disabled = true;
+      button.textContent = "Stopping...";
+      try {
+        await postJson(`/api/discovery/jobs/${state.analysisJobId}/cancel`, {});
+      } catch (error) {
+        button.disabled = false;
+        button.textContent = "Stop this analysis";
+        state.analysisError = error.message;
+        renderPreparedState();
       }
     }
 
@@ -3710,7 +3742,10 @@ INDEX_HTML = """<!doctype html>
         state.analysisProgress = typeof job.progress === "number" ? job.progress : null;
         state.analysisMessage = typeof job.message === "string" ? job.message : "";
         if (job.status === "complete") return job.result || {};
-        if (job.status === "cancelled") return null;
+        if (job.status === "cancelled") {
+          state.analysisCancelled = true;
+          return null;
+        }
         if (job.status === "interrupted") {
           throw new Error("The analysis was interrupted because the local DEGORA server stopped. "
             + "The prepared files are kept; run the analysis again.");
@@ -4467,6 +4502,9 @@ INDEX_HTML = """<!doctype html>
       }
     });
     $("runDiscoveryAnalysis").addEventListener("click", runSelectedAnalysis);
+    // The Stop button sits in the card footer, outside the candidate list
+    // whose delegated listener handles the other job cancels.
+    $("cancelAnalysisJob").addEventListener("click", () => { void cancelAnalysisJob(); });
     $("openAnalysis").addEventListener("click", openDiscoveryAnalysis);
     $("downloadAnalysisExcel").addEventListener("click", downloadAnalysisExcel);
 
@@ -5933,15 +5971,19 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
             raise ValueError("selections must be a JSON list")
 
         def worker(_job_id: str, _payload: dict[str, Any], progress: Any) -> dict[str, Any]:
-            progress(0.05, "Deriving the selected contrasts and scoring genes.")
-            result = self._discovery_analyze(request)
+            progress(0.02, "Starting the analysis.")
+            # Every stage of the run reports through the job, and the job's
+            # callback is where a Stop is noticed and the run rolled back.
+            result = self._discovery_analyze(request, progress=lambda fraction, message: progress(fraction, message))
             progress(0.98, "Storing the run.")
             return result
 
         job = manager.submit("discovery_analyze", {"species": request.get("species"), "bundle_id": bundle_id}, worker)
         return {"job_id": job["job_id"], "status": "queued"}
 
-    def _discovery_analyze(self, payload: dict[str, Any]) -> dict[str, Any]:
+    def _discovery_analyze(
+        self, payload: dict[str, Any], progress: Callable[[float, str], None] | None = None
+    ) -> dict[str, Any]:
         from .discovery import normalize_species
         from .discovery_run import run_discovery_analysis
 
@@ -5989,6 +6031,9 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
                 "discovery_species_confirmed_by_reviewer": "true" if species_confirmed else "false",
                 "discovery_species_records_needing_confirmation": str(pending_species),
             },
+            # Passed only when there is one: test doubles and older runners do
+            # not take the keyword, and a direct call has nobody to report to.
+            **({"progress": progress} if progress is not None else {}),
         )
         record = {"run_id": run_id, "bundle_id": bundle_id, **result}
         with self.server.discovery_lock:
@@ -6268,6 +6313,13 @@ class DegoraHttpServer(ThreadingHTTPServer):
             recover_jobs = getattr(self.discovery_search_store, "recover_interrupted_jobs", None)
             if callable(recover_jobs):
                 recover_jobs()
+            # A run killed with the server left a folder that looked finished.
+            try:
+                from .discovery_run import mark_unfinished_discovery_runs
+
+                mark_unfinished_discovery_runs(self.discovery_root)
+            except Exception:  # noqa: BLE001 - labelling old folders must never stop the server
+                pass
             try:
                 self.discovery_job_manager = manager_class(self.discovery_search_store, max_workers=2)
             except TypeError:

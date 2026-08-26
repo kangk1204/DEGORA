@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "degora"
-version = "0.4.31"
+version = "0.4.32"
 description = "Excel-first integration of published heterogeneous DEG tables"
 readme = "README.md"
 license = "MIT"
@@ -34,3 +34,10 @@ degora = "degora.cli:main"
 
 [tool.setuptools]
 packages = ["degora"]
+
+[tool.pytest.ini_options]
+# SciPy's moment routine warns about catastrophic cancellation on a synthetic
+# fixture whose values are deliberately identical; it is not a DEGORA defect.
+filterwarnings = [
+    "ignore:Precision loss occurred in moment calculation:RuntimeWarning",
+]

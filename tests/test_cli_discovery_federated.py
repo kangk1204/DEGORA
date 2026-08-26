@@ -69,6 +69,9 @@ def test_discovery_analyze_cli_loads_review_artifacts_and_reports_result(
         ]
     ) == 0
 
+    progress = captured["kwargs"].pop("progress")
+    assert callable(progress)
+    assert captured["kwargs"].pop("excel") is True  # --no-excel not given
     assert captured == {
         "prepared": {"species": {"key": "human"}},
         "selected": [{"candidate_id": "candidate1"}],

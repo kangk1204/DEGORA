@@ -1732,6 +1732,15 @@ def _effect_scale_problems(
     header_says_log = bool(re.search(r"log", str(source_column), re.IGNORECASE)) or declared_log2
     problems: list[str] = []
     warnings: list[str] = []
+    if len(values) < LINEAR_FOLD_CHANGE_MIN_ROWS and not declared_log2:
+        # The shape tests below need ten values; a smaller table is neither
+        # refused nor checked, and that silence read as approval.
+        warnings.append(
+            f"{study_id}: lfc_column={source_column!r} has only {len(values):,} numeric value(s), fewer than the "
+            f"{LINEAR_FOLD_CHANGE_MIN_ROWS} DEGORA needs to tell a log2 fold change from a linear one, so the "
+            "scale is taken as declared or named. If these are linear fold changes, convert them to log2; if they "
+            "are already log2 and the header does not say so, set lfc_scale=log2 on this row."
+        )
     n_negative = int((values < 0).sum())
     n_below_half = int(((values > 0) & (values < 0.5)).sum())
     n_above_one = int((values > 1.0).sum())
@@ -1839,6 +1848,19 @@ def _validate_numeric_source_columns(
             continue
         raw = frame[resolved]
         numeric = pd.to_numeric(raw, errors="coerce")
+        if catalog_column == "lfc_column":
+            # "inf" parses as a number; validate said "config OK" and the run then
+            # set the row aside. Say it here, where the reader is looking.
+            nonfinite = numeric.notna() & ~np.isfinite(numeric.to_numpy(dtype=float))
+            n_nonfinite = int(nonfinite.sum())
+            if n_nonfinite:
+                shown = ", ".join(str(value) for value in raw.loc[nonfinite].head(3))
+                warnings.append(
+                    f"{row['study_id']}: lfc_column={source_column!r} holds {n_nonfinite:,} infinite value(s) "
+                    f"(examples: {shown}); an infinite effect has no usable magnitude, so the run sets those rows "
+                    "aside as unusable. Check how the table was exported (a division by zero or a filtered-out "
+                    "group writes Inf)."
+                )
         if catalog_column == "p_column" and _looks_like_adjusted_p(str(source_column), mapping):
             # degora init refuses to pick this by default and explains it; the
             # browser requires adjusted_p_as_pvalue_confirmed; a hand-written
@@ -2363,6 +2385,13 @@ def _run_slice_locked(catalog_path: Path, output_dir: Path, harmonized_dir: Path
     )
     input_warnings.extend(gene_symbol_collapse_warnings)
     input_warnings.extend(unusable_row_warnings)
+    if int(min_studies) == 1:
+        # The default floor of two is what makes a score replicated evidence;
+        # a run below it used to say nothing about what it had given up.
+        input_warnings.append(
+            "min_studies=1: a gene is scored from a single source unit, so this ranking shows no replication; "
+            "treat it as exploratory prioritisation, not as replicated evidence."
+        )
 
     # What early/late preselection kept, and where it left a source unit
     # contributing a small minority of the genes it started with.

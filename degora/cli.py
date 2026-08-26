@@ -706,7 +706,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--output-dir")
     run.add_argument("--harmonized-dir")
     run.add_argument("--db")
-    run.add_argument("--min-studies", type=int)
+    run.add_argument("--min-studies", type=int, help="Independent source units a gene needs before it is scored (default 2). 1 ranks a single source without replication: exploratory prioritisation, not replicated evidence.")
     run.add_argument("--no-excel", action="store_true", help="Skip the default DEGORA_output.xlsx audit workbook.")
 
     launch = subparsers.add_parser("launch", help="Run analysis, then optionally start the browser.")
@@ -714,7 +714,7 @@ def build_parser() -> argparse.ArgumentParser:
     launch.add_argument("--output-dir")
     launch.add_argument("--harmonized-dir")
     launch.add_argument("--db")
-    launch.add_argument("--min-studies", type=int)
+    launch.add_argument("--min-studies", type=int, help="Independent source units a gene needs before it is scored (default 2). 1 ranks a single source without replication: exploratory prioritisation, not replicated evidence.")
     launch.add_argument("--no-excel", action="store_true", help="Skip the default DEGORA_output.xlsx audit workbook.")
     launch.add_argument("--serve", action="store_true", help="Start the browser/API after the run finishes.")
     launch.add_argument("--host", default="127.0.0.1")
@@ -812,8 +812,9 @@ def build_parser() -> argparse.ArgumentParser:
     discovery_analyze.add_argument("selections_json")
     discovery_analyze.add_argument("--species", required=True, choices=["human", "mouse"])
     discovery_analyze.add_argument("--output-dir", required=True)
-    discovery_analyze.add_argument("--min-studies", type=int, default=2)
+    discovery_analyze.add_argument("--min-studies", type=int, default=2, help="Independent source units a gene needs before it is scored (default 2). 1 ranks a single source without replication: exploratory prioritisation, not replicated evidence.")
     discovery_analyze.add_argument("--force", action="store_true")
+    discovery_analyze.add_argument("--no-excel", action="store_true", help="Skip the default DEGORA_output.xlsx audit workbook.")
 
     return parser
 
@@ -1085,6 +1086,12 @@ def main(argv: list[str] | None = None) -> int:
                     f"Display page {page['page']} contains {len(page.get('records', []))} row(s); "
                     f"page size is {DISCOVERY_PAGE_SIZE}."
                 )
+                total_pages = page.get("total_pages")
+                if total_pages and int(page["page"]) > int(total_pages):
+                    print(
+                        f"Page {page['page']} is past the last page: the snapshot has {int(total_pages)} page(s).",
+                        file=sys.stderr,
+                    )
                 _print_publication_page(
                     list(page.get("records", [])),
                     page=int(page["page"]),
@@ -1133,6 +1140,10 @@ def main(argv: list[str] | None = None) -> int:
                 min_studies = validate_min_studies(args.min_studies)
             except ValueError as exc:
                 raise CliUsageError(str(exc)) from exc
+            def report_analysis_stage(fraction: float, message: str) -> None:
+                percent = max(0, min(100, int(round(float(fraction) * 100))))
+                print(f"[{percent:3d}%] {message}", file=sys.stderr, flush=True)
+
             result = run_discovery_analysis(
                 prepared,
                 selections,
@@ -1140,6 +1151,8 @@ def main(argv: list[str] | None = None) -> int:
                 species=args.species,
                 min_studies=min_studies,
                 force=args.force,
+                progress=report_analysis_stage,
+                excel=not getattr(args, "no_excel", False),
             )
             # The full list the result carries - run, validation and selection
             # warnings, deduplicated - not only the selection ones.

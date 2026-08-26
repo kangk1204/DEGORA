@@ -762,7 +762,10 @@ def export_run_workbook(
     dictionary = _column_dictionary(sheet_frames)
 
     output.parent.mkdir(parents=True, exist_ok=True)
-    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+    # Written beside the target and moved into place at the end: a run killed
+    # mid-write used to leave a zero-byte workbook under the final name.
+    partial = output.with_name(output.name + ".partial")
+    with pd.ExcelWriter(partial, engine="openpyxl") as writer:
         guide.to_excel(writer, sheet_name="Workbook_guide", index=False)
         dictionary.to_excel(writer, sheet_name="Column_dictionary", index=False)
         for sheet_name, frame in sheet_frames.items():
@@ -775,7 +778,8 @@ def export_run_workbook(
     # The saved archive still carries per-member write timestamps, so rewrite it with
     # fixed timestamps and a stable member order. Identical inputs then produce a
     # byte-identical workbook, matching the CSV and SQLite outputs of the same run.
-    normalize_ooxml_zip(output)
+    normalize_ooxml_zip(partial)
+    os.replace(partial, output)
 
     manifest = output.with_suffix(".manifest.json")
     validation = output.with_suffix(".validation.txt")

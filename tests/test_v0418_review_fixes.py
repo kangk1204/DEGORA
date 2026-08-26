@@ -668,7 +668,8 @@ def test_federated_prepare_hands_the_repository_phase_the_expanded_series_count(
         return {"studies": [], "excluded_studies": []}
 
     monkeypatch.setattr(prepare_module, "prepare_geo_studies", fake_prepare_geo_studies)
-    source = open(prepare_module.__file__, encoding="utf-8").read()
+    with open(prepare_module.__file__, encoding="utf-8") as handle:
+        source = handle.read()
     assert "max_studies=max(len(accessions), 1)" in source
     # Behaviour is pinned at the call site; the kwarg reaches the cap check.
     from degora.discovery import _validated_accessions

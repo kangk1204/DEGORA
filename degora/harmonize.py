@@ -1220,10 +1220,13 @@ def harmonize_frame(frame: pd.DataFrame, mapping: TableMapping, study_meta: dict
     out["n_input_rows"] = n_input_rows
     out["n_rows_dropped_unusable"] = n_rows_dropped_unusable
     out["n_rows_merged_by_gene_collapse"] = int(n_input_rows - n_rows_dropped_unusable - len(out))
+    # The infinite rows have their own sentence below; counting them here too
+    # produced "dropped before ranking - (a row can be missing more than one)"
+    # with no reason named and "the dropped cells were empty" for cells that held inf.
     unusable_warning = _unusable_row_warning(
         str(study_meta.get("study_id", "unknown_study")),
         n_input_rows,
-        n_rows_dropped_unusable,
+        n_rows_dropped_unusable - n_nonfinite_lfc,
         unusable_reasons,
         unusable_examples,
     )
