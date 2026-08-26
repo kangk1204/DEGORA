@@ -489,6 +489,45 @@ make smoke
 
 ## Release notes
 
+### 0.4.23
+
+The score contract is unchanged. This release answers three end-to-end reviews
+of the search-to-analysis path on v0.4.21 and v0.4.22, each run on a fresh
+clone with live searches.
+
+**A selection cannot fan out into a download of the whole repository.** One
+publication can link dozens of GEO series - a consortium publication linked 51 - and a
+selection of 20 publications quietly became 69 series to download. A record
+linking more than five series is set aside at preparation with the count and a
+note to search for the series it wants and select them directly.
+
+**A gene column is judged by its values, everywhere.** A column named "Gene
+Symbol" that held Ensembl IDs was accepted on its name, overlapped a symbol
+table on the 4% of rows where both sides happened to write Ensembl, and the run
+reported success over 869 genes that were all ENSG. One rule, shared by the
+guided setup, the preparation inspector and the run, now names the space a
+column is written in from its values. The inspector prefers the candidate whose
+values join best (symbols, then Ensembl, RefSeq, Entrez) and records
+`gene_identifier_space` on every candidate, so the mismatch is visible at
+selection. A run warns when a source unit is written in a different space from
+the rest of the corpus even when some identifiers overlap; before, that warning
+required an overlap of exactly zero.
+
+**A fractional matrix is refused as raw counts.** `matrix_type=count_matrix`
+over FPKM, TPM or a log scale would hand a count model something that is not
+counts; when fewer than 95% of the selected columns' values are whole numbers,
+the selection is refused with the alternative named.
+
+**A gzipped workbook opens on the author path.** Preparation inspected and
+mapped an `.xls.gz` author table and said it could be activated; activation
+read it as CSV and died on a UTF-8 decode error. The activation reader now
+takes the same route as every other reader.
+
+**Smaller.** `degora discover` refuses a one-character query and a `--page`
+below 1 instead of searching or silently clamping. `degora serve` on a path
+with no database says where one comes from (`degora demo`, then `degora run`,
+or `degora launch`) instead of only that the path has none.
+
 ### 0.4.22
 
 The score contract is unchanged. Two defects in the path from a search to an

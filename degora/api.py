@@ -6019,10 +6019,17 @@ def _require_degora_score_database(db_path: Path) -> None:
 
     fix = (
         "Pass the degora_scores.db written by `degora run` "
-        "(for example: degora serve outputs/results/degora-run/degora_scores.db)."
+        "(for example: degora serve outputs/results/degora-run/degora_scores.db). "
+        "No run yet? `degora demo my_demo` then `degora run my_demo/degora_demo_config.xlsx` "
+        "writes one in a minute, and `degora launch <config>` runs and opens the browser in one step."
     )
     if db_path.is_dir():
         raise ScoreDatabaseError(f"DEGORA database path is a directory, not a database file: {db_path}\n{fix}")
+    if not db_path.exists():
+        # The first thing a new reader types is `degora serve` with no run behind
+        # it; the answer has to say where a database comes from, not only that
+        # this path has none.
+        raise ScoreDatabaseError(f"DEGORA database does not exist: {db_path}\n{fix}")
     # The same read-only connection every request uses. Building the URI by hand
     # from the raw path let SQLite read `#`, `?` and `%XX` as URI syntax: it opened
     # a *different* file, read-write, created it when it did not exist, and then

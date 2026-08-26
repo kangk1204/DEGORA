@@ -26,6 +26,7 @@ from .aggregate import (
     validate_min_studies,
 )
 from .excel_io import locked_panel_mask, read_config_sheet
+from .identifiers import UNKNOWN_IDENTIFIER_SPACE, identifier_space
 from .formula_safety import (
     formula_guard_metadata,
     neutralize_formula_text,
@@ -322,6 +323,11 @@ def _normalize_time_course_setting(value: Any) -> str | None:
     return TIME_COURSE_MODE_ALIASES.get(label)
 
 
+# Two genome-wide tables in one identifier space overlap far above this; two
+# DEG-only lists can legitimately overlap little, so this stays a warning.
+IDENTIFIER_OVERLAP_WARNING_SHARE = 0.10
+
+
 def _identifier_space_warnings(harmonized: pd.DataFrame, *, min_studies: int = 2) -> list[str]:
     """Flag source units whose identifiers do not meet the rest of the corpus.
 
@@ -341,8 +347,23 @@ def _identifier_space_warnings(harmonized: pd.DataFrame, *, min_studies: int = 2
         return []
 
     warnings: list[str] = []
+    # The space each unit is written in, judged from its values. Overlap alone
+    # missed a real case: a column named "Gene Symbol" that held Ensembl IDs
+    # overlapped a symbol table on the 4% of rows where both fell back to
+    # Ensembl, and the run reported success over 869 genes that were all ENSG.
+    spaces = {unit: identifier_space(sorted(identifiers)) for unit, identifiers in by_unit.items() if identifiers}
+    named = [space for space in spaces.values() if space != UNKNOWN_IDENTIFIER_SPACE]
+    dominant = max(set(named), key=named.count) if named else UNKNOWN_IDENTIFIER_SPACE
     for unit, identifiers in by_unit.items():
         if not identifiers:
+            continue
+        space = spaces.get(unit, UNKNOWN_IDENTIFIER_SPACE)
+        if space != UNKNOWN_IDENTIFIER_SPACE and dominant != UNKNOWN_IDENTIFIER_SPACE and space != dominant:
+            warnings.append(
+                f"source_unit_id={unit!r} is written in {space} while the rest of the corpus is written in "
+                f"{dominant}; the genes it shares with the others are only those both sides happened to "
+                "write the same way. Map every source onto one identifier space before trusting the ranking."
+            )
             continue
         best_unit, best_overlap = "", 0
         for other_unit, other in by_unit.items():
@@ -359,7 +380,7 @@ def _identifier_space_warnings(harmonized: pd.DataFrame, *, min_studies: int = 2
                 f"({len(identifiers):,} identifiers, e.g. {example!r}); it cannot contribute to any "
                 "score. Map every source onto one identifier space (all symbols, or all Ensembl IDs)."
             )
-        elif share < 0.01:
+        elif share < IDENTIFIER_OVERLAP_WARNING_SHARE:
             warnings.append(
                 f"source_unit_id={unit!r} shares only {best_overlap:,} of its {len(identifiers):,} "
                 f"gene identifiers with any other source unit (best match {best_unit!r}); check that "

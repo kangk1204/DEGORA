@@ -15,6 +15,9 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Iterable
 
+# A publication linking more series than this is set aside at preparation.
+MAX_SERIES_PER_PUBLICATION = 5
+
 from .discovery import (
     DISCOVERY_BUNDLE_ARTIFACT_TYPE,
     DISCOVERY_BUNDLE_FORMAT_VERSION,
@@ -147,7 +150,24 @@ def _prepare_into_staging(
     selected_accessions: list[str] = []
     total_units = max(1, len(geo_records) + len(direct_records))
     if geo_records:
-        accessions = _unique_gse_accessions(geo_records)
+        # One publication can link dozens of series - a consortium publication linked
+        # 51 - and a selection of 20 publications silently became a download of
+        # 69 series. A record past the per-publication limit is set aside with
+        # the count, so the reader can select the series it wants directly.
+        mega_records = [record for record in geo_records if len(_geo_accessions(record)) > MAX_SERIES_PER_PUBLICATION]
+        for record in mega_records:
+            excluded.append(
+                _excluded(
+                    record,
+                    f"this publication links {len(_geo_accessions(record))} GEO series, more than the "
+                    f"{MAX_SERIES_PER_PUBLICATION} prepared per publication; search for the series you want "
+                    "and select them directly",
+                )
+            )
+        geo_records = [record for record in geo_records if record not in mega_records]
+        if not geo_records:
+            accessions = []
+        accessions = _unique_gse_accessions(geo_records) if geo_records else []
         selected_accessions = accessions
         record_by_accession = _record_by_geo_accession(geo_records)
         # Several selected publications can report the same GEO series. That is
@@ -175,30 +195,33 @@ def _prepare_into_staging(
             f"Downloading {len(accessions)} repository series "
             f"linked by {len(geo_records)} of {len(geo_records) + len(direct_records)} selected publications",
         )
-        try:
-            geo_result = prepare_geo_studies(
-                accessions,
-                spec.key,
-                # The selection cap applied to publications, in the browser; a
-                # publication can link several series, and re-applying the same
-                # cap to the expanded series list failed every repository record
-                # of a full selection with "at most 20 studies".
-                max_studies=max(len(accessions), 1),
-                query=query,
-                inspection_budget=max(1, len(accessions) * max_files_per_record),
-                max_files_per_study=max_files_per_record,
-                materialize_dir=staging,
-                client=geo_client,
-                force=True,
-            )
-        except (DiscoveryError, DiscoveryUnavailableError) as exc:
-            # The repository half failing is not a reason to throw away the
-            # publication half the reader also selected.
-            for geo_record in geo_records:
-                excluded.append(_excluded(geo_record, f"repository preparation failed: {exc}"))
+        if not accessions:
+            geo_result = {"studies": [], "excluded_studies": []}
         else:
-            excluded.extend(geo_result.get("excluded_studies", []))
-            studies.extend(_augment_geo_studies(geo_result.get("studies", []), record_by_accession))
+          try:
+              geo_result = prepare_geo_studies(
+                  accessions,
+                  spec.key,
+                  # The selection cap applied to publications, in the browser; a
+                  # publication can link several series, and re-applying the same
+                  # cap to the expanded series list failed every repository record
+                  # of a full selection with "at most 20 studies".
+                  max_studies=max(len(accessions), 1),
+                  query=query,
+                  inspection_budget=max(1, len(accessions) * max_files_per_record),
+                  max_files_per_study=max_files_per_record,
+                  materialize_dir=staging,
+                  client=geo_client,
+                  force=True,
+              )
+          except (DiscoveryError, DiscoveryUnavailableError) as exc:
+              # The repository half failing is not a reason to throw away the
+              # publication half the reader also selected.
+              for geo_record in geo_records:
+                  excluded.append(_excluded(geo_record, f"repository preparation failed: {exc}"))
+          else:
+              excluded.extend(geo_result.get("excluded_studies", []))
+              studies.extend(_augment_geo_studies(geo_result.get("studies", []), record_by_accession))
 
     geo_share = len(geo_records) / total_units
     report(

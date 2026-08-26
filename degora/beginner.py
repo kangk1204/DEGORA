@@ -35,6 +35,16 @@ from .discovery import (
 )
 from .excel_export import _force_formula_like_text
 from .formula_safety import formula_guard_metadata, neutralize_formula_text
+from .identifiers import (
+    BARE_IDENTIFIER_RE,
+    GENE_SPACE_PREFERENCE,
+    PROBABILITY_COLUMN_NAME_RE,
+    SAMPLE_ACCESSION_RE,
+    SAMPLE_IDENTIFIER_NAME_RE,
+    IDENTIFIER_SAMPLE_ROWS,
+    UNKNOWN_IDENTIFIER_SPACE,
+    identifier_space,
+)
 from .harmonize import (
     _excel_payload,
     _record_duplicate_headers,
@@ -350,9 +360,6 @@ def _frame_from_raw(raw: pd.DataFrame, header_row: int) -> pd.DataFrame:
     return _record_duplicate_headers(body, header)
 
 
-# DEGORA matches genes across studies on the identifier itself, and most published
-# tables carry symbols, so a symbol column is the default that joins the most.
-GENE_SPACE_PREFERENCE = ("gene symbol", "Ensembl ID", "RefSeq ID", "Entrez ID", "Affymetrix probe ID")
 
 
 def _prefer_symbol_looking_gene_column(header: dict[str, Any], frame: pd.DataFrame) -> None:
@@ -406,64 +413,6 @@ MAX_OPTIONS_SHOWN = 12
 # Mirrors the CLI's default Project.min_studies; a config below it scores nothing.
 DEFAULT_MIN_SOURCE_UNITS = 2
 CATALOG_MARKER_COLUMNS = frozenset({"study_id", "source_path", "gene_column", "lfc_column", "p_column"})
-
-
-IDENTIFIER_PATTERNS = (
-    ("Ensembl ID", re.compile(r"^ENS[A-Z]*[GT]\d{6,}(\.\d+)?$", re.IGNORECASE)),
-    ("RefSeq ID", re.compile(r"^[NX][MRP]_\d+(\.\d+)?$", re.IGNORECASE)),
-    ("Affymetrix probe ID", re.compile(r"^\d+_[a-z]?_?at$", re.IGNORECASE)),
-    ("Entrez ID", re.compile(r"^\d+$")),
-    ("gene symbol", re.compile(r"^[A-Za-z][A-Za-z0-9\-.@_]{0,24}$")),
-)
-IDENTIFIER_SAMPLE_ROWS = 200
-UNKNOWN_IDENTIFIER_SPACE = "unrecognised identifiers"
-PROBABILITY_COLUMN_NAME_RE = re.compile(
-    r"(^|[^A-Za-z0-9])(adj[._ -]?)?p([._ -]?(value|val))($|[^A-Za-z0-9])|"
-    r"^p$|^p[._ -](?!vs($|[._ -])).+|"
-    r"(^|[^A-Za-z0-9])p[._ -]?adj(ust(ed)?)?($|[^A-Za-z0-9])|"
-    r"q[._ -]?value|fdr|false[._ -]?discovery",
-    re.IGNORECASE,
-)
-BARE_IDENTIFIER_RE = re.compile(r"^(?:id|identifier)$", re.IGNORECASE)
-SAMPLE_IDENTIFIER_NAME_RE = re.compile(
-    r"(?:^|[_ .-])(?:sample|subject|patient|donor|run|file|series)(?:[_ .-]?(?:id|name|accession|identifier))?$|"
-    r"^(?:gsm|srr|err|drr)(?:[_ .-]?(?:id|accession|identifier))?$",
-    re.IGNORECASE,
-)
-SAMPLE_ACCESSION_RE = re.compile(r"^(?:GSM|SRR|ERR|DRR)\d+$", re.IGNORECASE)
-
-
-class BeginnerInitError(ValueError):
-    """A reader-correctable reason the guided initializer could not write a config."""
-
-
-def identifier_space(values: Iterable[Any]) -> str:
-    """Name the identifier space a gene column is written in.
-
-    DEGORA matches genes across studies by the identifier itself, so a table of
-    Ensembl IDs and a table of symbols have nothing in common even when they
-    describe the same genes. Recognising that while the config is being built is
-    the difference between a sentence now and a run that scores zero genes later.
-    """
-
-    counts: dict[str, int] = {}
-    seen = 0
-    for value in values:
-        text = str(value).strip()
-        if not text or text.lower() == "nan":
-            continue
-        seen += 1
-        for label, pattern in IDENTIFIER_PATTERNS:
-            if pattern.match(text):
-                counts[label] = counts.get(label, 0) + 1
-                break
-        if seen >= IDENTIFIER_SAMPLE_ROWS:
-            break
-    if not counts or not seen:
-        return UNKNOWN_IDENTIFIER_SPACE
-    label, hits = max(counts.items(), key=lambda item: item[1])
-    # A clear majority, or the column is too mixed to name honestly.
-    return label if hits >= seen * 0.7 else UNKNOWN_IDENTIFIER_SPACE
 
 
 def _can_be_gene_label_column(name: Any, values: Iterable[Any]) -> bool:
@@ -522,6 +471,10 @@ def _looks_like_large_integers(finite: pd.Series) -> bool:
     values = finite.to_numpy(dtype=float)
     whole = np.isclose(values, np.round(values))
     return bool((whole & (np.abs(values) > 30)).mean() >= 0.95)
+
+
+class BeginnerInitError(ValueError):
+    """A reader-correctable reason the guided initializer could not write a config."""
 
 
 def _plausible_columns(frame: pd.DataFrame) -> dict[str, tuple[str, ...]]:

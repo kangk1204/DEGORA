@@ -35,6 +35,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterable
 
 from . import runtime_version_info
+from .identifiers import GENE_SPACE_PREFERENCE, identifier_space
 from .formula_safety import formula_guard_metadata, neutralize_formula_cell
 from .provenance import apply_default_file_mode, artifact_provenance_path, artifact_source_path, write_source_sidecar
 
@@ -1004,6 +1005,29 @@ def _numeric_fraction(values: Iterable[Any], *, unit_interval: bool = False) -> 
     return valid / seen if seen else 0.0
 
 
+def _prefer_gene_column_by_values(header: dict[str, Any], row: list[Any], following: list[list[Any]]) -> None:
+    """Among several gene-column candidates, default to the one whose values join best."""
+
+    candidates = [name for name in header.get("gene_columns") or () if name]
+    if len(candidates) < 2:
+        return
+    positions = {str(value).strip(): position for position, value in enumerate(row)}
+
+    def values(name: str) -> list[Any]:
+        position = positions.get(name)
+        return [] if position is None else [entry[position] for entry in following if position < len(entry)]
+
+    spaces = {name: identifier_space(values(name)) for name in candidates}
+
+    def rank(name: str) -> int:
+        space = spaces[name]
+        return GENE_SPACE_PREFERENCE.index(space) if space in GENE_SPACE_PREFERENCE else len(GENE_SPACE_PREFERENCE)
+
+    ordered = sorted(candidates, key=lambda name: (rank(name), candidates.index(name)))
+    header["mapping"]["gene_column"] = ordered[0]
+    header["gene_columns"] = ordered
+
+
 def _name_row_label_column(header: list[Any], following: list[list[Any]]) -> list[Any]:
     """Give an empty header cell the name read_deg_table will give it, if it holds labels."""
 
@@ -1037,6 +1061,7 @@ def _inspect_rows(rows: list[list[Any]], *, sheet: str = "") -> dict[str, Any]:
         # DESeq2 result files that the guided setup had already scored.
         row = _name_row_label_column(raw_row, rows[index + 1 : index + 21])
         header = classify_header(row)
+        _prefer_gene_column_by_values(header, row, rows[index + 1 : index + 21])
         mapping = header["mapping"]
         score = sum(bool(mapping[key]) for key in ("gene_column", "lfc_column", "p_column", "padj_column"))
         if header["lfc_scale_explicit"]:
@@ -1059,10 +1084,17 @@ def _inspect_rows(rows: list[list[Any]], *, sheet: str = "") -> dict[str, Any]:
             if mapping["gene_column"]
             else 0.0
         )
+        gene_space = (
+            identifier_space(column_values(mapping["gene_column"])) if mapping["gene_column"] else ""
+        )
         header.update(
             {
                 "header_row": index + 1,
                 "sheet_name": sheet,
+                # Named from the values, not the header: a column called "Gene
+                # Symbol" that holds Ensembl IDs joins nothing written in symbols,
+                # and the reader should see that at selection, not after a run.
+                "gene_identifier_space": gene_space,
                 "sample_validation": {
                     "gene_nonempty_fraction": round(gene_fraction, 3),
                     "lfc_numeric_fraction": round(lfc_fraction, 3),

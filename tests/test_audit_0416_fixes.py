@@ -363,7 +363,7 @@ def test_interrupting_the_cli_is_not_reported_as_a_fault(monkeypatch) -> None:
     monkeypatch.setitem(sys.modules, "degora.discovery_federated", module)
 
     assert main(
-        ["discover", "x", "--species", "human", "--limit", "5", "--output-dir", "/tmp/degora-interrupt"]
+        ["discover", "hypoxia", "--species", "human", "--limit", "5", "--output-dir", "/tmp/degora-interrupt"]
     ) == 130
 
 

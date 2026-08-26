@@ -15,12 +15,11 @@ import pandas as pd
 from .discovery import DiscoveryError, normalize_species
 from .excel_export import DEFAULT_WORKBOOK_NAME, export_run_workbook
 from .formula_safety import formula_guard_metadata, neutralize_formula_text
+from .harmonize import _read_excel_any, _restore_unnamed_row_labels
 from .provenance import shell_command, write_source_sidecar
-from .harmonize import _restore_unnamed_row_labels
 from .reanalysis import derive_welch_deg
 from .score_db import write_score_database
 from .slice_runner import CATALOG_COLUMNS, run_slice, validate_catalog_inputs
-
 
 MAX_ACTIVE_CANDIDATES = 40
 MAX_CONTRAST_LABEL = 180
@@ -362,9 +361,9 @@ def _author_mapping(inspection: dict[str, Any], entry: dict[str, Any]) -> dict[s
 def _read_author_frame(path: Path, *, sheet_name: str, header_row: int) -> pd.DataFrame:
     suffixes = "".join(path.suffixes).lower()
     header = max(header_row - 1, 0)
-    if suffixes.endswith((".xlsx", ".xls")):
+    if suffixes.endswith((".xlsx", ".xls", ".xlsx.gz", ".xls.gz")):
         selected_sheet: str | int = sheet_name or 0
-        return pd.read_excel(path, sheet_name=selected_sheet, header=header)
+        return _read_excel_any(path, sheet_name=selected_sheet, header_row=header_row)
     separator = "\t" if suffixes.endswith((".tsv", ".txt", ".tsv.gz", ".txt.gz")) else ","
     return pd.read_csv(path, sep=separator, header=header)
 
@@ -609,6 +608,37 @@ def _author_row(
     return row, derivation
 
 
+COUNT_SAMPLE_ROWS = 2000
+COUNT_WHOLE_NUMBER_SHARE = 0.95
+
+
+def _require_whole_number_counts(source_path: Path, sample_columns: list[str]) -> None:
+    """Refuse matrix_type=count_matrix when the selected columns are not whole numbers."""
+
+    suffixes = "".join(Path(source_path).suffixes).lower()
+    try:
+        if suffixes.endswith((".xlsx", ".xls", ".xlsx.gz", ".xls.gz")):
+            frame = _read_excel_any(Path(source_path), 0, header_row=1).head(COUNT_SAMPLE_ROWS)
+        else:
+            separator = "\t" if suffixes.endswith((".tsv", ".txt", ".tsv.gz", ".txt.gz")) else ","
+            frame = pd.read_csv(source_path, sep=separator, nrows=COUNT_SAMPLE_ROWS)
+    except Exception:  # noqa: BLE001 - the derivation reports an unreadable file itself
+        return
+    columns = [name for name in sample_columns if name in frame.columns]
+    if not columns:
+        return
+    values = pd.to_numeric(frame[columns].stack(), errors="coerce").dropna()
+    if values.empty:
+        return
+    whole = float(((values - values.round()).abs() < 1e-9).mean())
+    if whole < COUNT_WHOLE_NUMBER_SHARE:
+        raise DiscoveryError(
+            f"matrix_type=count_matrix, but only {whole:.0%} of the selected columns' values are whole numbers; "
+            "this looks like a normalized matrix (FPKM, TPM, CPM or a log scale). Select it as "
+            "normalized_expression_matrix with normalized_scale log2 or linear, or choose the raw count file."
+        )
+
+
 def _fallback_row(
     *,
     study: dict[str, Any],
@@ -647,6 +677,11 @@ def _fallback_row(
                 f"matrix_type={role!r} is not recognised; use count_matrix for raw counts or "
                 "normalized_expression_matrix for a normalized matrix (with normalized_scale log2 or linear)"
             )
+    if role == "count_matrix":
+        # A fractional matrix (FPKM, TPM, a log scale) selected as raw counts
+        # would be handed to a count model as if it were counts. The values say
+        # which it is before any test is run.
+        _require_whole_number_counts(source_path, control_samples + treatment_samples)
     normalized_scale = ""
     if role == "normalized_expression_matrix":
         normalized_scale = _text(entry.get("normalized_scale"), field="normalized_scale", required=True, maximum=16)

@@ -844,7 +844,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     discover.add_argument(
         "--page",
-        type=int,
+        type=_positive_int,
         default=1,
         help=f"One-based globally sorted display page; {DISCOVERY_PAGE_SIZE} rows per page.",
     )
@@ -874,6 +874,18 @@ def build_parser() -> argparse.ArgumentParser:
     discovery_analyze.add_argument("--force", action="store_true")
 
     return parser
+
+
+def _positive_int(value: str) -> int:
+    """argparse type: an integer of at least 1, said plainly instead of clamped."""
+
+    try:
+        number = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"{value!r} is not a whole number") from exc
+    if number < 1:
+        raise argparse.ArgumentTypeError(f"{value!r} must be 1 or more")
+    return number
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -985,6 +997,8 @@ def main(argv: list[str] | None = None) -> int:
             serve_db(Path(args.db), host=args.host, port=args.port, allow_network=args.allow_network, access_token=args.token)
             return 0
         if args.command == "discover":
+            if len(str(args.query).strip()) < 2:
+                raise CliUsageError("query must be at least 2 characters (a condition, a perturbation, a pathway)")
             output = Path(args.output_dir).resolve()
             if output.exists() and any(output.iterdir()) and not args.force:
                 raise FileExistsError(

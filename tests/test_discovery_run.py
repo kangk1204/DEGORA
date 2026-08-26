@@ -151,6 +151,49 @@ def test_reviewed_human_candidates_run_end_to_end_without_cross_species_pooling(
         assert connection.execute("SELECT COUNT(DISTINCT source_unit_id) FROM studies").fetchone()[0] == 2
 
 
+def test_reviewed_author_candidate_reads_gzipped_workbook(tmp_path: Path) -> None:
+    import gzip
+    import shutil
+
+    from openpyxl import Workbook
+
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    prepared = _prepared_bundle(bundle)
+    plain = bundle / "GSE100001_DESeq2_results.xlsx"
+    book = Workbook()
+    sheet = book.active
+    sheet.title = "DEG"
+    sheet.append(["Author-supplied differential-expression results"])
+    sheet.append(["gene", "log2FoldChange", "pvalue", "padj"])
+    sheet.append(["TP53", 2.1, 0.001, 0.003])
+    sheet.append(["CDKN1A", 1.3, 0.01, 0.02])
+    sheet.append(["VEGFA", -1.1, 0.03, 0.04])
+    book.save(plain)
+    compressed = bundle / "GSE100001_DESeq2_results.xlsx.gz"
+    with plain.open("rb") as source, gzip.open(compressed, "wb") as target:
+        shutil.copyfileobj(source, target)
+
+    first_candidate = prepared["studies"][0]["files"][0]
+    first_candidate["name"] = compressed.name
+    first_candidate["source_url"] = f"https://ftp.ncbi.nlm.nih.gov/{compressed.name}"
+    first_candidate["inspection"]["local_path"] = str(compressed)
+    first_candidate["inspection"]["full_file_sha256"] = hashlib.sha256(compressed.read_bytes()).hexdigest()
+    first_candidate["inspection"]["sheet_name"] = "DEG"
+    first_candidate["inspection"]["header_row"] = 2
+
+    selections = _selections()
+    selections[0]["sheet_name"] = "DEG"
+    result = run_discovery_analysis(prepared, selections, tmp_path / "analysis", species="human")
+
+    assert result["status"] == "complete"
+    assert result["author_derivations"][0]["sheet_name"] == "DEG"
+    assert result["author_derivations"][0]["header_row"] == 2
+    catalog = pd.read_csv(result["catalog_path"])
+    materialized = pd.read_csv(catalog.loc[0, "source_path"])
+    assert materialized["gene_symbol"].tolist() == ["TP53", "CDKN1A", "VEGFA"]
+
+
 def test_formula_guarded_author_csv_preserves_raw_gene_in_scoring_and_sqlite(tmp_path: Path) -> None:
     bundle = tmp_path / "bundle"
     bundle.mkdir()
@@ -874,3 +917,101 @@ def test_a_generated_source_unit_id_never_carries_the_list_delimiter() -> None:
     assert _paper_source_unit({"doi": "10.1234/abc;def"}) == "DOI:10.1234/abc_def"
     assert _paper_source_unit({"source_unit_id": "U;1"}) == "U_1"
     assert _paper_source_unit({"pubmed_ids": ["12345"]}) == "PMID:12345"
+
+
+def _matrix_candidate(tmp_path: Path, values: dict[str, list[float]]) -> tuple[dict, dict, Path]:
+    """A prepared upstream-matrix candidate whose file sits inside the bundle root."""
+
+    bundle = tmp_path / "bundle"
+    bundle.mkdir(exist_ok=True)
+    path = bundle / "GSE100002_matrix.csv"
+    pd.DataFrame({"gene": [f"G{i}" for i in range(len(next(iter(values.values()))))], **values}).to_csv(path, index=False)
+    candidate = {
+        "candidate_id": "matrix1",
+        "name": path.name,
+        "role": "unknown_matrix",
+        "inspection": {
+            "status": "upstream_matrix_ready_for_contrast",
+            "fetch_scope": "full",
+            "local_path": str(path),
+            "full_file_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+            "sample_columns": list(values),
+            "gene_column": "gene",
+            "header_row": 1,
+        },
+    }
+    study = {"accession": "GSE100002", "title": "matrix study", "files": [candidate]}
+    return study, candidate, bundle
+
+
+def _fallback_entry(**overrides) -> dict:
+    entry = {
+        "candidate_id": "matrix1", "mode": "fallback", "direction_confirmed": True,
+        "biological_replicates_confirmed": True, "control_samples": ["c1", "c2"],
+        "treatment_samples": ["t1", "t2"], "matrix_type": "normalized_expression_matrix",
+        "normalized_scale": "log2", "gene_column": "gene",
+    }
+    entry.update(overrides)
+    return entry
+
+
+def test_an_unrecognised_matrix_type_is_a_usage_error(tmp_path: Path) -> None:
+    """A wrong matrix_type ended in a bare ValueError from the derivation."""
+
+    from degora.discovery import normalize_species
+    from degora.discovery_run import DiscoveryError, _fallback_row
+
+    study, candidate, bundle = _matrix_candidate(tmp_path, {"c1": [1.0] * 30, "c2": [1.1] * 30, "t1": [2.0] * 30, "t2": [2.2] * 30})
+
+    with pytest.raises(DiscoveryError, match="matrix_type='normalized_expression' is not recognised"):
+        _fallback_row(
+            study=study, candidate=candidate, entry=_fallback_entry(matrix_type="normalized_expression"),
+            spec=normalize_species("human"), bundle_root=bundle, derived_dir=tmp_path / "derived",
+            sequence=1, replay_command="degora",
+        )
+
+
+def test_a_fractional_matrix_is_refused_as_raw_counts(tmp_path: Path) -> None:
+    """FPKM selected as count_matrix would be handed to a count model as counts."""
+
+    from degora.discovery import normalize_species
+    from degora.discovery_run import DiscoveryError, _fallback_row
+
+    study, candidate, bundle = _matrix_candidate(
+        tmp_path, {"c1": [1.37] * 30, "c2": [2.51] * 30, "t1": [4.09] * 30, "t2": [3.73] * 30}
+    )
+
+    with pytest.raises(DiscoveryError, match="whole numbers"):
+        _fallback_row(
+            study=study, candidate=candidate, entry=_fallback_entry(matrix_type="count_matrix"),
+            spec=normalize_species("human"), bundle_root=bundle, derived_dir=tmp_path / "derived",
+            sequence=1, replay_command="degora",
+        )
+
+
+def test_an_r_export_with_row_label_genes_materialises_on_the_author_path(tmp_path: Path) -> None:
+    """The inspector said gene_column=row_name; materialisation said row_name was not found."""
+
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    prepared = _prepared_bundle(bundle)
+    r_export = bundle / "GSE100001_deseq2_out.csv"
+    r_export.write_text(
+        '"","baseMean","log2FoldChange","pvalue","padj"\n'
+        + "".join(f'"{gene}",{100 + i},{2.0 - i * 0.1},0.001,0.01\n' for i, gene in enumerate(["TP53", "CDKN1A", "VEGFA"])),
+        encoding="utf-8",
+    )
+    first = prepared["studies"][0]["files"][0]
+    first["name"] = r_export.name
+    first["source_url"] = f"https://ftp.ncbi.nlm.nih.gov/{r_export.name}"
+    first["inspection"]["local_path"] = str(r_export)
+    first["inspection"]["full_file_sha256"] = hashlib.sha256(r_export.read_bytes()).hexdigest()
+    first["inspection"]["mapping"]["gene_column"] = "row_name"
+    first["inspection"]["header_row"] = 1
+
+    result = run_discovery_analysis(prepared, _selections(), tmp_path / "analysis", species="human")
+
+    assert result["status"] == "complete"
+    catalog = pd.read_csv(result["catalog_path"])
+    materialized = pd.read_csv(catalog.loc[0, "source_path"])
+    assert materialized["gene_symbol"].tolist() == ["TP53", "CDKN1A", "VEGFA"]
