@@ -789,6 +789,9 @@ def test_run_records_early_selection_retention_and_warning_threshold(tmp_path) -
             "genes_before": 100,
             "genes_after": 2,
             "gene_retention": 0.02,
+            # peak_mean keeps a per-gene subset, so the gene count alone cannot
+            # say how much of a unit's evidence survived; the row share can.
+            "row_retention": 2 / 102,
         }
     ]
     assert metrics["time_course_selection_warnings"]

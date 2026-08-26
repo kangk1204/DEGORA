@@ -5543,6 +5543,23 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
             raise ValueError("limit must be an integer") from exc
         if not 1 <= limit <= 1000:
             raise ValueError("limit must be between 1 and 1000")
+        # `page` reached the job untyped while query, species and limit were all
+        # checked: 0, -3, 1e9, 1.5 and "two" were each accepted with 202. The CLI
+        # has always refused them (`--page` uses _positive_int); the request
+        # handler now applies the same contract.
+        from .discovery import MAX_PAGE as DISCOVERY_MAX_PAGE
+
+        raw_page = payload.get("page", 1)
+        if isinstance(raw_page, bool):
+            raise ValueError("page must be an integer")
+        try:
+            page = int(raw_page)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ValueError("page must be an integer") from exc
+        if isinstance(raw_page, float) and float(raw_page) != page:
+            raise ValueError("page must be an integer")
+        if not 1 <= page <= DISCOVERY_MAX_PAGE:
+            raise ValueError(f"page must be between 1 and {DISCOVERY_MAX_PAGE}")
         store = self.server.discovery_search_store
         manager = self.server.discovery_job_manager
         search_id = secrets.token_hex(8)
@@ -5552,6 +5569,7 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
             "query": query,
             "species": species,
             "limit": limit,
+            "page": page,
             "status": "queued",
             "error": "",
             "snapshot": {},

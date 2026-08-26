@@ -943,6 +943,11 @@ def _fallback_row(
     return row, summary
 
 
+REVIEWER_ATTESTATIONS_NOTE = (
+    "direction_confirmed, biological_replicates_confirmed, the group assignments and any lfc_scale "
+    "are the reviewer's statements; DEGORA records them with the run and cannot verify them."
+)
+
 DISCOVERY_RUN_MARKER = ".degora-discovery-run.json"
 DISCOVERY_RUN_INTERRUPTED_MARKER = ".degora-discovery-run-interrupted.json"
 
@@ -1200,6 +1205,12 @@ def _execute_discovery_analysis(
                 "min_studies": min_studies,
                 "source_units": source_units,
                 "selections": entries,
+                # The README promises this note is recorded with every run. It
+                # used to exist only as a key of the dict this function returns,
+                # which the browser renders and the CLI never printed, so a run
+                # reproduced from artifacts alone carried no statement that these
+                # values are the reviewer's and unverifiable.
+                "reviewer_attestations": REVIEWER_ATTESTATIONS_NOTE,
             },
             indent=2,
             sort_keys=True,
@@ -1266,6 +1277,7 @@ def _execute_discovery_analysis(
                 "artifact_type": DISCOVERY_RUN_ARTIFACT_TYPE,
                 "format_version": DISCOVERY_RUN_FORMAT_VERSION,
                 "species": spec.key,
+                "reviewer_attestations": REVIEWER_ATTESTATIONS_NOTE,
             },
             indent=2,
             sort_keys=True,
@@ -1284,10 +1296,7 @@ def _execute_discovery_analysis(
         "score_csv": str(score_summary["score_csv"]),
         "excel_workbook": excel_workbook,
         # What the run cannot check and took from the reviewer.
-        "reviewer_attestations": (
-            "direction_confirmed, biological_replicates_confirmed, the group assignments and any lfc_scale "
-            "are the reviewer's statements; DEGORA records them with the run and cannot verify them."
-        ),
+        "reviewer_attestations": REVIEWER_ATTESTATIONS_NOTE,
         "top_genes": score_summary.get("top_genes", []),
         "source_units": source_units,
         "n_source_units": len(source_units),

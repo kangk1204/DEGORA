@@ -271,6 +271,7 @@ def test_federated_select_matches_identifiers_and_calls_prepare_backend(tmp_path
         max_files_per_record,
         materialize_dir,
         force,
+        inspection_budget=None,
         before_publish=None,
     ):
         captured.update(
@@ -278,6 +279,7 @@ def test_federated_select_matches_identifiers_and_calls_prepare_backend(tmp_path
             species=species,
             query=query,
             max_files_per_record=max_files_per_record,
+            inspection_budget=inspection_budget,
             materialize_dir=materialize_dir,
             force=force,
         )

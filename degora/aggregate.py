@@ -253,13 +253,19 @@ TIME_COURSE_RETENTION_WARNING_FRACTION = 0.5
 
 
 def time_course_selection_report(harmonized: pd.DataFrame) -> list[dict[str, Any]]:
-    """Report what `early`/`late` preselection kept and dropped, per source unit.
+    """Report what time-course preselection kept and dropped, per source unit.
 
     The selection is defensible - a gene not measured at the unit's earliest time
     point genuinely has no early observation there - but it was invisible. A unit
     pairing a 200-gene 24h table with a 2-gene 30-minute pilot keeps two rows and
     says nothing, and the genes it drops can fall below min_studies and leave the
     ranking with no warning, no count, and no diagnostic.
+
+    `peak_mean` was left out of this report until 0.4.33 even though it drops
+    contrasts too, and it is the one mode whose selection is per gene - which
+    contrasts survived differs from row to row, so it has the strongest claim on
+    an audit record, not the weakest. `mean` selects nothing and is still
+    omitted.
     """
 
     if harmonized.empty or "study_id" not in harmonized.columns:
@@ -281,7 +287,7 @@ def time_course_selection_report(harmonized: pd.DataFrame) -> list[dict[str, Any
     )
     rows: list[dict[str, Any]] = []
     for unit, mode in modes.items():
-        if str(mode) not in {"early", "late"}:
+        if str(mode) not in {"early", "late", "peak_mean"}:
             continue
         kept = after.loc[after["source_unit_id"].eq(unit)]
         original = before.loc[before["source_unit_id"].eq(unit)]
@@ -296,6 +302,10 @@ def time_course_selection_report(harmonized: pd.DataFrame) -> list[dict[str, Any
                 "genes_before": genes_before,
                 "genes_after": genes_after,
                 "gene_retention": (genes_after / genes_before) if genes_before else 1.0,
+                # peak_mean keeps a per-gene subset, so the row count carries the
+                # information the gene count cannot: how much of the unit's
+                # evidence survived.
+                "row_retention": (len(kept) / len(original)) if len(original) else 1.0,
             }
         )
     return rows
@@ -311,10 +321,15 @@ def time_course_selection_warnings(report: list[dict[str, Any]]) -> list[str]:
         warnings.append(
             f"time_course_mode={entry['time_course_mode']} left source_unit_id="
             f"{entry['source_unit_id']!r} with {entry['genes_after']} of {entry['genes_before']} genes "
-            f"({entry['gene_retention']:.0%}): only its "
-            f"{'earliest' if entry['time_course_mode'] == 'early' else 'latest'} timed contrast is used, "
-            "and genes measured at no other time in that unit contribute nothing. Genes that fall below "
-            "min_studies as a result leave the ranking."
+            f"({entry['gene_retention']:.0%}): "
+            + (
+                "only each gene's strongest half by |signed_z| is used"
+                if entry["time_course_mode"] == "peak_mean"
+                else f"only its {'earliest' if entry['time_course_mode'] == 'early' else 'latest'} "
+                "timed contrast is used"
+            )
+            + ", and genes measured at no other time in that unit contribute nothing. Genes that fall "
+            "below min_studies as a result leave the ranking."
         )
     return warnings
 

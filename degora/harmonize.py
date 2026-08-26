@@ -240,6 +240,41 @@ MAPPING_ROLE_LABELS = {
 }
 
 
+LFC_SCALE_ALIASES = {
+    "": "",
+    "log2": "log2",
+    "log_2": "log2",
+    "log2fc": "log2",
+    "log2_fold_change": "log2",
+    "log2foldchange": "log2",
+}
+
+
+def normalize_lfc_scale(value: Any) -> str:
+    """Normalize the catalog's ``lfc_scale`` declaration.
+
+    Only ``log2`` carries meaning: it is the reader stating that ``lfc_column``
+    already holds log2 fold changes when its header does not say so. Until
+    0.4.33 any other string was silently equivalent to a blank cell, so a reader
+    who wrote ``log10`` or ``linear`` believed they had declared a scale and had
+    not - unlike ``table_scope`` and ``time_course_mode``, whose unknown values
+    are refused.
+    """
+
+    if value is None or (not isinstance(value, str) and pd.isna(value)):
+        return ""
+    text = str(value).strip().lower().replace("-", "_").replace(" ", "_")
+    if text in {"nan", "none"}:
+        return ""
+    if text in LFC_SCALE_ALIASES:
+        return LFC_SCALE_ALIASES[text]
+    raise ValueError(
+        f"Unsupported lfc_scale={value!r}. Write log2 to state that lfc_column already holds "
+        "log2 fold changes, or leave the cell blank. DEGORA never converts a scale, so no other "
+        "value has an effect."
+    )
+
+
 def normalize_table_scope(value: Any) -> str:
     """Normalize a user-entered DEG table scope label."""
 
@@ -670,14 +705,17 @@ def _rank_universe_size(study_meta: dict[str, Any], observed_rows: int, scope: s
         used = max(int(round(declared_value)), observed_rows)
         if int(round(declared_value)) < observed_rows:
             # A declared universe smaller than the reported rows is impossible for a
-            # real DEG list. Clamp up to observed rows (math stays correct) but surface
-            # the misconfiguration instead of silently advertising the unused declared
-            # value in rank_universe_size_declared or in a warning that claims it was used.
+            # real DEG list. Clamp up to observed rows so the math stays correct, and
+            # keep the catalog's own number in rank_universe_size_declared: that column
+            # exists to be read against rank_universe_size_used, and returning the
+            # clamped value in both made the pair identical and left the declaration
+            # recoverable only from free text. The warning below and the differing
+            # _used column are what say the declaration was overridden.
             warning = (
                 f"declared rank_universe_size={int(round(declared_value))} < {observed_rows} reported "
                 "rows; using observed rows -- check the catalog rank_universe_size"
             )
-            return used, float(used), warning
+            return used, declared_value, warning
         warning = (
             "DEG-only table; normalized ranks use declared rank_universe_size and missing genes are unreported"
             if scope == DEG_ONLY_SCOPE

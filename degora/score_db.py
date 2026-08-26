@@ -512,9 +512,11 @@ DIRECTION_CONFLICT_ALPHA = 0.05
 DIRECTION_CONFLICT_RULE = (
     "source_direction_conflict_flag is set when, for at least half of a source unit's pairwise "
     f"comparisons, the log2FC Spearman correlation is below {DIRECTION_CONFLICT_SPEARMAN:g} and "
-    f"significantly negative (one-sided t approximation, p < {DIRECTION_CONFLICT_ALPHA:g}); two "
-    "small tables of unrelated noise are therefore not flagged. It is an advisory review flag for a "
-    "possibly reversed contrast direction and changes no weight or rank"
+    f"significantly negative (one-sided t approximation, p < {DIRECTION_CONFLICT_ALPHA:g}), AND the "
+    f"unit's own median pairwise correlation is below {DIRECTION_CONFLICT_SPEARMAN:g}; two "
+    "small tables of unrelated noise are therefore not flagged, and neither is a well-formed unit "
+    "whose only conflicting comparison is the one against a reversed partner. It is an advisory "
+    "review flag for a possibly reversed contrast direction and changes no weight or rank"
 )
 
 
@@ -1072,7 +1074,18 @@ def _source_quality_diagnostics_from_evidence(
             and item["lfc_spearman"] < DIRECTION_CONFLICT_SPEARMAN
             and _negative_correlation_is_significant(float(item["lfc_spearman"]), float(item["overlap"]))
         ]
-        direction_conflict_flag = bool(lfc_corrs) and len(conflicting_pairs) * 2 >= len(lfc_corrs)
+        # "At least half the comparisons conflict" is satisfied by a single
+        # conflicting partner whenever a unit has two comparisons, so in a
+        # three-source corpus with one reversed contrast every unit qualified -
+        # the two well-formed ones with a median Spearman of 0.00, printed inside
+        # a message asserting they disagreed with the rest. The unit's own median
+        # must clear the same threshold before it is named.
+        direction_conflict_flag = bool(
+            lfc_corrs
+            and len(conflicting_pairs) * 2 >= len(lfc_corrs)
+            and np.isfinite(median_spearman)
+            and median_spearman < DIRECTION_CONFLICT_SPEARMAN
+        )
         coherence_weight = 0.50 if outlier_flag else 1.00
         recommended_weight = max(0.05, min(1.0, source_quality * coherence_weight))
         reliability_weight = _source_reliability_weight(
@@ -2331,10 +2344,38 @@ def direction_conflict_warnings(diagnostics: pd.DataFrame | list[dict[str, Any]]
     if flagged.empty:
         return []
     n_units = int(len(frame))
+
+    def _median_text(record: dict[str, Any]) -> str:
+        median = pd.to_numeric(
+            pd.Series([record.get("median_pairwise_lfc_spearman")]), errors="coerce"
+        ).iloc[0]
+        return f"{float(median):.2f}" if pd.notna(median) else "n/a"
+
+    closing = (
+        " DEGORA never reverses an effect column, and a reversed source votes against every gene it "
+        "shares. Weights and ranks are unchanged."
+    )
+    records = flagged.to_dict(orient="records")
+
+    # When more than two units are flagged and they are not a minority, the
+    # corpus is divided rather than one source being wrong, and DEGORA cannot
+    # tell which half carries the intended convention. Repeating "this source
+    # disagrees with the other source units" once per unit both contradicts
+    # itself and sends the reader to check every one of them; one warning about
+    # the corpus is the honest shape.
+    if n_units > 2 and len(records) * 2 >= n_units:
+        named = ", ".join(
+            f"{record.get('source_unit_id')!r} ({_median_text(record)})" for record in records
+        )
+        return [
+            f"{len(records)} of {n_units} source units disagree in direction with the rest, so this "
+            f"corpus is split rather than one source being reversed: {named} (median pairwise log2FC "
+            "Spearman in brackets). DEGORA cannot tell which half carries the intended convention, so "
+            "check how the contrast is written in each of them." + closing
+        ]
+
     warnings: list[str] = []
-    for record in flagged.to_dict(orient="records"):
-        median = pd.to_numeric(pd.Series([record.get("median_pairwise_lfc_spearman")]), errors="coerce").iloc[0]
-        median_text = f"{float(median):.2f}" if pd.notna(median) else "n/a"
+    for record in records:
         if n_units == 2:
             detail = (
                 "with only two source units DEGORA cannot tell which one is reversed; check the contrast "
@@ -2344,8 +2385,7 @@ def direction_conflict_warnings(diagnostics: pd.DataFrame | list[dict[str, Any]]
             detail = "check whether this source's contrast is written control-minus-treatment"
         warnings.append(
             f"source unit {record.get('source_unit_id')!r} disagrees in direction with the other source units "
-            f"(median pairwise log2FC Spearman {median_text}); {detail}. DEGORA never reverses an effect "
-            "column, and a reversed source votes against every gene it shares. Weights and ranks are unchanged."
+            f"(median pairwise log2FC Spearman {_median_text(record)}); {detail}." + closing
         )
     return warnings
 

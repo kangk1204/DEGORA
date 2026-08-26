@@ -125,6 +125,29 @@ def _bounded_discovery_limit(value: str) -> int:
     return limit
 
 
+def _nonnegative_inspection_budget(value: str) -> int:
+    """A global cap on file inspections; zero means inspect nothing.
+
+    Legacy GEO already refused a negative budget (``discovery.py`` raises
+    "inspection_budget must be a non-negative whole number"), but the shared CLI
+    option accepted one and the federated ``--select`` path turned it into one
+    file per record. The option is validated once, at the entry point, so both
+    backends see the same contract.
+    """
+
+    try:
+        budget = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            "--inspection-budget must be a non-negative whole number"
+        ) from exc
+    if budget < 0:
+        raise argparse.ArgumentTypeError(
+            "--inspection-budget must be a non-negative whole number; 0 inspects no files"
+        )
+    return budget
+
+
 def _normalize_publication_selection(value: Any) -> str:
     text = str(value or "").strip()
     lowered = text.lower()
@@ -801,7 +824,15 @@ def build_parser() -> argparse.ArgumentParser:
             "canonical_id, or source_unit_id. Legacy GEO mode accepts GSE accessions only."
         ),
     )
-    discover.add_argument("--inspection-budget", type=int, default=40)
+    discover.add_argument(
+        "--inspection-budget",
+        type=_nonnegative_inspection_budget,
+        default=40,
+        help=(
+            "Global cap on candidate-file inspections for this preparation; 0 inspects no files. "
+            "The cap is a total across every selected record, not a per-record allowance."
+        ),
+    )
     discover.add_argument("--force", action="store_true")
 
     discovery_analyze = subparsers.add_parser(
@@ -1016,12 +1047,29 @@ def main(argv: list[str] | None = None) -> int:
                     raise
                 selected = _select_publication_records(records, args.select)
                 selected = resolve_publication_records(selected, args.species)
-                files_per_record = max(1, min(12, args.inspection_budget // max(1, len(selected))))
+                # max(1, ...) turned a zero or negative budget into one file per
+                # record, and floor division over the selection let the implied
+                # total exceed the requested cap (budget 1 over 2 records became
+                # 2). The budget is a total, so it is passed down as one and the
+                # per-record allowance is only its ceiling.
+                selected_count = max(1, len(selected))
+                files_per_record = min(12, args.inspection_budget // selected_count)
+                if args.inspection_budget and files_per_record < 1:
+                    # A budget smaller than the selection cannot give every record
+                    # a file; say so rather than silently inspecting more than asked.
+                    raise CliUsageError(
+                        f"--inspection-budget {args.inspection_budget} cannot cover "
+                        f"{len(selected)} selected record(s): a global budget below the number of "
+                        "selections would have to inspect more files than requested. Raise the "
+                        f"budget to at least {len(selected)}, select fewer records, or pass 0 to "
+                        "inspect nothing."
+                    )
                 result = prepare_publication_records(
                     selected,
                     args.species,
                     query=args.query,
                     max_files_per_record=files_per_record,
+                    inspection_budget=args.inspection_budget,
                     materialize_dir=output,
                     force=args.force,
                 )
@@ -1160,6 +1208,12 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"WARNING: {warning}", file=sys.stderr)
             print(f"DEGORA {args.species} discovery run complete: {result['db_path']}")
             print(f"Top genes: {', '.join(result['top_genes'][:10])}")
+            attestations = str(result.get("reviewer_attestations") or "").strip()
+            if attestations:
+                # What the run took from the reviewer and cannot check. Printing
+                # it puts the same sentence in front of a CLI reader that the
+                # browser's completion card shows.
+                print(f"Reviewer attestations: {attestations}")
             return 0
     except KeyboardInterrupt:
         # Ctrl+C is a decision, not a fault. It derives from BaseException, so the
