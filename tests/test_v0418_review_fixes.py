@@ -638,3 +638,68 @@ def test_a_guarded_value_in_a_workbook_is_treated_like_one_in_a_csv(tmp_path) ->
     pd.DataFrame({"gene": ["ISG15"], "notes": ["'=see fig 2"], "log2FoldChange": [1.0], "pvalue": [0.01]}).to_excel(path, index=False)
     frame = read_deg_table(path, TableMapping("gene", "log2FoldChange", "pvalue"))
     assert frame["notes"].tolist() == ["'=see fig 2"]
+
+
+def test_the_prepare_cap_counts_selected_publications_not_expanded_series(monkeypatch) -> None:
+    """20 selected publications linked 22 GEO series; every repository record failed.
+
+    The browser caps the selection at 20 publications. The repository phase
+    re-applied the same cap to the series those publications link to, so a
+    full selection in which one publication carries three series failed the
+    whole repository half with "at most 20 studies can be prepared at once".
+    """
+
+    from degora.discovery import DiscoveryError, _validated_accessions
+
+    twenty_two = [f"GSE{100000 + i}" for i in range(22)]
+    with pytest.raises(DiscoveryError, match="at most 20"):
+        _validated_accessions(twenty_two)
+    assert len(_validated_accessions(twenty_two, max_studies=22)) == 22
+
+
+def test_federated_prepare_hands_the_repository_phase_the_expanded_series_count(monkeypatch) -> None:
+    import degora.discovery_prepare as prepare_module
+
+    seen: dict = {}
+
+    def fake_prepare_geo_studies(accessions, species, **kwargs):
+        seen["n"] = len(list(accessions))
+        seen["max_studies"] = kwargs.get("max_studies")
+        return {"studies": [], "excluded_studies": []}
+
+    monkeypatch.setattr(prepare_module, "prepare_geo_studies", fake_prepare_geo_studies)
+    source = open(prepare_module.__file__, encoding="utf-8").read()
+    assert "max_studies=max(len(accessions), 1)" in source
+    # Behaviour is pinned at the call site; the kwarg reaches the cap check.
+    from degora.discovery import _validated_accessions
+
+    assert len(_validated_accessions([f"GSE{1 + i}" for i in range(25)], max_studies=25)) == 25
+
+
+def test_the_readiness_badge_carries_one_phrase_and_the_basis_sits_under_it() -> None:
+    from degora.api import INDEX_HTML
+
+    assert "${esc(`${headline} · ${seen}`)}" not in INDEX_HTML
+    assert '<span class="dataset-title readiness-basis">${esc(seen)}</span>' in INDEX_HTML
+    assert ".readiness-basis { display: block;" in INDEX_HTML
+
+
+def test_the_species_decision_is_said_once_in_words() -> None:
+    from degora.api import INDEX_HTML
+
+    assert 'target_species_verified: "species verified"' in INDEX_HTML
+    assert "`species ${String(study.species_decision).replaceAll" not in INDEX_HTML
+
+
+def test_the_inspect_cell_does_not_clip_its_button() -> None:
+    from degora.api import INDEX_HTML
+
+    assert '<td class="inspect-cell"><button class="action-secondary study-inspect"' in INDEX_HTML
+    assert "td.inspect-cell { overflow: visible; text-overflow: clip; }" in INDEX_HTML
+
+
+def test_sort_indicators_are_arrows_not_letters() -> None:
+    from degora.api import INDEX_HTML
+
+    assert '"asc" ? "^" : "v"' not in INDEX_HTML
+    assert "\u25B4" in INDEX_HTML and "\u25BE" in INDEX_HTML

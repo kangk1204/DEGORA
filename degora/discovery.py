@@ -1977,12 +1977,12 @@ def _series_matrix_url(accession: str) -> str:
     return f"https://ftp.ncbi.nlm.nih.gov/geo/series/{bucket}/{accession}/matrix/{accession}_series_matrix.txt.gz"
 
 
-def _validated_accessions(values: Iterable[str]) -> list[str]:
+def _validated_accessions(values: Iterable[str], *, max_studies: int = MAX_SELECTED_STUDIES) -> list[str]:
     accessions = list(dict.fromkeys(str(value).strip().upper() for value in values if str(value).strip()))
     if not accessions:
         raise DiscoveryError("at least one GEO Series accession must be selected")
-    if len(accessions) > MAX_SELECTED_STUDIES:
-        raise DiscoveryError(f"at most {MAX_SELECTED_STUDIES} studies can be prepared at once")
+    if len(accessions) > max_studies:
+        raise DiscoveryError(f"at most {max_studies} studies can be prepared at once")
     invalid = [value for value in accessions if not re.fullmatch(r"GSE\d+", value)]
     if invalid:
         raise DiscoveryError("invalid GEO Series accession(s): " + ", ".join(invalid))
@@ -2034,11 +2034,12 @@ def _prepare_geo_studies_in_place(
     materialize_dir: str | Path | None = None,
     client: NcbiGeoClient | Any | None = None,
     _export_bundle: bool = True,
+    max_studies: int = MAX_SELECTED_STUDIES,
 ) -> dict[str, Any]:
     """Download and inspect selected GEO records without silently activating them."""
 
     spec = normalize_species(species)
-    selected = _validated_accessions(accessions)
+    selected = _validated_accessions(accessions, max_studies=max_studies)
     if isinstance(inspection_budget, bool) or not isinstance(inspection_budget, int) or inspection_budget < 0:
         raise DiscoveryError("inspection_budget must be a non-negative whole number")
     if isinstance(max_files_per_study, bool) or not isinstance(max_files_per_study, int) or not 1 <= max_files_per_study <= 12:
@@ -2298,6 +2299,7 @@ def prepare_geo_studies(
     client: NcbiGeoClient | Any | None = None,
     force: bool = False,
     before_publish: Callable[[], None] | None = None,
+    max_studies: int = MAX_SELECTED_STUDIES,
 ) -> dict[str, Any]:
     """Prepare a bundle transactionally, publishing files only after all checks pass."""
 
@@ -2310,6 +2312,8 @@ def prepare_geo_studies(
             max_files_per_study=max_files_per_study,
             materialize_dir=None,
             client=client,
+        
+            max_studies=max_studies,
         )
 
     target = Path(materialize_dir).resolve()
@@ -2326,6 +2330,8 @@ def prepare_geo_studies(
             materialize_dir=staging,
             client=client,
             _export_bundle=False,
+        
+            max_studies=max_studies,
         )
         _retarget_materialized_paths(result, staging, target)
         result["materialize_dir"] = str(target)

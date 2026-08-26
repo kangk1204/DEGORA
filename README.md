@@ -489,6 +489,27 @@ make smoke
 
 ## Release notes
 
+### 0.4.21
+
+The score contract is unchanged. Two screens from a real search, read as a
+first-time user would.
+
+**A full selection can be prepared.** The browser caps a selection at 20
+publications; the repository phase re-applied the same cap to the GEO series
+those publications link to. A selection in which one publication carried three
+series expanded to 22, and every repository record failed with "at most 20
+studies can be prepared at once" - one usable study and a red banner. The cap
+counts what the reader selected; the repository phase takes the expanded list.
+
+**The results table says less, more clearly.** The readiness badge carried a
+claim and its caveat in one pill - "data confirmed · nothing inspected yet" -
+which read as a contradiction. The badge holds one phrase and the caveat sits
+under it, beside the relevance figure. The species note read "species target
+species verified"; it says "species verified". The Inspect column showed
+"Inspect …", because every cell clips with an ellipsis and this one holds only
+a button; it no longer clips. Sort indicators are arrows, not the letters
+`^` and `v`.
+
 ### 0.4.20
 
 The score contract is unchanged, and a run over unchanged valid inputs produces

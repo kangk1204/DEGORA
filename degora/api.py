@@ -297,6 +297,10 @@ INDEX_HTML = """<!doctype html>
     .dataset-title { display: block; margin-top: 4px; color: var(--muted); font-size: 11px; white-space: normal; }
     .study-publication-meta { display: none; margin-top: 5px; color: var(--muted); font-size: 11px; line-height: 1.35; white-space: normal; }
     .study-inspect { width: auto; min-width: 70px; height: 32px; padding: 0 10px; }
+    /* Every cell clips with an ellipsis; a cell holding only a button must not,
+       or the column shows "Inspect …" with the dots meaning nothing. */
+    td.inspect-cell { overflow: visible; text-overflow: clip; }
+    .readiness-basis { display: block; margin-top: 2px; }
     .mobile-field-label { display: none; }
     .study-table input[type="checkbox"], .candidate-row input[type="checkbox"] { width: 17px; height: 17px; accent-color: var(--accent); }
     /* Browsers grey a disabled 17px checkbox almost imperceptibly, so a row the
@@ -1718,8 +1722,12 @@ INDEX_HTML = """<!doctype html>
       const basis = [degAssessment(study).basis, detail.basis, `state: ${readiness}`]
         .filter(Boolean)
         .join(" · ");
+      // One phrase on the badge. "data confirmed · nothing inspected yet" put a
+      // claim and its caveat in the same pill, which read as a contradiction;
+      // the caveat belongs on the line under it, with the relevance figure.
       return `<span class="deg-input ${verified ? "author_deg_likely" : "matrix_fallback"}"`
-        + ` title="${esc(basis)}">${esc(`${headline} · ${seen}`)}</span>`;
+        + ` title="${esc(basis)}">${esc(headline)}</span>`
+        + `<span class="dataset-title readiness-basis">${esc(seen)}</span>`;
     }
 
     // Source units collapse on a shared PubMed ID, so an unpublished submission
@@ -1745,7 +1753,17 @@ INDEX_HTML = """<!doctype html>
       if (study.source_unit_id) identifiers.push(`source unit ${study.source_unit_id}`);
       const conflict = Array.isArray(study.source_unit_conflict) ? study.source_unit_conflict : [];
       if (conflict.length) identifiers.push(`source-unit conflict: ${conflict.join(" / ")}`);
-      if (study.species_decision) identifiers.push(`species ${String(study.species_decision).replaceAll("_", " ")}`);
+      // The raw decision key reads as "species target species verified"; say it once.
+      const speciesWords = {
+        target_species_verified: "species verified",
+        query_constrained: "species from query",
+        mixed_rescued: "mixed series · target species file",
+        mixed_species: "mixed species",
+      };
+      if (study.species_decision) {
+        const key = String(study.species_decision);
+        identifiers.push(speciesWords[key] || `species ${key.replaceAll("_", " ")}`);
+      }
       return identifiers.join(" · ");
     }
 
@@ -1759,7 +1777,7 @@ INDEX_HTML = """<!doctype html>
       const state = activeDiscoveryState();
       const active = state.sort.key === key;
       const direction = active ? (state.sort.order === "asc" ? "ascending" : "descending") : "not sorted";
-      return `<button class="sort-head" type="button" data-study-sort="${esc(key)}" aria-label="Sort all assessed studies by ${esc(label)}; ${direction}">${esc(label)} <span class="sort-indicator" aria-hidden="true">${active ? (state.sort.order === "asc" ? "^" : "v") : ""}</span></button>`;
+      return `<button class="sort-head" type="button" data-study-sort="${esc(key)}" aria-label="Sort all assessed studies by ${esc(label)}; ${direction}">${esc(label)} <span class="sort-indicator" aria-hidden="true">${active ? (state.sort.order === "asc" ? "\u25B4" : "\u25BE") : ""}</span></button>`;
     }
 
     function studyAriaSort(key) {
@@ -2032,8 +2050,8 @@ INDEX_HTML = """<!doctype html>
             <td>${esc(study.journal || "—")}</td>
             <td>${esc(study.year || "—")}</td>
             <td><span class="mobile-field-label">Linked data</span>${esc(dataSources || "—")}</td>
-            <td><span class="mobile-field-label">DEG readiness</span>${readinessBadge(study, outcomes)}<span class="dataset-title">Relevance ${esc(relevanceText(study))}</span></td>
-            <td><button class="action-secondary study-inspect" type="button" data-study-inspect="${esc(key)}" aria-label="Inspect DEG inputs for ${esc(title)}">Inspect</button></td>
+            <td><span class="mobile-field-label">DEG readiness</span>${readinessBadge(study, outcomes)}<span class="dataset-title">relevance ${esc(relevanceText(study))}</span></td>
+            <td class="inspect-cell"><button class="action-secondary study-inspect" type="button" data-study-inspect="${esc(key)}" aria-label="Inspect DEG inputs for ${esc(title)}">Inspect</button></td>
           </tr>`;
         }).join("");
         const sortOptions = [
@@ -3617,7 +3635,7 @@ INDEX_HTML = """<!doctype html>
         const th = button.closest("th");
         const indicator = button.querySelector(".sort-indicator");
         if (th) th.setAttribute("aria-sort", active ? (sortState.order === "asc" ? "ascending" : "descending") : "none");
-        if (indicator) indicator.textContent = active ? (sortState.order === "asc" ? "^" : "v") : "";
+        if (indicator) indicator.textContent = active ? (sortState.order === "asc" ? "\u25B4" : "\u25BE") : "";
       });
     }
 

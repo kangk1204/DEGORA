@@ -179,6 +179,11 @@ def _prepare_into_staging(
             geo_result = prepare_geo_studies(
                 accessions,
                 spec.key,
+                # The selection cap applied to publications, in the browser; a
+                # publication can link several series, and re-applying the same
+                # cap to the expanded series list failed every repository record
+                # of a full selection with "at most 20 studies".
+                max_studies=max(len(accessions), 1),
                 query=query,
                 inspection_budget=max(1, len(accessions) * max_files_per_record),
                 max_files_per_study=max_files_per_record,
