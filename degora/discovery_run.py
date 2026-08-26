@@ -686,7 +686,7 @@ def _check_fallback_selection_consistency(entries: list[dict[str, Any]], prepare
             raise DiscoveryError(
                 f"{accession}: {seen[(accession, treatment, control)]!r} and {label!r} select the same samples "
                 "with control and treatment swapped. Inside one source unit the two contrasts cancel each other; "
-                "keep the one whose direction matches the paper."
+                "keep the one whose direction matches the publication."
             )
         for other_accession, other_control, other_treatment in by_accession.get(accession, []):
             crossed = (control & other_treatment) | (treatment & other_control)
