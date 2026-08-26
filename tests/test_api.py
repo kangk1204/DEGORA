@@ -1535,9 +1535,13 @@ def test_advanced_settings_start_collapsed_but_never_hide_a_set_value() -> None:
     # Advanced opens when anything in it is set, including the non-default policy.
     assert "const advancedOpen = anyValueSet(" in INDEX_HTML
     assert 'duplicateGenePolicy === "keep_first"' in INDEX_HTML
-    # Columns open when the file was not read cleanly or the reader edited them.
+    # Columns open when the file was not read cleanly or the reader edited them -
+    # edited, not merely captured: the draft holds the prefilled detected mapping
+    # after any re-render, and that must not count as "set" (0.4.29).
     assert 'const columnsOpen = status !== "ready_for_review"' in INDEX_HTML
-    assert "anyValueSet(draft.sheetName, draft.geneColumn" in INDEX_HTML
+    assert "const mappingEdited = " in INDEX_HTML
+    assert "|| mappingEdited" in INDEX_HTML
+    assert "anyValueSet(draft.sheetName, draft.geneColumn" not in INDEX_HTML
     # Collapsed, not removed: the activation gate still queries these controls.
     assert 'class="row-filter-column"' in INDEX_HTML
     assert 'class="duplicate-gene-policy"' in INDEX_HTML

@@ -152,8 +152,28 @@ def _has_allowed_host(host: str) -> bool:
     return host in PROVIDER_HOST_ALLOWLIST or any(host.endswith(suffix) for suffix in PROVIDER_HOST_SUFFIX_ALLOWLIST)
 
 
+# RFC 6052 well-known prefix. A DNS64 resolver on an IPv6-only or NAT64 network
+# answers AAAA queries for IPv4-only hosts with this prefix plus the IPv4
+# address, and Python's ipaddress files it under the reserved ::/8 block. Every
+# EBI, Crossref and DataCite lookup was refused on such networks while curl on
+# the same machine reached them. The embedded IPv4 address is what decides.
+NAT64_WELL_KNOWN_PREFIX = ipaddress.ip_network("64:ff9b::/96")
+
+
+def _embedded_ipv4(ip: ipaddress.IPv6Address) -> ipaddress.IPv4Address | None:
+    if ip.ipv4_mapped is not None:
+        return ip.ipv4_mapped
+    if ip in NAT64_WELL_KNOWN_PREFIX:
+        return ipaddress.IPv4Address(int(ip) & 0xFFFFFFFF)
+    return None
+
+
 def _is_public_ip(address: str) -> bool:
     ip = ipaddress.ip_address(address)
+    if isinstance(ip, ipaddress.IPv6Address):
+        embedded = _embedded_ipv4(ip)
+        if embedded is not None:
+            return _is_public_ip(str(embedded))
     return not (
         ip.is_private
         or ip.is_loopback

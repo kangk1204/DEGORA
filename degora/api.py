@@ -364,6 +364,9 @@ INDEX_HTML = """<!doctype html>
     .candidate-fields [aria-invalid="true"], .sample-groups[aria-invalid="true"] { outline: 2px solid #fda4af; outline-offset: 1px; }
     .confirm-line { display: flex !important; grid-template-columns: none !important; align-items: center; gap: 7px !important; color: var(--ink) !important; }
     .confirm-line input { width: 16px; height: 16px; }
+    /* The flex rule above outranks the page-wide [hidden] rule; a line that
+       does not apply must stay out of sight. */
+    .confirm-line[hidden] { display: none !important; }
     /* A confirmation that does not gate this row is not a question for this row. */
     .confirm-line.not-required { display: none !important; }
     .candidate-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
@@ -434,8 +437,8 @@ INDEX_HTML = """<!doctype html>
     .candidate-row > .series-sample-note { grid-column: 1 / -1; }
     .candidate-advanced > summary { cursor: pointer; list-style: none; font-weight: 700; color: var(--muted); font-size: 12px; }
     .candidate-advanced > summary::-webkit-details-marker { display: none; }
-    .candidate-advanced > summary::before { content: "\25B8 "; }
-    .candidate-advanced[open] > summary::before { content: "\25BE "; }
+    .candidate-advanced > summary::before { content: "\\25B8 "; }
+    .candidate-advanced[open] > summary::before { content: "\\25BE "; }
     .unanalyzable-group { margin-top: 18px; border-top: 1px dashed var(--line); padding-top: 10px; }
     .preferred-note { margin: 4px 0 2px; color: var(--muted); font-size: 12px; }
     .alternative-candidates { margin-top: 8px; }
@@ -2039,9 +2042,27 @@ INDEX_HTML = """<!doctype html>
       $("studyOrderStatus").textContent = studyOrderLabel(state);
       $("resetStudySort").hidden = state.sort.key === "readiness";
       $("downloadSearchExcel").disabled = !state.searchId || !state.verified;
+      // Narrowing a thousand-record snapshot used to mean running the whole
+      // search again against live providers. This filters what is already here.
+      const filterCount = state.textFilter
+        ? `<span class="filter-count">${state.totalHits.toLocaleString()} of ${state.totalUnfiltered.toLocaleString()} match</span>`
+        : "";
+      const filterBar = `<div class="result-filter"><label for="resultFilter">Narrow these results</label>`
+        + `<input id="resultFilter" type="search" placeholder="title, author, journal or year" `
+        + `maxlength="100" value="${esc(state.textFilter)}" `
+        + `data-tip="Filters the records already found. It does not run a new search.">`
+        + `${filterCount}</div>`;
       if (!state.studies.length) {
-        const degraded = state.providerStatus === "partial" && state.providerErrors.length;
-        $("discoveryResults").innerHTML = degraded
+        // A filter that matches nothing is not a search that found nothing: the
+        // records are still here. The box used to vanish with them, leaving no
+        // way to clear the text, under a notice blaming the data sources.
+        const filtered = Boolean(state.textFilter) && state.totalUnfiltered > 0;
+        const degraded = !filtered && state.providerStatus === "partial" && state.providerErrors.length;
+        $("discoveryResults").innerHTML = filtered
+          ? filterBar + `<div class="discovery-empty">No record matches \u201c${esc(state.textFilter)}\u201d among the `
+            + `${state.totalUnfiltered.toLocaleString()} assessed stud${state.totalUnfiltered === 1 ? "y" : "ies"}. `
+            + `The filter reads titles, authors, journals and years; clear it to see them all.</div>`
+          : degraded
           ? `<div class="discovery-empty"><strong>Some data sources did not answer, so this result set is incomplete.</strong><br>`
             + `Unavailable: ${esc(state.providerErrors.join(", "))}.<br>`
             + `Retry when those services are reachable before concluding that the query has no matches.<br>`
@@ -2099,16 +2120,6 @@ INDEX_HTML = """<!doctype html>
             + ` (${state.selected.size - state.studies.reduce((total, study) => total + (state.selected.has(publicationKey(study)) ? 1 : 0), 0)} of them on other pages).`
             + ` Untick a row or press Clear to choose different ones here.</div>`
           : "";
-        // Narrowing a thousand-record snapshot used to mean running the whole
-        // search again against live providers. This filters what is already here.
-        const filterCount = state.textFilter
-          ? `<span class="filter-count">${state.totalHits.toLocaleString()} of ${state.totalUnfiltered.toLocaleString()} match</span>`
-          : "";
-        const filterBar = `<div class="result-filter"><label for="resultFilter">Narrow these results</label>`
-          + `<input id="resultFilter" type="search" placeholder="title, author, journal or year" `
-          + `maxlength="100" value="${esc(state.textFilter)}" `
-          + `data-tip="Filters the records already found. It does not run a new search.">`
-          + `${filterCount}</div>`;
         $("discoveryResults").innerHTML = limitBanner + filterBar + `<div class="mobile-study-tools"><label>Sort persisted records<select id="mobileStudySort">${sortOptions}</select></label><button id="mobileStudyOrder" type="button" aria-label="Reverse global sort order">${state.sort.order === "asc" ? "Ascending" : "Descending"}</button></div><div class="results-scroll"><table class="study-table">
           <thead><tr>
             <th><input id="selectPageStudies" type="checkbox" aria-label="Select all studies on this page"></th>
@@ -2167,7 +2178,9 @@ INDEX_HTML = """<!doctype html>
       const data = await getJson(`/api/discovery/searches/${state.searchId}/records?${params.toString()}`);
       if (requestId !== state.searchRequest) return;
       state.studies = data.records || [];
-      state.totalHits = Number(data.total || data.search?.total || 0);
+      // `||` read a filter's honest zero as a missing value and fell back to the
+      // snapshot total, so an empty match still announced "1,000 of 1,000 match".
+      state.totalHits = Number(data.total ?? data.search?.total ?? 0);
       state.totalPages = Number(data.total_pages || 0);
       state.totalUnfiltered = Number(data.total_unfiltered || data.total || 0);
       state.evaluatedStudies = state.totalUnfiltered;
@@ -2679,8 +2692,14 @@ INDEX_HTML = """<!doctype html>
         ? `<p class="candidate-note">The linked series lists ${seriesSamples} sample${seriesSamples === 1 ? "" : "s"} in total. `
           + `Enter the numbers for this contrast only; together they cannot exceed ${seriesSamples}.</p>`
         : "";
+      // The inputs are prefilled with what the inspector detected, and the draft
+      // captures them on every re-render; "any value set" therefore opened the
+      // panel the moment the reader touched anything else on the card. Open it
+      // only when a mapping differs from the detected one.
+      const mappingEdited = [["sheetName", "sheet_name"], ["geneColumn", "gene_column"], ["lfcColumn", "lfc_column"], ["pColumn", "p_column"], ["padjColumn", "padj_column"]]
+        .some(([key, field]) => draft[key] !== undefined && String(draft[key]).trim() !== String(detectedAuthorValue(candidate, field)).trim());
       const columnsOpen = status !== "ready_for_review"
-        || anyValueSet(draft.sheetName, draft.geneColumn, draft.lfcColumn, draft.pColumn, draft.padjColumn)
+        || mappingEdited
         || (draft.tableScope !== undefined && draft.tableScope !== "auto");
       // And never hide a setting that is already carrying a value, or the reader
       // cannot see what their run is actually going to do.
@@ -3130,7 +3149,7 @@ INDEX_HTML = """<!doctype html>
       const blockedNotice = blocked
         ? `<div class="prepared-blocked" role="status">`
           + `<strong>This preparation cannot be analysed.</strong> `
-          + `${units} of ${studies.length + excludedCount} prepared stud${studies.length + excludedCount === 1 ? "y" : "ies"} produced a usable candidate, `
+          + `${units} of ${allStudies.length + excludedCount} prepared stud${allStudies.length + excludedCount === 1 ? "y" : "ies"} produced a usable candidate, `
           + `and DEGORA needs two independent source units. The review fields below are switched off because preparing a new selection clears them — `
           + `go back to the results, add another study, and prepare again.`
           + `<button class="action-secondary" type="button" data-back-to-results>Back to studies</button></div>`
@@ -3145,8 +3164,8 @@ INDEX_HTML = """<!doctype html>
         .querySelectorAll(".candidate-row input, .candidate-row select, .candidate-row button")
         .forEach((control) => { control.disabled = blocked; });
       $("preparedStatus").textContent = blocked
-        ? `${studies.length} prepared · ${units} usable`
-        : `${studies.length} studies prepared`;
+        ? `${allStudies.length} prepared · ${units} usable`
+        : `${allStudies.length} studies prepared`;
       $("analysisCompleteCard").hidden = !state.run;
       if (state.run) {
         $("analysisCompleteTitle").textContent = `${speciesLabel(activeSpecies)} DEGORA analysis complete`;
@@ -3348,7 +3367,7 @@ INDEX_HTML = """<!doctype html>
       }
       line.hidden = false;
       $("speciesConfirmText").textContent =
-        `${pending.length} of these record${pending.length === 1 ? " was" : "s were"} matched by the `
+        `${pending.length} of these records ${pending.length === 1 ? "was" : "were"} matched by the `
         + `${speciesLabel(activeSpecies)} search filter, not by a per-record organism check. `
         + `I have confirmed ${pending.length === 1 ? "it is" : "they are"} ${speciesLabel(activeSpecies)} data.`;
       return Boolean(control.checked);

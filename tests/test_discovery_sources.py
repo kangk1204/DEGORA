@@ -98,6 +98,29 @@ def test_safe_public_transport_rejects_ssrf_url_forms_and_dns() -> None:
         dns_blocked.validate_url("https://www.ncbi.nlm.nih.gov/a.csv")
 
 
+def test_nat64_synthesised_answers_are_judged_by_the_embedded_ipv4() -> None:
+    """A DNS64 resolver answers an IPv4-only host with 64:ff9b::<ipv4> (RFC 6052).
+
+    Python files that prefix under the reserved ::/8 block, so every EBI,
+    Crossref and DataCite lookup was refused on NAT64 networks while curl on
+    the same machine reached them. The embedded IPv4 address decides.
+    """
+
+    def dns(*addresses: str) -> list:
+        return [(None, None, None, "", (address, 443)) for address in addresses]
+
+    nat64 = SafePublicTransport(resolver=lambda *_a, **_k: dns("130.14.29.110", "64:ff9b::820e:1d6e"), opener=MappingOpener({}))
+    assert nat64.validate_url("https://www.ncbi.nlm.nih.gov/a.csv").startswith("https://www.ncbi.nlm.nih.gov/")
+    mapped = SafePublicTransport(resolver=lambda *_a, **_k: dns("::ffff:130.14.29.110"), opener=MappingOpener({}))
+    assert mapped.validate_url("https://www.ncbi.nlm.nih.gov/a.csv").startswith("https://www.ncbi.nlm.nih.gov/")
+    # The same prefix around a loopback or private address, an IPv4-mapped
+    # private address, and the local-use prefix 64:ff9b:1::/48 stay blocked.
+    for answer in ("64:ff9b::7f00:1", "64:ff9b::a00:1", "::ffff:10.0.0.1", "64:ff9b:1::820e:1d6e"):
+        blocked = SafePublicTransport(resolver=lambda *_a, **_k: dns("130.14.29.110", answer), opener=MappingOpener({}))
+        with pytest.raises(DiscoveryError, match="DNS result is not public"):
+            blocked.validate_url("https://www.ncbi.nlm.nih.gov/a.csv")
+
+
 def test_safe_public_transport_validates_redirect_and_oversized_payload() -> None:
     redirected = public_transport(
         {

@@ -527,6 +527,63 @@ make smoke
 
 ## Release notes
 
+### 0.4.29
+
+The score contract is unchanged. This release repairs the browser's prepare
+step, which a live check of the 0.4.28 card showed had been failing since
+0.4.24, restores the publication resolvers on NAT64 networks, and fixes five
+smaller defects the same check exposed.
+
+**The prepared-evidence card finishes rendering again.** Preparing a selection
+in the browser ended with "Preparation failed: studies is not defined". The
+bundle had been built and the card drew, so a screenshot looked complete, but
+the renderer stopped before the status line, the eligibility check and the Run
+button were updated, and the analysis could not be started from the page. A
+rename inside the renderer in 0.4.24 left three uses of the old name, and no
+test executed that function. A new test now runs the whole page script in
+node under a permissive fake DOM and renders a real two-study bundle, and a
+second scenario covers the "only one usable study" notice that went through
+the same code.
+
+**Conditional attestation lines can hide.** 0.4.28 made five author-table
+attestations conditional, but the page's flex rule for those lines outranked
+its `[hidden]` rule at equal specificity, so all six lines still showed on
+every card. A `.confirm-line[hidden]` rule restores the intended behaviour.
+
+**The disclosure triangle renders.** The collapsed "Columns and table scope"
+and "Advanced settings" panels showed "B8" in front of their titles: the CSS
+escape `\25B8` was consumed by Python as an octal escape before it reached the
+browser. The page text is now asserted to contain no control characters.
+
+**Resolvers work on NAT64 networks.** On an IPv6-only or NAT64 network (many
+phone hotspots and campus networks), a DNS64 resolver answers an IPv4-only
+host with the well-known prefix `64:ff9b::` plus the IPv4 address (RFC 6052).
+Python's `ipaddress` files that prefix under the reserved `::/8` block, so the
+public-URL guard refused every Europe PMC, BioStudies, Crossref and DataCite
+lookup as "not public" while `curl` on the same machine reached them, and each
+search came back as a partial snapshot with no author tables. The guard now
+judges such an answer by the IPv4 address it embeds: a public one is allowed,
+a loopback or private one is still refused, and the local-use prefix
+`64:ff9b:1::/48` stays blocked.
+
+**A filter that matches nothing keeps its box.** Narrowing the results to a
+text that no record matched dropped the filter input along with the rows,
+under a notice blaming the data sources for an incomplete snapshot. The box
+stays, the message says which text matched nothing among how many assessed
+studies, the count beside it no longer reads the honest zero as a missing
+value and announces "1,000 of 1,000 match", and the provider notice is
+reserved for a search that returned no records.
+
+**The columns panel stays closed until a mapping is edited.** The author
+card's "Columns and table scope" panel opened by itself as soon as the reader
+touched anything else on the card: the draft captures the prefilled detected
+mapping on every re-render, and any captured value counted as "set". It now
+opens only when a column or sheet differs from what the inspector detected,
+or when the table scope is not the default.
+
+**A plural.** The species attestation read "1 of these record was matched";
+the noun is plural whatever the count.
+
 ### 0.4.28
 
 The score contract is unchanged. This release makes the prepared-evidence card

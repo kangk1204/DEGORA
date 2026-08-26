@@ -1,0 +1,702 @@
+{
+ "analysis_policy": {
+  "author_table_gate": "Confirm contrast direction and table scope before activation.",
+  "auto_run": false,
+  "cross_species_pooling": false,
+  "draft_rows_included": false,
+  "minimum_independent_source_units": 2,
+  "note": "Human and Mouse catalogs and DEGORA runs are always generated separately.",
+  "source_unit_rule": "Publication records sharing a source_unit_id count as one source unit.",
+  "upstream_gate": "Choose control/treatment samples and verify biological replicates before fallback analysis."
+ },
+ "bundle_id": "e6233caf8297aed0",
+ "excluded_studies": [],
+ "query": "placenta",
+ "returned_studies": 2,
+ "safety_and_review": {
+  "archive_policy": "ZIP members are path-normalized, symlinks are rejected, nested ZIP depth is capped at 2, and only tabular members are materialized.",
+  "auto_run": false,
+  "cross_species_pooling": false,
+  "fetch_scope": "full",
+  "max_files_per_record": 6,
+  "max_records": 20,
+  "mixed_species_policy": "mixed_quarantined and mixed_blocked records are excluded; mixed_rescued requires explicit target_species_verified evidence."
+ },
+ "selected_accessions": [
+  "GSE343715"
+ ],
+ "source": "Canonical federated publication records",
+ "species": {
+  "key": "human",
+  "label": "Human",
+  "scientific_name": "Homo sapiens"
+ },
+ "studies": [
+  {
+   "accession": "GSE343715",
+   "authors": [],
+   "authors_display": "Not linked in PubMed",
+   "candidate_file_count": 3,
+   "canonical_id": "accession:GSE343715",
+   "dataset_title": "Effect of CBP/P300 inhibition on extravillous trophoblast differentiation",
+   "design": "TSCs were seeded either in TSC medium or in EVT\u2011A medium, with or without 1\u202f\u00b5M A\u2011485 or 3\u202f\u00b5M CPI. On day 3, TSCs were collected for RNA isolation, while EVTs were refreshed with EVT\u2011B medium, again with or without 1\u202f\u00b5M A\u2011485 or 3\u202f\u00b5M CPI. EVTs were harvested for RNA isolation on day 5. A detailed culture protocol is provided in van Voorden et\u202fal.,\u202f2023 (DOI:\u202f10.1073/pnas.2217405120).  The samples included in the current sequence submission are the EVTs cultured in the presence of inhibitor. The corresponding TSCs and EVTs grown without inhibitor are available under GEO accession GSE282356. TSC samples: GSM8641822, GSM8641824, and GSM8641834. EVT samples: GSM8641823 and GSM8641829.",
+   "files": [
+    {
+     "candidate_id": "6e43c338d438d33f",
+     "inspectable": true,
+     "inspection": {
+      "declared_role": "normalized_expression_matrix",
+      "fetch_scope": "full",
+      "gene_column": "SYMBOL",
+      "gene_identifier_space": "gene symbol",
+      "header_row": 1,
+      "numeric_fractions": {
+       "A485_rep1": 1.0,
+       "A485_rep2": 1.0,
+       "CPI-637_rep1": 1.0,
+       "CPI-637_rep2": 1.0,
+       "GENEID": 0.0,
+       "SYMBOL": 0.0
+      },
+      "payload_bytes": 957209,
+      "reason": "matrix columns were detected; choose at least two control and two treatment samples",
+      "requires": [
+       "control_samples",
+       "treatment_samples",
+       "contrast_direction"
+      ],
+      "sample_columns": [
+       "A485_rep1",
+       "CPI-637_rep1",
+       "A485_rep2",
+       "CPI-637_rep2"
+      ],
+      "sample_labels": {
+       "A485_rep1": {
+        "accession": "GSM9960749",
+        "characteristics": [
+         "tissue: placenta",
+         "cell line: TSC 180824",
+         "cell type: Trophoblast",
+         "Sex: male",
+         "treatment: A-485",
+         "batch: 1",
+         "time: Day 5"
+        ],
+        "source": "placenta",
+        "title": "A485_rep1"
+       },
+       "A485_rep2": {
+        "accession": "GSM9960751",
+        "characteristics": [
+         "tissue: placenta",
+         "cell line: TSC 180824",
+         "cell type: Trophoblast",
+         "Sex: male",
+         "treatment: A-485",
+         "batch: 2",
+         "time: Day 5"
+        ],
+        "source": "placenta",
+        "title": "A485_rep2"
+       },
+       "CPI-637_rep1": {
+        "accession": "GSM9960750",
+        "characteristics": [
+         "tissue: placenta",
+         "cell line: TSC 180824",
+         "cell type: Trophoblast",
+         "Sex: male",
+         "treatment: CPI-637",
+         "batch: 1",
+         "time: Day 5"
+        ],
+        "source": "placenta",
+        "title": "CPI-637_rep1"
+       },
+       "CPI-637_rep2": {
+        "accession": "GSM9960752",
+        "characteristics": [
+         "tissue: placenta",
+         "cell line: TSC 180824",
+         "cell type: Trophoblast",
+         "Sex: male",
+         "treatment: CPI-637",
+         "batch: 2",
+         "time: Day 5"
+        ],
+        "source": "placenta",
+        "title": "CPI-637_rep2"
+       }
+      },
+      "sample_rows": 20,
+      "sheet_name": "",
+      "statistic_columns": [],
+      "status": "upstream_matrix_ready_for_contrast"
+     },
+     "name": "GSE343715_Normalized_FPKM_gene_counts_matrix.txt.gz",
+     "preference_rank": 4,
+     "preference_reason": "a linear normalised matrix (FPKM/TPM); transformed with log2(x + 1) before testing",
+     "preferred": false,
+     "reason": "filename indicates an expression matrix; scale, annotation, and sample groups are required",
+     "role": "normalized_expression_matrix",
+     "source_url": "https://ftp.ncbi.nlm.nih.gov/geo/series/GSE343nnn/GSE343715/suppl/GSE343715_Normalized_FPKM_gene_counts_matrix.txt.gz",
+     "tier": "upstream"
+    },
+    {
+     "candidate_id": "3936466f5e3b74fd",
+     "inspectable": true,
+     "inspection": {
+      "declared_role": "unknown_matrix",
+      "fetch_scope": "full",
+      "gene_column": "SYMBOL",
+      "gene_identifier_space": "gene symbol",
+      "header_row": 1,
+      "numeric_fractions": {
+       "A485_rep1": 1.0,
+       "A485_rep2": 1.0,
+       "CPI-637_rep1": 1.0,
+       "CPI-637_rep2": 1.0,
+       "GENEID": 0.0,
+       "SYMBOL": 0.0
+      },
+      "payload_bytes": 1034695,
+      "reason": "matrix columns were detected; choose at least two control and two treatment samples",
+      "requires": [
+       "control_samples",
+       "treatment_samples",
+       "contrast_direction"
+      ],
+      "sample_columns": [
+       "A485_rep1",
+       "CPI-637_rep1",
+       "A485_rep2",
+       "CPI-637_rep2"
+      ],
+      "sample_labels": {
+       "A485_rep1": {
+        "accession": "GSM9960749",
+        "characteristics": [
+         "tissue: placenta",
+         "cell line: TSC 180824",
+         "cell type: Trophoblast",
+         "Sex: male",
+         "treatment: A-485",
+         "batch: 1",
+         "time: Day 5"
+        ],
+        "source": "placenta",
+        "title": "A485_rep1"
+       },
+       "A485_rep2": {
+        "accession": "GSM9960751",
+        "characteristics": [
+         "tissue: placenta",
+         "cell line: TSC 180824",
+         "cell type: Trophoblast",
+         "Sex: male",
+         "treatment: A-485",
+         "batch: 2",
+         "time: Day 5"
+        ],
+        "source": "placenta",
+        "title": "A485_rep2"
+       },
+       "CPI-637_rep1": {
+        "accession": "GSM9960750",
+        "characteristics": [
+         "tissue: placenta",
+         "cell line: TSC 180824",
+         "cell type: Trophoblast",
+         "Sex: male",
+         "treatment: CPI-637",
+         "batch: 1",
+         "time: Day 5"
+        ],
+        "source": "placenta",
+        "title": "CPI-637_rep1"
+       },
+       "CPI-637_rep2": {
+        "accession": "GSM9960752",
+        "characteristics": [
+         "tissue: placenta",
+         "cell line: TSC 180824",
+         "cell type: Trophoblast",
+         "Sex: male",
+         "treatment: CPI-637",
+         "batch: 2",
+         "time: Day 5"
+        ],
+        "source": "placenta",
+        "title": "CPI-637_rep2"
+       }
+      },
+      "sample_rows": 20,
+      "sheet_name": "",
+      "statistic_columns": [],
+      "status": "upstream_matrix_ready_for_contrast"
+     },
+     "name": "GSE343715_Normalized_LOG2_TMM_gene_counts_matrix.txt.gz",
+     "preference_rank": 3,
+     "preference_reason": "a log2-normalised matrix",
+     "preferred": false,
+     "reason": "tabular file with an uninformative name",
+     "role": "unknown_matrix",
+     "source_url": "https://ftp.ncbi.nlm.nih.gov/geo/series/GSE343nnn/GSE343715/suppl/GSE343715_Normalized_LOG2_TMM_gene_counts_matrix.txt.gz",
+     "tier": "upstream"
+    },
+    {
+     "candidate_id": "ec0025373f835068",
+     "inspectable": true,
+     "inspection": {
+      "declared_role": "unknown_matrix",
+      "fetch_scope": "full",
+      "gene_column": "SYMBOL",
+      "gene_identifier_space": "gene symbol",
+      "header_row": 1,
+      "numeric_fractions": {
+       "A485_rep1": 1.0,
+       "A485_rep2": 1.0,
+       "CPI-637_rep1": 1.0,
+       "CPI-637_rep2": 1.0,
+       "GENEID": 0.0,
+       "SYMBOL": 0.0
+      },
+      "payload_bytes": 521825,
+      "reason": "matrix columns were detected; choose at least two control and two treatment samples",
+      "requires": [
+       "control_samples",
+       "treatment_samples",
+       "contrast_direction"
+      ],
+      "sample_columns": [
+       "A485_rep1",
+       "CPI-637_rep1",
+       "A485_rep2",
+       "CPI-637_rep2"
+      ],
+      "sample_labels": {
+       "A485_rep1": {
+        "accession": "GSM9960749",
+        "characteristics": [
+         "tissue: placenta",
+         "cell line: TSC 180824",
+         "cell type: Trophoblast",
+         "Sex: male",
+         "treatment: A-485",
+         "batch: 1",
+         "time: Day 5"
+        ],
+        "source": "placenta",
+        "title": "A485_rep1"
+       },
+       "A485_rep2": {
+        "accession": "GSM9960751",
+        "characteristics": [
+         "tissue: placenta",
+         "cell line: TSC 180824",
+         "cell type: Trophoblast",
+         "Sex: male",
+         "treatment: A-485",
+         "batch: 2",
+         "time: Day 5"
+        ],
+        "source": "placenta",
+        "title": "A485_rep2"
+       },
+       "CPI-637_rep1": {
+        "accession": "GSM9960750",
+        "characteristics": [
+         "tissue: placenta",
+         "cell line: TSC 180824",
+         "cell type: Trophoblast",
+         "Sex: male",
+         "treatment: CPI-637",
+         "batch: 1",
+         "time: Day 5"
+        ],
+        "source": "placenta",
+        "title": "CPI-637_rep1"
+       },
+       "CPI-637_rep2": {
+        "accession": "GSM9960752",
+        "characteristics": [
+         "tissue: placenta",
+         "cell line: TSC 180824",
+         "cell type: Trophoblast",
+         "Sex: male",
+         "treatment: CPI-637",
+         "batch: 2",
+         "time: Day 5"
+        ],
+        "source": "placenta",
+        "title": "CPI-637_rep2"
+       }
+      },
+      "sample_rows": 20,
+      "sheet_name": "",
+      "statistic_columns": [],
+      "status": "upstream_matrix_ready_for_contrast"
+     },
+     "name": "GSE343715_SALMON_tx2gene_counts_matrix.txt.gz",
+     "preference_rank": 2,
+     "preference_reason": "raw counts - the least processed matrix; DEGORA normalises them itself",
+     "preferred": true,
+     "reason": "tabular file with an uninformative name",
+     "role": "unknown_matrix",
+     "source_url": "https://ftp.ncbi.nlm.nih.gov/geo/series/GSE343nnn/GSE343715/suppl/GSE343715_SALMON_tx2gene_counts_matrix.txt.gz",
+     "tier": "upstream"
+    }
+   ],
+   "journal": "Not linked in PubMed",
+   "n_samples": 4,
+   "paper_title": "Effect of CBP/P300 inhibition on extravillous trophoblast differentiation",
+   "preparation_status": "upstream_matrix_requires_contrast",
+   "provider": "publication",
+   "provider_accession": "accession:GSE343715",
+   "publication_date": "2026/08/14",
+   "pubmed_ids": [],
+   "pubmed_url": "",
+   "ready_for_review_count": 0,
+   "release_date": "2026/08/14",
+   "resolution_state": "resolved_no_candidate",
+   "sample_labels": {
+    "GSM9960749": {
+     "characteristics": [
+      "tissue: placenta",
+      "cell line: TSC 180824",
+      "cell type: Trophoblast",
+      "Sex: male",
+      "treatment: A-485",
+      "batch: 1",
+      "time: Day 5"
+     ],
+     "source": "placenta",
+     "title": "A485_rep1"
+    },
+    "GSM9960750": {
+     "characteristics": [
+      "tissue: placenta",
+      "cell line: TSC 180824",
+      "cell type: Trophoblast",
+      "Sex: male",
+      "treatment: CPI-637",
+      "batch: 1",
+      "time: Day 5"
+     ],
+     "source": "placenta",
+     "title": "CPI-637_rep1"
+    },
+    "GSM9960751": {
+     "characteristics": [
+      "tissue: placenta",
+      "cell line: TSC 180824",
+      "cell type: Trophoblast",
+      "Sex: male",
+      "treatment: A-485",
+      "batch: 2",
+      "time: Day 5"
+     ],
+     "source": "placenta",
+     "title": "A485_rep2"
+    },
+    "GSM9960752": {
+     "characteristics": [
+      "tissue: placenta",
+      "cell line: TSC 180824",
+      "cell type: Trophoblast",
+      "Sex: male",
+      "treatment: CPI-637",
+      "batch: 2",
+      "time: Day 5"
+     ],
+     "source": "placenta",
+     "title": "CPI-637_rep2"
+    }
+   },
+   "scientific_name": "Homo sapiens",
+   "source_unit_basis": "GEO accession without PubMed linkage",
+   "source_unit_id": "GSE343715",
+   "source_unit_pubmed_ids": [],
+   "source_url": "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE343715",
+   "species": "human",
+   "species_decision": "target_species_verified",
+   "species_evidence": [
+    {
+     "basis": "GEO SOFT observed taxa",
+     "species": "Human"
+    }
+   ],
+   "study_type": "Expression profiling by high throughput sequencing",
+   "summary": "Treatment of trophoblast stem cells (TSCs) with the CBP/P300 inhibitors A\u2011485 and CPI blocks their differentiation into extravillous trophoblasts (EVTs) and syncytiotrophoblasts. In this project, we examine how these inhibitors affect gene expression dynamics during EVT differentiation.",
+   "target_species_verified": true,
+   "title": "Effect of CBP/P300 inhibition on extravillous trophoblast differentiation",
+   "upstream_matrix_count": 3,
+   "year": "2026"
+  },
+  {
+   "accession": "",
+   "candidate_errors": [],
+   "candidate_file_count": 6,
+   "canonical_id": "pmid:30429548",
+   "doi": "10.1038/s41586-018-0698-6",
+   "files": [
+    {
+     "candidate_id": "b80e2cdf96426c51",
+     "inspection": {
+      "columns": [
+       "gene",
+       "p_val",
+       "avg_logFC",
+       "pct.1",
+       "pct.2",
+       "p_val_adj",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None"
+      ],
+      "fetch_scope": "full",
+      "gene_columns": [
+       "gene"
+      ],
+      "gene_identifier_space": "gene symbol",
+      "header_row": 1,
+      "lfc_columns": [
+       "avg_logFC"
+      ],
+      "lfc_scale_explicit": true,
+      "mapping": {
+       "gene_column": "gene",
+       "lfc_column": "avg_logFC",
+       "p_column": "p_val",
+       "padj_column": "p_val_adj"
+      },
+      "p_columns": [
+       "p_val"
+      ],
+      "padj_columns": [
+       "p_val_adj"
+      ],
+      "payload_bytes": 93958,
+      "reason": "header and sampled values match the DEGORA gene/log2FC/p-value contract",
+      "sample_validation": {
+       "gene_nonempty_fraction": 1.0,
+       "lfc_numeric_fraction": 1.0,
+       "p_unit_interval_fraction": 1.0,
+       "sample_rows": 20
+      },
+      "sheet_name": "dNK1",
+      "status": "ready_for_review"
+     },
+     "name": "Supplementary Table 7.xlsx",
+     "reason": "generic processed or supplementary table name",
+     "role": "unknown_table",
+     "source_url": "https://ftp.ebi.ac.uk/pub/databases/biostudies/S-EPMC/850/S-EPMC7612850/Files/EMS145617-supplement-Supplemental_tables.zip",
+     "tier": "weak"
+    },
+    {
+     "candidate_id": "65ca41e5c7c06df9",
+     "inspection": {
+      "columns": [
+       "row_name",
+       "scRNAseq",
+       "row_name_2",
+       "row_name_3",
+       "row_name_4",
+       "Flow Data",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None",
+       "None"
+      ],
+      "fetch_scope": "full",
+      "gene_columns": [
+       "row_name",
+       "row_name_4",
+       "row_name_2",
+       "row_name_3"
+      ],
+      "gene_identifier_space": "Entrez ID",
+      "header_row": 1,
+      "lfc_columns": [],
+      "lfc_scale_explicit": false,
+      "mapping": {
+       "gene_column": "row_name",
+       "lfc_column": "",
+       "p_column": "",
+       "padj_column": ""
+      },
+      "p_columns": [],
+      "padj_columns": [],
+      "payload_bytes": 13772,
+      "reason": "missing gene, log2 fold-change, or nominal p-value column",
+      "sample_validation": {
+       "gene_nonempty_fraction": 1.0,
+       "lfc_numeric_fraction": 0.0,
+       "p_unit_interval_fraction": 0.0,
+       "sample_rows": 12
+      },
+      "sheet_name": "Table 9.1",
+      "status": "not_deg_table"
+     },
+     "name": "Supplementary Table 9.xlsx",
+     "reason": "generic processed or supplementary table name",
+     "role": "unknown_table",
+     "source_url": "https://ftp.ebi.ac.uk/pub/databases/biostudies/S-EPMC/850/S-EPMC7612850/Files/EMS145617-supplement-Supplemental_tables.zip",
+     "tier": "weak"
+    }
+   ],
+   "journal": "Nature",
+   "paper_title": "Single-cell reconstruction of the early maternal-fetal interface in humans.",
+   "pmcid": "PMC7612850",
+   "preparation_status": "author_deg_ready_for_contrast_review",
+   "provider": "publication",
+   "provider_accession": "pmid:30429548",
+   "pubmed_ids": [
+    "30429548"
+   ],
+   "ready_for_review_count": 1,
+   "release_date": "2018",
+   "resolution_events": [
+    {
+     "event": "candidate",
+     "message": "EMS145617-supplement-Supplemental_tables.zip",
+     "provider": "public_repository_resolver",
+     "publication": "pmid:30429548",
+     "status": "found"
+    },
+    {
+     "event": "candidate",
+     "message": "PMC7612850_supplementary_files.zip",
+     "provider": "public_repository_resolver",
+     "publication": "pmid:30429548",
+     "status": "found"
+    }
+   ],
+   "resolution_state": "resolved_candidates",
+   "scientific_name": "Homo sapiens",
+   "shared_submission_units": [],
+   "shared_submission_warning": "",
+   "source_unit_conflict": [],
+   "source_unit_id": "PMID:30429548",
+   "source_unit_pubmed_ids": [
+    "30429548"
+   ],
+   "source_url": "https://pubmed.ncbi.nlm.nih.gov/30429548/",
+   "species": "human",
+   "species_decision": "query_constrained",
+   "species_evidence": [
+    {
+     "basis": "PubMed organism-constrained query",
+     "species": "Human"
+    }
+   ],
+   "study_type": "publication-linked public table",
+   "target_species_verified": false,
+   "title": "Single-cell reconstruction of the early maternal-fetal interface in humans.",
+   "upstream_matrix_count": 0,
+   "year": "2018"
+  }
+ ]
+}
