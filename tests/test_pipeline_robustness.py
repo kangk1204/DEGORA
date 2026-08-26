@@ -169,7 +169,9 @@ def test_run_slice_output_dir_is_a_file_is_explained(tmp_path) -> None:
     ).to_csv(cfg, index=False)
     out_as_file = tmp_path / "out_is_a_file"
     out_as_file.write_text("x")
-    with pytest.raises(DegoraConfigError, match="could not create the output directory"):
+    # "[Errno 17] File exists" read as a complaint that the folder already
+    # existed; the file is now named as the obstacle it is.
+    with pytest.raises(DegoraConfigError, match="the output path is a file, not a folder"):
         run_slice(cfg, out_as_file, tmp_path / "h", min_studies=1)
 
 

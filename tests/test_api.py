@@ -1605,11 +1605,13 @@ def test_a_cancelled_job_ends_both_poll_loops() -> None:
 
     from degora.api import INDEX_HTML
 
-    assert INDEX_HTML.count('job.status === "cancelled"') == 2
-    # The cancelled check precedes the failure check in both loops, so a
+    # Search, prepare and (since 0.4.31) analysis each poll a job.
+    assert INDEX_HTML.count('job.status === "cancelled"') == 3
+    # The cancelled check precedes the failure check in every loop, so a
     # cancellation is never reported to the reader as an error.
     for failure in ('throw new Error(job.error || "publication search failed")',
-                    'throw new Error(job.error || "preparation failed")'):
+                    'throw new Error(job.error || "preparation failed")',
+                    'throw new Error(job.error || "analysis failed")'):
         failure_at = INDEX_HTML.index(failure)
         cancelled_at = INDEX_HTML.rindex('job.status === "cancelled"', 0, failure_at)
         assert failure_at - cancelled_at < 400

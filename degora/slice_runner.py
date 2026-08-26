@@ -2206,13 +2206,24 @@ def run_slice(catalog_path: Path, output_dir: Path, harmonized_dir: Path, min_st
     # leave an empty directory because atomicity applies to published artifacts, not
     # to the directory's existence.
     for label, directory in (("output", output_dir), ("harmonized", harmonized_dir)):
+        if directory.exists() and not directory.is_dir():
+            raise DegoraConfigError(
+                f"the {label} path is a file, not a folder",
+                context=f"{label} directory: {directory}",
+                problems=["A file already exists at this path, so no folder can be created there."],
+                fixes=["Point the output at a folder (for example outputs/results/degora-run), or move the file out of the way."],
+            )
         try:
             directory.mkdir(parents=True, exist_ok=True)
         except OSError as exc:
             raise DegoraConfigError(
                 f"could not create the {label} directory",
                 context=f"{label} directory: {directory}",
-                problems=[str(exc)],
+                problems=[
+                    "A file stands where a folder is needed on this path."
+                    if isinstance(exc, (FileExistsError, NotADirectoryError))
+                    else str(exc)
+                ],
                 fixes=[
                     "Choose a path that is writable and is not an existing file.",
                     f"Check the permissions on the parent folder of {directory}.",

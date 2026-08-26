@@ -527,6 +527,34 @@ make smoke
 
 ## Release notes
 
+### 0.4.31
+
+The score contract is unchanged. This release answers an extreme multi-keyword,
+multi-study audit of 0.4.29 (94 adversarial cases, 25 analysis combinations,
+a manual browser pass): two defects and three observations, all fixed.
+
+**An infinite log2 fold change is set aside and said.** A row whose effect was
+`Inf` or `-Inf` parsed as a number, passed the not-null test and reached the
+evidence layer as the largest effect in its table; `validate` and `run` said
+nothing. Such rows are now unusable, like a row with no effect at all, and the
+run's warnings say how many there were and what they looked like, whatever
+their share of the table.
+
+**The browser's analysis is a job.** Running an analysis held one request open
+for as long as the derivation and scoring took; on a large pair of matrices a
+dropped connection ended in "Failed to fetch" while the server went on and
+finished. The Run button now starts a job, polls it as preparation does, and
+shows progress and elapsed time; a connection that drops is explained ("reload
+this page: the prepared files are kept and a finished run is listed in the
+Evidence atlas"), and a run interrupted by a server restart says so.
+
+**Smaller.** The search API refuses a `query` or `species` that is not text
+(a list was stringified and searched). A blank or one-character search leaves
+a notice that outlives the native validation bubble. A file standing where the
+output folder belongs is named as such instead of "[Errno 17] File exists". A
+finished run removes its empty `.degora-run.lock`, which read as an active
+lock; the lock only means something while a run holds it.
+
 ### 0.4.30
 
 The score contract is unchanged. This release closes the last gap a live check

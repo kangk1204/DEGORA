@@ -1150,9 +1150,19 @@ def harmonize_frame(frame: pd.DataFrame, mapping: TableMapping, study_meta: dict
         out[column] = study_meta.get(column, "")
 
     n_input_rows = int(len(out))
+    # "inf" parses as a number and passed the not-null test, so an infinite
+    # log2 fold change reached the evidence layer as the largest effect in the
+    # table. It carries no usable magnitude: set the row aside and say so.
+    lfc_values = pd.to_numeric(out["lfc"], errors="coerce")
+    nonfinite_lfc = lfc_values.notna() & ~np.isfinite(lfc_values.to_numpy(dtype=float))
+    n_nonfinite_lfc = int(nonfinite_lfc.sum())
+    nonfinite_examples = [str(value) for value in frame[resolve_column_name(frame, mapping.lfc_column)].loc[nonfinite_lfc].head(3)]
+    out.loc[nonfinite_lfc, "lfc"] = np.nan
     unusable_reasons = {
         "gene identifier": int(out["gene_symbol"].isna().sum()),
-        "log2 fold change": int(out["lfc"].isna().sum()),
+        # The infinite rows are counted as dropped but explained in their own
+        # sentence below; "missing a log2 fold change (e.g. 'inf')" would not do.
+        "log2 fold change": int(out["lfc"].isna().sum()) - n_nonfinite_lfc,
         "p-value": int(out["pvalue"].isna().sum()),
     }
     unusable_reasons = {column: count for column, count in unusable_reasons.items() if count}
@@ -1210,13 +1220,26 @@ def harmonize_frame(frame: pd.DataFrame, mapping: TableMapping, study_meta: dict
     out["n_input_rows"] = n_input_rows
     out["n_rows_dropped_unusable"] = n_rows_dropped_unusable
     out["n_rows_merged_by_gene_collapse"] = int(n_input_rows - n_rows_dropped_unusable - len(out))
-    out["unusable_row_warning"] = _unusable_row_warning(
+    unusable_warning = _unusable_row_warning(
         str(study_meta.get("study_id", "unknown_study")),
         n_input_rows,
         n_rows_dropped_unusable,
         unusable_reasons,
         unusable_examples,
     )
+    if n_nonfinite_lfc:
+        # Below the row-loss threshold the unusable warning stays quiet; an
+        # infinite effect is never quiet, however few rows carry one.
+        study_label = str(study_meta.get("study_id", "unknown_study"))
+        shown = ", ".join(nonfinite_examples) or "inf"
+        plural = n_nonfinite_lfc != 1
+        unusable_warning = (
+            f"{study_label}: {n_nonfinite_lfc:,} row{'s' if plural else ''} of {n_input_rows:,} "
+            f"{'have' if plural else 'has'} an infinite log2 fold change (examples: {shown}); an infinite effect "
+            "has no usable magnitude, so those rows were set aside as unusable. Check how the table was exported "
+            f"(a division by zero or a filtered-out group writes Inf).{(' ' + unusable_warning) if unusable_warning else ''}"
+        )
+    out["unusable_row_warning"] = unusable_warning
     return out.sort_values(["study_id", "within_study_rank", "gene_symbol"]).reset_index(drop=True)
 
 

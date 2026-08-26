@@ -1600,6 +1600,9 @@ INDEX_HTML = """<!doctype html>
       analyzing: false,
       searchRequest: 0,
       prepareRequest: 0,
+      analysisProgress: null,
+      analysisMessage: "",
+      analysisJobStartedAt: 0,
       analysisRequest: 0
     });
     const discoveryStates = { human: newSpeciesState(), mouse: newSpeciesState() };
@@ -2333,6 +2336,13 @@ INDEX_HTML = """<!doctype html>
       if (query.length < 2) {
         input.setCustomValidity(query ? "Enter at least 2 characters." : "Enter a condition, perturbation, disease, or pathway.");
         input.reportValidity();
+        // The native bubble disappears on the next keystroke; a blank or
+        // one-character search also gets a notice that stays.
+        state.notice = query
+          ? "Nothing was searched: a query needs at least 2 characters."
+          : "Nothing was searched: enter a condition, perturbation, disease or pathway in English (for example hypoxia, placenta, TGF-beta).";
+        state.noticeLevel = "info";
+        renderDiscoveryNotice(state);
         input.focus();
         return;
       }
@@ -3562,7 +3572,7 @@ INDEX_HTML = """<!doctype html>
       const eligible = units.size >= 2 && reviewComplete;
       const state = activeDiscoveryState();
       $("runDiscoveryAnalysis").disabled = !eligible || state.analyzing;
-      $("runDiscoveryAnalysis").textContent = state.analyzing ? "Running DEGORA..." : "Run species-specific DEGORA";
+      $("runDiscoveryAnalysis").textContent = state.analyzing ? analysisRunningLabel(state) : "Run species-specific DEGORA";
       if (units.size < 2) {
         // "Select candidates from at least two independent studies" is true and
         // useless when only one of the prepared studies has a candidate to
@@ -3584,6 +3594,9 @@ INDEX_HTML = """<!doctype html>
       } else {
         $("analysisEligibility").textContent = `${rows.length} candidate${rows.length === 1 ? "" : "s"} from ${units.size} independent ${speciesLabel(activeSpecies)} studies; review complete.`;
       }
+      // While the analysis job runs, its stage message replaces the eligibility
+      // sentence, which is settled by then.
+      if (state.analyzing && state.analysisMessage) $("analysisEligibility").textContent = state.analysisMessage;
     }
 
     function collectAnalysisSelections() {
@@ -3647,7 +3660,10 @@ INDEX_HTML = """<!doctype html>
       }
       try {
         const pendingSpecies = unconfirmedSpeciesStudies(state);
-        const result = await postJson("/api/discovery/analyze", {
+        // A job, polled like preparation: a large analysis held one request open
+        // for minutes, and a dropped connection left the page with nothing while
+        // the server went on and finished the run.
+        const started = await postJson("/api/discovery/analyze-jobs", {
           bundle_id: state.bundleId,
           species: requestSpecies,
           selections,
@@ -3655,6 +3671,8 @@ INDEX_HTML = """<!doctype html>
           species_confirmation_required_for: pendingSpecies.length
         });
         if (requestId !== state.analysisRequest) return;
+        const result = await pollAnalysisJob(requestSpecies, requestId, started.job_id);
+        if (requestId !== state.analysisRequest || result === null) return;
         state.run = result;
         if (activeSpecies === requestSpecies) {
           activeRunId = result.run_id;
@@ -3669,12 +3687,47 @@ INDEX_HTML = """<!doctype html>
         }
       } catch (error) {
         if (requestId !== state.analysisRequest) return;
-        state.analysisError = error.message;
+        state.analysisError = /failed to fetch|networkerror|load failed/i.test(String(error.message))
+          ? "The local DEGORA server did not answer. If `degora serve` was stopped or restarted, reload this page: "
+            + "the prepared files are kept on disk and a run that finished is listed in the Evidence atlas."
+          : error.message;
       } finally {
         if (requestId !== state.analysisRequest) return;
         state.analyzing = false;
+        state.analysisProgress = null;
+        state.analysisMessage = "";
         if (activeSpecies === requestSpecies) renderPreparedState();
       }
+    }
+
+    async function pollAnalysisJob(species, requestId, jobId) {
+      const state = discoveryStates[species];
+      state.analysisJobStartedAt = Date.now();
+      while (requestId === state.analysisRequest) {
+        const payload = await getJson(`/api/discovery/jobs/${jobId}`);
+        if (requestId !== state.analysisRequest) return null;
+        const job = payload.job || payload;
+        state.analysisProgress = typeof job.progress === "number" ? job.progress : null;
+        state.analysisMessage = typeof job.message === "string" ? job.message : "";
+        if (job.status === "complete") return job.result || {};
+        if (job.status === "cancelled") return null;
+        if (job.status === "interrupted") {
+          throw new Error("The analysis was interrupted because the local DEGORA server stopped. "
+            + "The prepared files are kept; run the analysis again.");
+        }
+        if (job.status === "failed") throw new Error(job.error || "analysis failed");
+        if (activeSpecies === species) renderPreparedState();
+        await new Promise((resolve) => setTimeout(resolve, 650));
+      }
+      return null;
+    }
+
+    function analysisRunningLabel(state) {
+      const percent = typeof state.analysisProgress === "number"
+        ? ` · ${Math.max(0, Math.min(100, Math.round(state.analysisProgress * 100)))}%`
+        : "";
+      const elapsed = state.analysisJobStartedAt ? ` · ${Math.round((Date.now() - state.analysisJobStartedAt) / 1000)}s` : "";
+      return `Running DEGORA...${percent}${elapsed}`;
     }
 
     function openDiscoveryAnalysis() {
@@ -5053,6 +5106,14 @@ def _clean_job_message(value: Any) -> str:
     return collapsed[:160]
 
 
+def _require_text_or_absent(payload: dict[str, Any], field: str) -> None:
+    """Refuse a JSON field that is present but not a string (a list, number, object)."""
+
+    value = payload.get(field)
+    if value is not None and not isinstance(value, str):
+        raise ValueError(f"{field} must be a string")
+
+
 class DegoraRequestHandler(BaseHTTPRequestHandler):
     """Serve the static browser UI and JSON endpoints."""
 
@@ -5226,6 +5287,12 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
                 self._send_json(self._discovery_prepare_job(payload), status=HTTPStatus.ACCEPTED)
             elif parsed.path == "/api/discovery/analyze":
                 self._send_json(self._discovery_analyze(payload), status=HTTPStatus.CREATED)
+            elif parsed.path == "/api/discovery/analyze-jobs":
+                # Same work as /api/discovery/analyze, run as a job: a large
+                # analysis held one request open for minutes, and a dropped
+                # connection ("Failed to fetch") left the browser with nothing
+                # while the server went on working.
+                self._send_json(self._discovery_analyze_job(payload), status=HTTPStatus.ACCEPTED)
             elif re.fullmatch(r"/api/discovery/jobs/[a-f0-9]{16}/cancel", parsed.path):
                 self._send_json(self._discovery_cancel_job(parsed.path.split("/")[4]))
             else:
@@ -5412,6 +5479,10 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
         )
 
     def _discovery_create_publication_search(self, payload: dict[str, Any]) -> dict[str, Any]:
+        # A list or number in place of the text used to be stringified and
+        # searched ("['Placenta']"); the type is part of the contract.
+        _require_text_or_absent(payload, "query")
+        _require_text_or_absent(payload, "species")
         query = str(payload.get("query") or "").strip()
         if query and not re.search(r"[A-Za-z0-9]", query):
             # An emoji or a word in another script used to be refused as "too
@@ -5757,6 +5828,8 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
     ) -> dict[str, Any]:
         from .discovery import normalize_species, prepare_geo_studies
 
+        _require_text_or_absent(payload, "query")
+        _require_text_or_absent(payload, "species")
         species = str(payload.get("species") or "")
         spec = normalize_species(species)
         query = str(payload.get("query") or "")
@@ -5847,6 +5920,26 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
         save_artifact = getattr(self.server.discovery_search_store, "save_artifact", None)
         if callable(save_artifact):
             save_artifact("bundle", bundle_id, result)
+
+    def _discovery_analyze_job(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Run an analysis as a job so the browser polls it instead of waiting on one request."""
+
+        manager = self.server.discovery_job_manager
+        request = dict(payload)
+        bundle_id = str(request.get("bundle_id") or "")
+        if not re.fullmatch(r"[a-f0-9]{16}", bundle_id):
+            raise ValueError("bundle_id is invalid")
+        if not isinstance(request.get("selections"), list):
+            raise ValueError("selections must be a JSON list")
+
+        def worker(_job_id: str, _payload: dict[str, Any], progress: Any) -> dict[str, Any]:
+            progress(0.05, "Deriving the selected contrasts and scoring genes.")
+            result = self._discovery_analyze(request)
+            progress(0.98, "Storing the run.")
+            return result
+
+        job = manager.submit("discovery_analyze", {"species": request.get("species"), "bundle_id": bundle_id}, worker)
+        return {"job_id": job["job_id"], "status": "queued"}
 
     def _discovery_analyze(self, payload: dict[str, Any]) -> dict[str, Any]:
         from .discovery import normalize_species

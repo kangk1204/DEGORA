@@ -44,6 +44,29 @@ _OUTPUT_LOCK_GUARD = threading.Lock()
 _OUTPUT_LOCKS_HELD: dict[str, int] = {}
 
 
+def ensure_output_directory(path: Path) -> Path:
+    """Create the output folder, saying plainly when a file stands in its way.
+
+    ``mkdir`` reports that as ``[Errno 17] File exists``, which reads as a
+    complaint about the folder already existing.
+    """
+
+    resolved = Path(path).resolve()
+    if resolved.exists() and not resolved.is_dir():
+        raise NotADirectoryError(
+            f"the output path is a file, not a folder: {resolved}. Point the output at a folder "
+            "(for example outputs/results/degora-run), or move the file out of the way."
+        )
+    try:
+        resolved.mkdir(parents=True, exist_ok=True)
+    except (FileExistsError, NotADirectoryError) as exc:
+        raise NotADirectoryError(
+            f"a file stands where a folder is needed on the output path: {resolved}. Point the output at a "
+            "folder whose parents are folders, or move the file out of the way."
+        ) from exc
+    return resolved
+
+
 @contextmanager
 def output_directory_lock(output_dir: str | Path) -> Iterator[None]:
     """Hold an exclusive claim on one output directory for the whole run.
@@ -63,7 +86,7 @@ def output_directory_lock(output_dir: str | Path) -> Iterator[None]:
     """
 
     resolved = Path(output_dir).resolve()
-    resolved.mkdir(parents=True, exist_ok=True)
+    ensure_output_directory(resolved)
     key = str(resolved)
     with _OUTPUT_LOCK_GUARD:
         depth = _OUTPUT_LOCKS_HELD.get(key, 0)
@@ -105,7 +128,20 @@ def output_directory_lock(output_dir: str | Path) -> Iterator[None]:
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
         except (ImportError, OSError):
             pass
+        own_inode = None
+        try:
+            own_inode = os.fstat(handle.fileno()).st_ino
+        except OSError:
+            pass
         handle.close()
+        # The file only means something while a run holds the lock; left behind
+        # empty, it read as an active lock. Remove it while it is still ours.
+        lock_path = resolved / ".degora-run.lock"
+        try:
+            if own_inode is not None and os.stat(lock_path).st_ino == own_inode:
+                lock_path.unlink()
+        except OSError:
+            pass
 
 
 def reproducible_generated_at() -> str:
