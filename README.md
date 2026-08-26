@@ -489,6 +489,25 @@ make smoke
 
 ## Release notes
 
+### 0.4.22
+
+The score contract is unchanged. Two defects in the path from a search to an
+analysis, found by running it end to end on one series that carries author DEG
+tables and one that carries expression matrices only.
+
+**An R export's gene column is recognised at preparation.** R writes the gene
+names as row labels under an empty header cell. `read_deg_table` and the guided
+setup recover that column as `row_name`; the preparation inspector classified
+the empty name instead, saw no gene column, and rejected six DESeq2 result
+files as `not_deg_table` - files the guided setup had scored the same day. The
+inspector now names the column the way the reader does, and the author-table
+step restores it too, so the mapping confirmed in the browser is found in the
+file it came from. That series went from 0 tables ready to 6.
+
+**A wrong `matrix_type` is a usage error.** An unrecognised value in a fallback
+selection ended in a bare traceback from the derivation; the message now names
+the two accepted values, `count_matrix` and `normalized_expression_matrix`.
+
 ### 0.4.21
 
 The score contract is unchanged. Two screens from a real search, read as a

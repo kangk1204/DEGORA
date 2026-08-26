@@ -1004,10 +1004,38 @@ def _numeric_fraction(values: Iterable[Any], *, unit_interval: bool = False) -> 
     return valid / seen if seen else 0.0
 
 
+def _name_row_label_column(header: list[Any], following: list[list[Any]]) -> list[Any]:
+    """Give an empty header cell the name read_deg_table will give it, if it holds labels."""
+
+    repaired = list(header)
+    for position, cell in enumerate(repaired):
+        text = "" if cell is None else str(cell).strip()
+        if text and not text.lower().startswith("unnamed:"):
+            continue
+        values = [values[position] for values in following if position < len(values)]
+        labels = [str(value).strip() for value in values if value is not None and str(value).strip()]
+        if len(values) >= 2 and len(labels) >= len(values) * 0.9 and any(not _is_number(label) for label in labels):
+            repaired[position] = "row_name" if position == 0 else f"row_name_{position}"
+    return repaired
+
+
+def _is_number(text: str) -> bool:
+    try:
+        float(text)
+    except ValueError:
+        return False
+    return True
+
+
 def _inspect_rows(rows: list[list[Any]], *, sheet: str = "") -> dict[str, Any]:
     best: dict[str, Any] | None = None
     best_score = -1
-    for index, row in enumerate(rows[:10]):
+    for index, raw_row in enumerate(rows[:10]):
+        # An R export writes the gene names as row labels under an empty header
+        # cell. read_deg_table recovers that column as `row_name`; the inspector
+        # classified the empty name instead, saw no gene column, and rejected six
+        # DESeq2 result files that the guided setup had already scored.
+        row = _name_row_label_column(raw_row, rows[index + 1 : index + 21])
         header = classify_header(row)
         mapping = header["mapping"]
         score = sum(bool(mapping[key]) for key in ("gene_column", "lfc_column", "p_column", "padj_column"))

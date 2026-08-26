@@ -703,3 +703,48 @@ def test_sort_indicators_are_arrows_not_letters() -> None:
 
     assert '"asc" ? "^" : "v"' not in INDEX_HTML
     assert "\u25B4" in INDEX_HTML and "\u25BE" in INDEX_HTML
+
+
+def test_the_inspector_recognises_an_r_export_whose_gene_names_are_row_labels() -> None:
+    """Six DESeq2 result files the guided setup had scored were rejected as not_deg_table."""
+
+    from degora.discovery import _inspect_rows
+
+    rows = [["", "baseMean", "log2FoldChange", "lfcSE", "stat", "pvalue", "padj"]] + [
+        [f"ENSG{i:011d}.1", 100.0 + i, 0.5 - i / 100, 0.1, 1.2, 0.01 + i / 1000, 0.05] for i in range(30)
+    ]
+
+    header = _inspect_rows(rows)
+
+    assert header["mapping"]["gene_column"] == "row_name"
+    assert header["mapping"]["lfc_column"] == "log2FoldChange"
+    assert header["status"] == "ready_for_review"
+
+
+def test_a_named_first_column_is_left_alone_by_the_row_label_repair() -> None:
+    from degora.discovery import _name_row_label_column
+
+    assert _name_row_label_column(["gene", "lfc"], [["A", 1.0], ["B", 2.0]]) == ["gene", "lfc"]
+    # An empty header over a numeric column is not a label column.
+    assert _name_row_label_column(["", "lfc"], [[1, 1.0], [2, 2.0]]) == ["", "lfc"]
+
+
+def test_an_unrecognised_matrix_type_is_a_usage_error_not_a_traceback() -> None:
+    from degora.discovery_run import _fallback_row
+    import inspect as _inspect
+
+    source = _inspect.getsource(_fallback_row)
+    assert 'role not in {"count_matrix", "normalized_expression_matrix"}' in source
+    assert "raise DiscoveryError" in source.split('role not in {"count_matrix", "normalized_expression_matrix"}')[1][:400]
+
+
+def test_the_author_path_names_an_r_exports_label_column_the_way_the_inspector_did() -> None:
+    """The inspector said gene_column=row_name; materialisation said row_name was not found."""
+
+    import inspect as _inspect
+
+    from degora.discovery_run import _materialize_author_table
+
+    source = _inspect.getsource(_materialize_author_table)
+    assert "_restore_unnamed_row_labels(frame)" in source
+    assert source.index("_restore_unnamed_row_labels(frame)") < source.index("required_columns = [")

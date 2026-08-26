@@ -16,6 +16,7 @@ from .discovery import DiscoveryError, normalize_species
 from .excel_export import DEFAULT_WORKBOOK_NAME, export_run_workbook
 from .formula_safety import formula_guard_metadata, neutralize_formula_text
 from .provenance import shell_command, write_source_sidecar
+from .harmonize import _restore_unnamed_row_labels
 from .reanalysis import derive_welch_deg
 from .score_db import write_score_database
 from .slice_runner import CATALOG_COLUMNS, run_slice, validate_catalog_inputs
@@ -442,6 +443,10 @@ def _materialize_author_table(
     except (KeyError, ValueError) as exc:
         raise DiscoveryError(f"selected author table sheet could not be read: {exc}") from exc
     frame.columns = [str(value).strip() for value in frame.columns]
+    # The inspector and read_deg_table both call an R export's unnamed label
+    # column `row_name`; the materialised frame has to carry the same name, or
+    # the mapping the reader just confirmed is "not found" in the file it came from.
+    frame = _restore_unnamed_row_labels(frame)
     required_columns = [mapping["gene_column"], mapping["lfc_column"], mapping["p_column"]]
     if mapping["padj_column"]:
         required_columns.append(mapping["padj_column"])
@@ -636,6 +641,12 @@ def _fallback_row(
     role = str(candidate.get("role") or inspection.get("declared_role") or "")
     if role == "unknown_matrix":
         role = _text(entry.get("matrix_type"), field="matrix_type", required=True, maximum=40)
+        if role not in {"count_matrix", "normalized_expression_matrix"}:
+            # Reader-correctable input; the derivation raised a bare ValueError for it.
+            raise DiscoveryError(
+                f"matrix_type={role!r} is not recognised; use count_matrix for raw counts or "
+                "normalized_expression_matrix for a normalized matrix (with normalized_scale log2 or linear)"
+            )
     normalized_scale = ""
     if role == "normalized_expression_matrix":
         normalized_scale = _text(entry.get("normalized_scale"), field="normalized_scale", required=True, maximum=16)
