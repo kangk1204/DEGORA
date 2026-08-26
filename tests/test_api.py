@@ -15,6 +15,7 @@ import pytest
 from degora import __version__
 import degora.api as api
 from degora.api import (
+    ScoreDatabaseError,
     LOOPBACK_HOSTS,
     DiscoveryWorkspaceInUseError,
     create_server,
@@ -784,7 +785,7 @@ def test_gene_detail_rejects_overlong_symbol_with_400(tmp_path) -> None:
 
 
 def test_serve_rejects_missing_database(tmp_path) -> None:
-    with pytest.raises(FileNotFoundError):
+    with pytest.raises((FileNotFoundError, ScoreDatabaseError)):
         serve(tmp_path / "does_not_exist.db")
 
 

@@ -727,4 +727,3 @@ def test_a_named_first_column_is_left_alone_by_the_row_label_repair() -> None:
     assert _name_row_label_column(["gene", "lfc"], [["A", 1.0], ["B", 2.0]]) == ["gene", "lfc"]
     # An empty header over a numeric column is not a label column.
     assert _name_row_label_column(["", "lfc"], [[1, 1.0], [2, 2.0]]) == ["", "lfc"]
-

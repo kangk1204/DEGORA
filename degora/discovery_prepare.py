@@ -18,6 +18,7 @@ from typing import Any, Callable, Iterable
 # A publication linking more series than this is set aside at preparation.
 MAX_SERIES_PER_PUBLICATION = 5
 
+from .harmonize import TABULAR_MEMBER_RE
 from .discovery import (
     DISCOVERY_BUNDLE_ARTIFACT_TYPE,
     DISCOVERY_BUNDLE_FORMAT_VERSION,
@@ -44,7 +45,7 @@ from .discovery_sources import (
 )
 
 
-_TABULAR_MEMBER_RE = re.compile(r"\.(csv|tsv|txt)(\.gz)?$|\.xlsx$", re.IGNORECASE)
+_TABULAR_MEMBER_RE = TABULAR_MEMBER_RE  # one contract with the readers: .xls and gzipped workbooks included
 _GSE_RE = re.compile(r"^GSE[0-9]+$", re.IGNORECASE)
 
 

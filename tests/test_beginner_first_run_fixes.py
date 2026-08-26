@@ -367,7 +367,11 @@ def test_serve_refuses_a_directory(tmp_path) -> None:
 
 
 def test_serve_still_reports_a_missing_file_as_missing(tmp_path) -> None:
-    with pytest.raises(FileNotFoundError):
+    from degora.api import ScoreDatabaseError
+
+    # The preflight answers first now, so the message can say where a database
+    # comes from; the fact that the file is missing is still the first line.
+    with pytest.raises((FileNotFoundError, ScoreDatabaseError), match="does not exist"):
         serve(tmp_path / "absent.db", quiet=True)
 
 

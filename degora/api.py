@@ -422,6 +422,20 @@ INDEX_HTML = """<!doctype html>
     }
     .prepared-blocked button { width: auto; min-width: 0; height: 28px; padding: 0 10px; border-radius: 7px; font-size: 11px; }
     /* Everything stays readable and selectable; only the controls go inert. */
+    /* The two collapsible panels and the confirmation lines are children of the
+       four-column candidate grid. Without a span they fill whatever cell comes
+       next - the 28px checkbox column, on the second row - and every word of
+       "Columns DEGORA read from the file" lands on its own line with the inputs
+       clipped to four characters. */
+    .candidate-row > .candidate-advanced,
+    .candidate-row > .candidate-confirms,
+    .candidate-row > .series-sample-note { grid-column: 1 / -1; }
+    .candidate-advanced > summary { cursor: pointer; list-style: none; font-weight: 700; color: var(--muted); font-size: 12px; }
+    .candidate-advanced > summary::-webkit-details-marker { display: none; }
+    .candidate-advanced > summary::before { content: "\25B8 "; }
+    .candidate-advanced[open] > summary::before { content: "\25BE "; }
+    .unanalyzable-group { margin-top: 18px; border-top: 1px dashed var(--line); padding-top: 10px; }
+    .unanalyzable-group > summary { cursor: pointer; font-weight: 700; color: var(--muted); }
     .is-unanalyzable .candidate-row { background: #f7f8f8; }
     .is-unanalyzable .candidate-row input:disabled,
     .is-unanalyzable .candidate-row select:disabled,
@@ -2867,8 +2881,14 @@ INDEX_HTML = """<!doctype html>
         return;
       }
       $("preparedCard").hidden = false;
-      const studies = state.prepared.studies || [];
-      const html = studies.map((study) => {
+      const allStudies = state.prepared.studies || [];
+      // A reader scanning for something to activate should not have to read
+      // past three "no usable table" cards to find the fourth that has one.
+      // Studies with at least one candidate come first, in their order; the
+      // rest are grouped under one heading, collapsed, with their reasons intact.
+      const analyzable = allStudies.filter((study) => (study.files || []).some(eligibleCandidate));
+      const unanalyzable = allStudies.filter((study) => !(study.files || []).some(eligibleCandidate));
+      const renderStudy = (study) => {
         const candidates = (study.files || []).filter(eligibleCandidate);
         const hasAuthor = candidates.some(isAuthorReviewable);
         const firstAuthor = candidates.findIndex(isAuthorReviewable);
@@ -2880,7 +2900,12 @@ INDEX_HTML = """<!doctype html>
           return base + clones;
         }).join("");
         return `<div class="candidate-study"><h4>${esc([study.accession, study.paper_title || study.title || "Untitled study"].filter(Boolean).join(" · "))}</h4><p>${esc(study.preparation_status || "review required")}</p>${rows || unusableStudyHtml(study)}</div>`;
-      }).join("");
+      };
+      const html = analyzable.map(renderStudy).join("")
+        + (unanalyzable.length
+          ? `<details class="unanalyzable-group"><summary>${unanalyzable.length} stud${unanalyzable.length === 1 ? "y" : "ies"} with no usable table`
+            + ` - open to see why each was set aside</summary>${unanalyzable.map(renderStudy).join("")}</details>`
+          : "");
       const excluded = (state.prepared.excluded_studies || []).map((item) => {
         // The server sends canonical_id/paper_title/source_unit_id, never `accession`,
         // so every excluded card used to render an empty heading.
@@ -6074,6 +6099,9 @@ def serve(
     db_path = Path(db_path)
     if not db_path.exists():
         # Fail before binding so a missing DB never serves (and never leaks its path over HTTP).
+        # The preflight's message says where a database comes from; a bare "does
+        # not exist" here reached the reader first and said nothing about that.
+        _require_degora_score_database(db_path)
         raise FileNotFoundError(f"DEGORA database does not exist: {db_path}")
     _require_degora_score_database(db_path)
     token = access_token

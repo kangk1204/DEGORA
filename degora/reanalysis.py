@@ -18,7 +18,7 @@ from scipy import stats
 
 from .derived_counts import attach_low_count_filter_metadata, low_count_filter_mask, low_count_filter_summary
 from .formula_safety import formula_guard_metadata, neutralize_formula_text
-from .harmonize import _clean_gene_symbol
+from .harmonize import WORKBOOK_SUFFIXES, _read_excel_any, _clean_gene_symbol
 from .provenance import apply_default_file_mode, write_source_sidecar
 
 
@@ -39,8 +39,10 @@ VARIANCE_FLOOR_MINIMUM = 1e-8
 
 def _read_matrix(path: Path, *, sheet_name: str | int | None = None) -> pd.DataFrame:
     suffixes = "".join(path.suffixes).lower()
-    if suffixes.endswith(".xlsx"):
-        return pd.read_excel(path, sheet_name=0 if sheet_name in (None, "") else sheet_name)
+    if suffixes.endswith(WORKBOOK_SUFFIXES):
+        # .xls and gzipped workbooks were read as CSV here and died on a decode
+        # error, after the inspector had opened the same file as a workbook.
+        return _read_excel_any(path, 0 if sheet_name in (None, "") else sheet_name)
     separator = "\t" if suffixes.endswith((".tsv", ".txt", ".tsv.gz", ".txt.gz")) else ","
     return pd.read_csv(path, sep=separator, low_memory=False)
 

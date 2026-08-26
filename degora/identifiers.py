@@ -37,6 +37,30 @@ SAMPLE_IDENTIFIER_NAME_RE = re.compile(
 SAMPLE_ACCESSION_RE = re.compile(r"^(?:GSM|SRR|ERR|DRR)\d+$", re.IGNORECASE)
 
 
+def identifier_space_profile(values: Iterable[Any]) -> dict[str, float]:
+    """The share of each recognised space among the first IDENTIFIER_SAMPLE_ROWS labels.
+
+    identifier_space() names the majority; a column that is 70% symbols and 30%
+    Ensembl IDs is "gene symbol" to it, and the 30% then join nothing in a
+    symbol corpus. The profile keeps the minority visible.
+    """
+
+    counts: dict[str, int] = {}
+    seen = 0
+    for value in values:
+        text = str(value).strip()
+        if not text or text.lower() == "nan":
+            continue
+        seen += 1
+        for label, pattern in IDENTIFIER_PATTERNS:
+            if pattern.match(text):
+                counts[label] = counts.get(label, 0) + 1
+                break
+        if seen >= IDENTIFIER_SAMPLE_ROWS:
+            break
+    return {label: hits / seen for label, hits in counts.items()} if seen else {}
+
+
 def identifier_space(values: Iterable[Any]) -> str:
     """Name the identifier space a gene column is written in.
 

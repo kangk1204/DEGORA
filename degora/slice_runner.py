@@ -26,7 +26,7 @@ from .aggregate import (
     validate_min_studies,
 )
 from .excel_io import locked_panel_mask, read_config_sheet
-from .identifiers import UNKNOWN_IDENTIFIER_SPACE, identifier_space
+from .identifiers import UNKNOWN_IDENTIFIER_SPACE, identifier_space, identifier_space_profile
 from .formula_safety import (
     formula_guard_metadata,
     neutralize_formula_text,
@@ -326,6 +326,18 @@ def _normalize_time_course_setting(value: Any) -> str | None:
 # Two genome-wide tables in one identifier space overlap far above this; two
 # DEG-only lists can legitimately overlap little, so this stays a warning.
 IDENTIFIER_OVERLAP_WARNING_SHARE = 0.10
+# A minority space at or above this share of a unit's identifiers is reported.
+MIXED_IDENTIFIER_WARNING_SHARE = 0.10
+
+
+def _spread_sample(identifiers: set[str], size: int = 200) -> list[str]:
+    """Up to `size` identifiers taken evenly across the sorted set."""
+
+    ordered = sorted(identifiers)
+    if len(ordered) <= size:
+        return ordered
+    step = len(ordered) / size
+    return [ordered[int(index * step)] for index in range(size)]
 
 
 def _identifier_space_warnings(harmonized: pd.DataFrame, *, min_studies: int = 2) -> list[str]:
@@ -351,7 +363,25 @@ def _identifier_space_warnings(harmonized: pd.DataFrame, *, min_studies: int = 2
     # missed a real case: a column named "Gene Symbol" that held Ensembl IDs
     # overlapped a symbol table on the 4% of rows where both fell back to
     # Ensembl, and the run reported success over 869 genes that were all ENSG.
-    spaces = {unit: identifier_space(sorted(identifiers)) for unit, identifiers in by_unit.items() if identifiers}
+    # Sampled across the sorted range, not from its head: the first two hundred
+    # sorted identifiers of a symbol table with a few ENSG fallbacks are all ENSG.
+    spaces = {unit: identifier_space(_spread_sample(identifiers)) for unit, identifiers in by_unit.items() if identifiers}
+    # A unit can be written in two spaces at once - 70% symbols, 30% Ensembl -
+    # and the majority rule above calls it symbols. The minority then joins
+    # nothing in a symbol corpus, silently. Say the split; do not convert or refuse.
+    for unit, identifiers in by_unit.items():
+        profile = identifier_space_profile(_spread_sample(identifiers))
+        minority = sorted(
+            ((share, label) for label, share in profile.items() if label != spaces.get(unit) and share >= MIXED_IDENTIFIER_WARNING_SHARE),
+            reverse=True,
+        )
+        if minority:
+            share, label = minority[0]
+            warnings.append(
+                f"source_unit_id={unit!r} mixes identifier spaces: about {share:.0%} of its gene identifiers "
+                f"are {label} while the rest are {spaces.get(unit, 'unrecognised')}. The minority joins only "
+                "sources written the same way; map the unit onto one space before trusting its contribution."
+            )
     named = [space for space in spaces.values() if space != UNKNOWN_IDENTIFIER_SPACE]
     dominant = max(set(named), key=named.count) if named else UNKNOWN_IDENTIFIER_SPACE
     for unit, identifiers in by_unit.items():

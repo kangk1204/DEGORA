@@ -489,6 +489,44 @@ make smoke
 
 ## Release notes
 
+### 0.4.24
+
+The score contract is unchanged. This release closes the remaining findings of
+the v0.4.23 audit and two review screens.
+
+**One suffix contract for every reader.** The preparation inspector opened
+`.xls` and gzipped workbooks; the Welch fallback read only plain `.xlsx` as a
+workbook and the rest as CSV, so a valid `.xlsx.gz` matrix that preparation had
+mapped died at derivation on a decode error; and the ZIP member filter admitted
+CSV, TSV, TXT and plain `.xlsx` only, so a `DEG_results.xlsx.gz` inside an
+archive was silently dropped. `WORKBOOK_SUFFIXES`, `DELIMITED_SUFFIXES` and
+`TABULAR_MEMBER_RE` now live in one place and every reader and filter consults
+them.
+
+**A source unit that mixes identifier spaces is reported with the split.** The
+majority rule called a column that was 70% symbols and 30% Ensembl IDs "gene
+symbol", and the 30% then joined nothing in a symbol corpus with nothing said.
+A run now reports a minority space at or above 10% of a unit's identifiers -
+"about 30% of its gene identifiers are Ensembl ID while the rest are gene
+symbol" - without converting or refusing anything. The sample that decides a
+unit's space is taken evenly across its sorted identifiers rather than from the
+head, where a symbol table's few `ENSG...` fallbacks sort first.
+
+**The prepared-evidence card puts what can be activated first.** Studies with
+at least one candidate are listed in their order; studies with no usable table
+are grouped under one collapsed heading with their per-file reasons intact,
+instead of interleaving three "no usable table" cards between the ones that
+matter. The two collapsible panels on a candidate row - the columns DEGORA
+read, and the advanced settings - were children of a four-column grid without
+a span, so they fell into the 28-pixel checkbox column and rendered one word
+per line with their inputs clipped; they span the row now, with one marker
+instead of two.
+
+**Smaller.** `degora serve` on a missing database reaches the first-run hint
+(`degora demo`, then `degora run`, or `degora launch`) instead of the bare
+"does not exist" that answered first. The raw-count preflight says it looked
+at the first 2,000 rows and that the derivation checks every row.
+
 ### 0.4.23
 
 The score contract is unchanged. This release answers three end-to-end reviews

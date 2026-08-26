@@ -633,7 +633,8 @@ def _require_whole_number_counts(source_path: Path, sample_columns: list[str]) -
     whole = float(((values - values.round()).abs() < 1e-9).mean())
     if whole < COUNT_WHOLE_NUMBER_SHARE:
         raise DiscoveryError(
-            f"matrix_type=count_matrix, but only {whole:.0%} of the selected columns' values are whole numbers; "
+            f"matrix_type=count_matrix, but only {whole:.0%} of the selected columns' values in the first "
+            f"{COUNT_SAMPLE_ROWS:,} rows are whole numbers (preflight; the derivation checks every row); "
             "this looks like a normalized matrix (FPKM, TPM, CPM or a log scale). Select it as "
             "normalized_expression_matrix with normalized_scale log2 or linear, or choose the raw count file."
         )

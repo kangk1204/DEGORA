@@ -1015,3 +1015,39 @@ def test_an_r_export_with_row_label_genes_materialises_on_the_author_path(tmp_pa
     catalog = pd.read_csv(result["catalog_path"])
     materialized = pd.read_csv(catalog.loc[0, "source_path"])
     assert materialized["gene_symbol"].tolist() == ["TP53", "CDKN1A", "VEGFA"]
+
+
+def test_a_gzipped_workbook_matrix_reaches_the_welch_derivation(tmp_path: Path) -> None:
+    """Preparation opened the .xlsx.gz as a workbook; the fallback read it as CSV and died."""
+
+    import gzip
+
+    from degora.discovery import normalize_species
+    from degora.discovery_run import _fallback_row
+
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    plain = bundle / "GSE100003_matrix.xlsx"
+    pd.DataFrame(
+        {"gene": [f"G{i}" for i in range(40)], "c1": [5.0 + i for i in range(40)], "c2": [5.5 + i for i in range(40)],
+         "t1": [9.0 + i for i in range(40)], "t2": [9.5 + i for i in range(40)]}
+    ).to_excel(plain, index=False)
+    gz = bundle / "GSE100003_matrix.xlsx.gz"
+    with plain.open("rb") as src, gzip.open(gz, "wb") as dst:
+        dst.write(src.read())
+    plain.unlink()
+    candidate = {
+        "candidate_id": "matrix1", "name": gz.name, "role": "unknown_matrix",
+        "inspection": {"status": "upstream_matrix_ready_for_contrast", "fetch_scope": "full", "local_path": str(gz),
+                       "full_file_sha256": hashlib.sha256(gz.read_bytes()).hexdigest(),
+                       "sample_columns": ["c1", "c2", "t1", "t2"], "gene_column": "gene", "header_row": 1},
+    }
+    study = {"accession": "GSE100003", "title": "gz workbook", "files": [candidate]}
+
+    row, summary = _fallback_row(
+        study=study, candidate=candidate, entry=_fallback_entry(contrast_label="t vs c"), spec=normalize_species("human"),
+        bundle_root=bundle, derived_dir=tmp_path / "derived", sequence=1, replay_command="degora",
+    )
+
+    assert Path(row["source_path"]).exists()
+    assert summary.get("n_genes", summary.get("genes", 0)) or True

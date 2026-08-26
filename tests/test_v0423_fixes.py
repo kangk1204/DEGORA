@@ -95,3 +95,63 @@ def test_serve_without_a_database_says_how_to_get_one(tmp_path) -> None:
 
     assert "No run yet?" in str(excinfo.value)
     assert "degora demo" in str(excinfo.value)
+
+
+def test_a_unit_mixing_identifier_spaces_is_reported_with_the_split() -> None:
+    """70% symbols and 30% Ensembl was called "gene symbol" and the 30% joined nothing."""
+
+    from degora.slice_runner import _identifier_space_warnings
+
+    mixed = [f"GENE{i}" for i in range(140)] + [f"ENSG{i:011d}" for i in range(60)]
+    other = [f"GENE{i}" for i in range(150)]
+    harmonized = pd.DataFrame({"gene_symbol": mixed + other, "source_unit_id": ["U1"] * 200 + ["U2"] * 150})
+
+    warnings = _identifier_space_warnings(harmonized, min_studies=2)
+
+    assert any("mixes identifier spaces" in w and "30%" in w and "Ensembl ID" in w for w in warnings)
+
+
+def test_a_few_ensembl_fallbacks_in_a_large_symbol_unit_do_not_flip_its_space() -> None:
+    """Sampling the head of the sorted list saw only ENSG... and called the unit Ensembl."""
+
+    from degora.slice_runner import _identifier_space_warnings
+
+    big = [f"GENE{i}" for i in range(5000)] + [f"ENSG{i:011d}" for i in range(100)]
+    other = [f"GENE{i}" for i in range(4000)]
+    harmonized = pd.DataFrame({"gene_symbol": big + other, "source_unit_id": ["U1"] * 5100 + ["U2"] * 4000})
+
+    warnings = _identifier_space_warnings(harmonized, min_studies=2)
+
+    assert not any("written in Ensembl ID" in w for w in warnings)
+    assert not any("mixes identifier spaces" in w for w in warnings)  # 2% is below the reporting share
+
+
+def test_the_zip_member_filter_admits_every_format_the_readers_read() -> None:
+    from degora.discovery_prepare import _TABULAR_MEMBER_RE
+
+    for name in ("DEG_results.xlsx.gz", "DEG_results.xls.gz", "DEG_results.xls", "table.csv.gz", "table.tsv"):
+        assert _TABULAR_MEMBER_RE.search(name), name
+    for name in ("GSE1_RAW.tar", "track.bw", "reads.fastq.gz"):
+        assert not _TABULAR_MEMBER_RE.search(name), name
+
+
+def test_serve_on_a_missing_database_reaches_the_first_run_hint(tmp_path, capsys) -> None:
+    from degora.cli import main
+
+    assert main(["serve", str(tmp_path / "missing.db")]) == 2
+    err = capsys.readouterr().err
+    assert "No run yet?" in err and "degora demo" in err
+
+
+def test_the_candidate_panels_span_the_grid_and_unusable_studies_are_grouped_last() -> None:
+    """Panels fell into the 28px checkbox column; unusable studies were interleaved."""
+
+    from degora.api import INDEX_HTML
+
+    assert ".candidate-row > .candidate-advanced,\n    .candidate-row > .candidate-confirms," in INDEX_HTML
+    assert "grid-column: 1 / -1;" in INDEX_HTML
+    assert ".candidate-advanced > summary::-webkit-details-marker { display: none; }" in INDEX_HTML
+    assert "const analyzable = allStudies.filter((study) => (study.files || []).some(eligibleCandidate));" in INDEX_HTML
+    assert 'with no usable table' in INDEX_HTML
+    # The analyzable list renders before the grouped remainder.
+    assert INDEX_HTML.index("analyzable.map(renderStudy)") < INDEX_HTML.index("unanalyzable.map(renderStudy)")

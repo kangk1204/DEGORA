@@ -273,6 +273,18 @@ def _excel_payload(path: Path) -> Path | io.BytesIO:
     return io.BytesIO(payload)
 
 
+# The one place that says which suffixes are workbooks and which are delimited
+# text. Every reader and every archive filter consults these; three of them had
+# grown their own lists and disagreed on .xls and gzipped workbooks.
+WORKBOOK_SUFFIXES = (".xlsx", ".xls", ".xlsx.gz", ".xls.gz")
+DELIMITED_SUFFIXES = (".csv", ".tsv", ".txt", ".csv.gz", ".tsv.gz", ".txt.gz")
+TABULAR_MEMBER_RE = re.compile(r"\.(csv|tsv|txt|xlsx|xls)(\.gz)?$", re.IGNORECASE)
+
+
+def is_workbook_path(path: "str | Path") -> bool:
+    return "".join(Path(path).suffixes).lower().endswith(WORKBOOK_SUFFIXES)
+
+
 def _read_excel_any(path: Path, sheet_name: str | int | None, header_row: int | None = None) -> pd.DataFrame:
     """Read a workbook sheet, honouring an explicit 1-based header row."""
 
