@@ -489,6 +489,50 @@ make smoke
 
 ## Release notes
 
+### 0.4.25
+
+The score contract is unchanged. This release answers one question about the
+prepared-evidence card: what happens when a series ships the same samples as
+several files, and which of them should a reader use.
+
+**Selections that cannot be independent evidence are refused, with the reason.**
+A series often carries raw counts, a log2 TMM matrix and an FPKM matrix of the
+same samples. Selecting two or three of them with the same control and
+treatment groups - same label or different labels - was accepted without a
+word; they collapse into one source unit, so nothing was double-counted, but
+nothing said the reader had chosen one experiment three times. Selecting two
+with the groups swapped was accepted too, and the two contrasts cancelled
+inside the source unit: an ordinary-looking ranking with the wrong genes at the
+top. Both are refused now, naming the two selections. A sample that is a
+control in one contrast and a treatment in another is reported as a warning,
+because a time series or a multi-arm design does exactly that.
+
+**A declared scale is checked against the values.** A linear FPKM matrix
+declared `log2` was refused only after derivation, by the harmoniser, with a
+message about the derived table. The fallback now checks the selected columns
+first: values past 40 are not log2, and negative values are not linear, and
+the refusal names the scale to declare instead.
+
+**One file per series in front, the rest behind it.** Each prepared file now
+carries `preference_rank` and `preference_reason`, and the file to use is
+marked `preferred`. The order is by evidence, not frequency - a series ships
+one of each, so there is no majority to take: the authors' own statistics
+first, then raw counts (the least processed matrix, which DEGORA normalises
+itself), then a log2-normalised matrix, then a linear one that has to be
+transformed. The card shows the preferred file and says why; the others sit
+under one collapsed line, "usually the same samples in another normalization;
+open only if the file above is not the one to use". A file named
+`Normalized_FPKM_gene_counts_matrix` is ranked as FPKM, not as counts.
+
+**Selections tolerate the ways they get mistyped.** `Normalized-Expression-Matrix`,
+` LOG2 `, `Fallback` and a sample name with a trailing space are read as what
+they mean; a wrong value is refused with the field named. Sample column names
+stay case-sensitive, because they are the file's own headers. A selection
+mistake the derivation used to report as a bare `ValueError` - a sample in both
+groups, a non-numeric column - is a usage error with the same words. And the
+duplicate-selection guard groups selections by the series they were prepared
+from, so `ctrl_1`/`treat_1` in two different studies is not one experiment.
+
 ### 0.4.24
 
 The score contract is unchanged. This release closes the remaining findings of

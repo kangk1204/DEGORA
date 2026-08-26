@@ -155,3 +155,173 @@ def test_the_candidate_panels_span_the_grid_and_unusable_studies_are_grouped_las
     assert 'with no usable table' in INDEX_HTML
     # The analyzable list renders before the grouped remainder.
     assert INDEX_HTML.index("analyzable.map(renderStudy)") < INDEX_HTML.index("unanalyzable.map(renderStudy)")
+
+
+def _fallback_selection(label, control, treatment, candidate="c1", accession="GSE343715", **extra):
+    entry = {
+        "accession": accession, "candidate_id": candidate, "mode": "fallback", "contrast_label": label,
+        "control_samples": control, "treatment_samples": treatment, "direction_confirmed": True,
+        "biological_replicates_confirmed": True, "matrix_type": "normalized_expression_matrix", "normalized_scale": "log2",
+    }
+    entry.update(extra)
+    return entry
+
+
+def test_the_same_sample_groups_selected_from_two_files_of_one_series_are_refused() -> None:
+    """Raw counts, TMM and FPKM of one series are one experiment; all three passed silently."""
+
+    from degora.discovery_run import DiscoveryError, _check_fallback_selection_consistency
+
+    same = [_fallback_selection("FPKM", ["c1", "c2"], ["t1", "t2"], candidate="fpkm"),
+            _fallback_selection("TMM", ["c1", "c2"], ["t1", "t2"], candidate="tmm")]
+    with pytest.raises(DiscoveryError, match="selected twice") as excinfo:
+        _check_fallback_selection_consistency(same)
+    assert "raw counts preferred" in str(excinfo.value)
+
+
+def test_swapped_groups_from_one_series_are_refused_as_contradictory() -> None:
+    from degora.discovery_run import DiscoveryError, _check_fallback_selection_consistency
+
+    swapped = [_fallback_selection("A vs C", ["c1", "c2"], ["t1", "t2"], candidate="a"),
+               _fallback_selection("C vs A", ["t1", "t2"], ["c1", "c2"], candidate="b")]
+    with pytest.raises(DiscoveryError, match="control and treatment swapped"):
+        _check_fallback_selection_consistency(swapped)
+
+
+def test_a_sample_in_both_groups_is_left_to_the_per_selection_check() -> None:
+    """The activation step already refuses it in its own words; the guard stays out of the way."""
+
+    from degora.discovery_run import _check_fallback_selection_consistency
+
+    assert _check_fallback_selection_consistency([_fallback_selection("x", ["c1", "s"], ["s", "t1"])]) == []
+
+
+def test_the_guard_groups_selections_by_the_bundle_series_not_by_sample_names() -> None:
+    """ctrl_1/treat_1 from two different studies looked like one experiment selected twice."""
+
+    from degora.discovery_run import _check_fallback_selection_consistency
+
+    prepared = {"studies": [
+        {"accession": "GSE1", "files": [{"candidate_id": "a"}]},
+        {"accession": "GSE2", "files": [{"candidate_id": "b"}]},
+    ]}
+    entries = [_fallback_selection("x", ["ctrl_1", "ctrl_2"], ["treat_1", "treat_2"], candidate="a", accession=""),
+               _fallback_selection("y", ["ctrl_1", "ctrl_2"], ["treat_1", "treat_2"], candidate="b", accession="")]
+    assert _check_fallback_selection_consistency(entries, prepared) == []
+
+
+def test_option_spellings_labels_and_whitespace_combinations(tmp_path) -> None:
+    """Every way a reader can mistype a selection, and what each one gets."""
+
+    from degora.discovery import normalize_species
+    from degora.discovery_run import DiscoveryError, _fallback_row
+
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    path = bundle / "GSE9_matrix.csv"
+    pd.DataFrame({"gene": [f"G{i}" for i in range(60)], "c1": [5.0 + i * 0.1 for i in range(60)], "c2": [5.2 + i * 0.1 for i in range(60)],
+                  "t1": [7.0 + i * 0.1 for i in range(60)], "t2": [7.3 + i * 0.1 for i in range(60)]}).to_csv(path, index=False)
+    import hashlib as _h
+    candidate = {"candidate_id": "m", "name": path.name, "role": "unknown_matrix",
+                 "inspection": {"status": "upstream_matrix_ready_for_contrast", "fetch_scope": "full", "local_path": str(path),
+                                "full_file_sha256": _h.sha256(path.read_bytes()).hexdigest(), "sample_columns": ["c1", "c2", "t1", "t2"],
+                                "gene_column": "gene", "header_row": 1}}
+    study = {"accession": "GSE9", "title": "t", "files": [candidate]}
+
+    def attempt(**overrides):
+        entry = {"candidate_id": "m", "mode": "fallback", "direction_confirmed": True, "biological_replicates_confirmed": True,
+                 "control_samples": ["c1", "c2"], "treatment_samples": ["t1", "t2"], "matrix_type": "normalized_expression_matrix",
+                 "normalized_scale": "log2", "gene_column": "gene", "contrast_label": "treated vs control"}
+        entry.update(overrides)
+        try:
+            _fallback_row(study=study, candidate=candidate, entry=entry, spec=normalize_species("human"), bundle_root=bundle,
+                          derived_dir=tmp_path / f"d{abs(hash(str(overrides)))}", sequence=1, replay_command="degora")
+            return "ok"
+        except DiscoveryError as exc:
+            return str(exc)
+
+    # Tolerated: case and stray whitespace in enumerations, names and labels.
+    assert attempt(matrix_type="Normalized-Expression-Matrix") == "ok"
+    assert attempt(matrix_type=" NORMALIZED_EXPRESSION_MATRIX ") == "ok"
+    assert attempt(normalized_scale="Log2") == "ok"
+    assert attempt(normalized_scale=" LOG2 ") == "ok"
+    assert attempt(mode="Fallback") in ("ok",)  # mode is normalised by the caller; the row itself does not read it
+    assert attempt(control_samples=["c1 ", " c2"], treatment_samples=["t1", "t2 "]) == "ok"
+    assert attempt(contrast_label="  Treated VS Control  ") == "ok"
+    # Refused, each with the field named.
+    assert "matrix_type" in attempt(matrix_type="normalized_expression")
+    assert "normalized_scale" in attempt(normalized_scale="log10")
+    assert "not found in the inspected matrix" in attempt(control_samples=["C1", "c2"])  # column names are case-sensitive in the file
+    assert "contrast_label" in attempt(contrast_label="")
+    assert "direction_confirmed" in attempt(direction_confirmed="true")  # a string is not a confirmation
+    assert "biological_replicates_confirmed" in attempt(biological_replicates_confirmed=None)
+    assert "both" in attempt(control_samples=["c1", "t1"], treatment_samples=["t1", "t2"]).lower() or "disjoint" in attempt(control_samples=["c1", "t1"], treatment_samples=["t1", "t2"])
+
+
+def test_a_sample_that_changes_role_between_contrasts_is_a_warning_not_a_refusal() -> None:
+    """Valid for a time series (T1 vs T0, T2 vs T1); worth a sentence, not a stop."""
+
+    from degora.discovery_run import _check_fallback_selection_consistency
+
+    warnings = _check_fallback_selection_consistency([
+        _fallback_selection("T1 vs T0", ["t0a", "t0b"], ["t1a", "t1b"], candidate="a"),
+        _fallback_selection("T2 vs T1", ["t1a", "t1b"], ["t2a", "t2b"], candidate="b"),
+    ])
+    assert len(warnings) == 1 and "t1a, t1b" in warnings[0] and "time series" in warnings[0]
+
+
+def test_distinct_contrasts_from_different_series_raise_nothing() -> None:
+    from degora.discovery_run import _check_fallback_selection_consistency
+
+    assert _check_fallback_selection_consistency([
+        _fallback_selection("A", ["c1", "c2"], ["t1", "t2"], candidate="a", accession="GSE1"),
+        _fallback_selection("B", ["c1", "c2"], ["t1", "t2"], candidate="b", accession="GSE2"),
+    ]) == []
+
+
+def test_a_linear_matrix_declared_log2_is_refused_before_derivation(tmp_path) -> None:
+    from degora.discovery_run import DiscoveryError, _require_plausible_scale
+
+    path = tmp_path / "fpkm.csv"
+    pd.DataFrame({"gene": [f"G{i}" for i in range(300)], "c1": [1500.0 + i for i in range(300)], "t1": [2200.0 + i for i in range(300)]}).to_csv(path, index=False)
+    with pytest.raises(DiscoveryError, match="looks like a linear matrix"):
+        _require_plausible_scale(path, ["c1", "t1"], "log2")
+    # The same file declared linear is fine; a log2 file declared linear is not.
+    _require_plausible_scale(path, ["c1", "t1"], "linear")
+    log2 = tmp_path / "log2.csv"
+    pd.DataFrame({"gene": ["A", "B", "C"], "c1": [-1.2, 3.0, 8.5], "t1": [0.5, 2.0, 9.0]}).to_csv(log2, index=False)
+    with pytest.raises(DiscoveryError, match="negative values"):
+        _require_plausible_scale(log2, ["c1", "t1"], "linear")
+
+
+def test_the_preferred_file_of_a_series_is_the_least_processed_evidence() -> None:
+    """Not the most frequent - a series ships one of each - but the best evidence first."""
+
+    from degora.discovery import annotate_candidate_preference
+
+    def matrix(name):
+        return {"name": name, "inspection": {"status": "upstream_matrix_ready_for_contrast", "sample_columns": ["a", "b", "c", "d"]}}
+
+    files = annotate_candidate_preference([
+        matrix("GSE343715_Normalized_FPKM_gene_counts_matrix.txt.gz"),
+        matrix("GSE343715_Normalized_LOG2_TMM_gene_counts_matrix.txt.gz"),
+        matrix("GSE343715_SALMON_tx2gene_counts_matrix.txt.gz"),
+    ])
+    ranks = {f["name"].split("_", 1)[1][:12]: f["preference_rank"] for f in files}
+    assert ranks["Normalized_F"] == 4 and ranks["Normalized_L"] == 3 and ranks["SALMON_tx2ge"] == 2
+    assert [f["name"] for f in files if f.get("preferred")] == ["GSE343715_SALMON_tx2gene_counts_matrix.txt.gz"]
+
+    with_author = annotate_candidate_preference([
+        matrix("GSE1_counts.txt.gz"),
+        {"name": "GSE1_DEG.xlsx", "inspection": {"status": "ready_for_review"}},
+    ])
+    assert [f["name"] for f in with_author if f.get("preferred")] == ["GSE1_DEG.xlsx"]
+
+
+def test_the_browser_shows_the_preferred_file_first_and_collapses_the_rest() -> None:
+    from degora.api import INDEX_HTML
+
+    assert "function candidatePreferenceRank(candidate)" in INDEX_HTML
+    assert ".sort((a, b) => a.rank - b.rank || a.index - b.index)" in INDEX_HTML
+    assert '<details class="alternative-candidates">' in INDEX_HTML
+    assert "open only if the file above is not the one to use" in INDEX_HTML

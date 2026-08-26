@@ -1029,8 +1029,8 @@ def test_a_gzipped_workbook_matrix_reaches_the_welch_derivation(tmp_path: Path) 
     bundle.mkdir()
     plain = bundle / "GSE100003_matrix.xlsx"
     pd.DataFrame(
-        {"gene": [f"G{i}" for i in range(40)], "c1": [5.0 + i for i in range(40)], "c2": [5.5 + i for i in range(40)],
-         "t1": [9.0 + i for i in range(40)], "t2": [9.5 + i for i in range(40)]}
+        {"gene": [f"G{i}" for i in range(40)], "c1": [5.0 + i * 0.4 for i in range(40)], "c2": [5.5 + i * 0.4 for i in range(40)],
+         "t1": [9.0 + i * 0.4 for i in range(40)], "t2": [9.5 + i * 0.4 for i in range(40)]}
     ).to_excel(plain, index=False)
     gz = bundle / "GSE100003_matrix.xlsx.gz"
     with plain.open("rb") as src, gzip.open(gz, "wb") as dst:

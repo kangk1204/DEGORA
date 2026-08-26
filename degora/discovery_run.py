@@ -624,7 +624,9 @@ def _require_whole_number_counts(source_path: Path, sample_columns: list[str]) -
             frame = pd.read_csv(source_path, sep=separator, nrows=COUNT_SAMPLE_ROWS)
     except Exception:  # noqa: BLE001 - the derivation reports an unreadable file itself
         return
-    columns = [name for name in sample_columns if name in frame.columns]
+    # Deduplicated: a sample named in both groups is reported by the disjointness
+    # check in its own words, not by pandas refusing to stack repeated columns.
+    columns = [name for name in dict.fromkeys(sample_columns) if name in frame.columns]
     if not columns:
         return
     values = pd.to_numeric(frame[columns].stack(), errors="coerce").dropna()
@@ -637,6 +639,102 @@ def _require_whole_number_counts(source_path: Path, sample_columns: list[str]) -
             f"{COUNT_SAMPLE_ROWS:,} rows are whole numbers (preflight; the derivation checks every row); "
             "this looks like a normalized matrix (FPKM, TPM, CPM or a log scale). Select it as "
             "normalized_expression_matrix with normalized_scale log2 or linear, or choose the raw count file."
+        )
+
+
+def _check_fallback_selection_consistency(entries: list[dict[str, Any]], prepared: dict[str, Any] | None = None) -> list[str]:
+    """Refuse or warn about fallback selections that cannot be independent evidence.
+
+    A series often ships the same samples as three files - raw counts, log2
+    TMM, FPKM. Selecting all three with the same groups is one experiment three
+    times; with the groups swapped in one of them, the two contrasts cancel
+    inside the source unit and the ranking that comes out is garbage that looks
+    ordinary. Both were accepted without a word.
+    """
+
+    # The series a candidate belongs to comes from the bundle, not from the
+    # selection: the browser does not send an accession, and keying on a blank
+    # one made ctrl_1/treat_1 from two different studies look like one experiment.
+    accession_of: dict[str, str] = {}
+    for study in (prepared or {}).get("studies", []) or []:
+        for record in study.get("files", []) or []:
+            accession_of[str(record.get("candidate_id") or "")] = str(study.get("accession") or study.get("source_unit_id") or "")
+    seen: dict[tuple[str, frozenset[str], frozenset[str]], str] = {}
+    warnings: list[str] = []
+    by_accession: dict[str, list[tuple[str, frozenset[str], frozenset[str]]]] = {}
+    for entry in entries:
+        if str(entry.get("mode") or "").strip().lower() != "fallback":
+            continue
+        candidate_id = str(entry.get("candidate_id") or "")
+        accession = (accession_of.get(candidate_id) or str(entry.get("accession") or "")).upper()
+        control = frozenset(str(value).strip() for value in entry.get("control_samples", []) if str(value).strip())
+        treatment = frozenset(str(value).strip() for value in entry.get("treatment_samples", []) if str(value).strip())
+        label = str(entry.get("contrast_label") or candidate_id or "").strip()
+        if not accession or not control or not treatment or control & treatment:
+            # Missing groups and a sample in both groups are reported by the
+            # per-selection validation, in the words it already uses.
+            continue
+        key = (accession, control, treatment)
+        if key in seen:
+            raise DiscoveryError(
+                f"{accession}: the same control and treatment samples are selected twice ({seen[key]!r} and "
+                f"{label!r}). Files from one series that share samples - raw counts, TMM, FPKM - are one "
+                "experiment in several normalizations; keep one (raw counts preferred), because they would "
+                "not count as independent evidence either way."
+            )
+        if (accession, treatment, control) in seen:
+            raise DiscoveryError(
+                f"{accession}: {seen[(accession, treatment, control)]!r} and {label!r} select the same samples "
+                "with control and treatment swapped. Inside one source unit the two contrasts cancel each other; "
+                "keep the one whose direction matches the paper."
+            )
+        for other_accession, other_control, other_treatment in by_accession.get(accession, []):
+            crossed = (control & other_treatment) | (treatment & other_control)
+            if crossed:
+                warnings.append(
+                    f"{accession}: {', '.join(sorted(crossed))} is a control sample in one selected contrast and a "
+                    f"treatment sample in another ({label!r}). That is valid for a time series or a multi-arm "
+                    "design; if both contrasts describe the same comparison, one of them is labelled backwards."
+                )
+        seen[key] = label
+        by_accession.setdefault(accession, []).append(key)
+    return warnings
+
+
+LOG2_EXPRESSION_CEILING = 40.0
+
+
+def _require_plausible_scale(source_path: Path, sample_columns: list[str], normalized_scale: str) -> None:
+    """Refuse a normalized matrix whose values contradict the declared scale."""
+
+    suffixes = "".join(Path(source_path).suffixes).lower()
+    try:
+        if suffixes.endswith((".xlsx", ".xls", ".xlsx.gz", ".xls.gz")):
+            frame = _read_excel_any(Path(source_path), 0, header_row=1).head(COUNT_SAMPLE_ROWS)
+        else:
+            separator = "\t" if suffixes.endswith((".tsv", ".txt", ".tsv.gz", ".txt.gz")) else ","
+            frame = pd.read_csv(source_path, sep=separator, nrows=COUNT_SAMPLE_ROWS)
+    except Exception:  # noqa: BLE001 - the derivation reports an unreadable file itself
+        return
+    # Deduplicated: a sample named in both groups is reported by the disjointness
+    # check in its own words, not by pandas refusing to stack repeated columns.
+    columns = [name for name in dict.fromkeys(sample_columns) if name in frame.columns]
+    if not columns:
+        return
+    values = pd.to_numeric(frame[columns].stack(), errors="coerce").dropna()
+    if values.empty:
+        return
+    if normalized_scale == "log2" and float(values.quantile(0.99)) > LOG2_EXPRESSION_CEILING:
+        raise DiscoveryError(
+            f"normalized_scale=log2, but the selected columns reach {float(values.max()):,.0f} in the first "
+            f"{COUNT_SAMPLE_ROWS:,} rows; a log2 expression value does not exceed about {LOG2_EXPRESSION_CEILING:g}. "
+            "This looks like a linear matrix (FPKM, TPM); declare normalized_scale=linear, which DEGORA transforms "
+            "with log2(x + 1) before testing."
+        )
+    if normalized_scale == "linear" and float(values.min()) < 0:
+        raise DiscoveryError(
+            f"normalized_scale=linear, but the selected columns contain negative values (down to {float(values.min()):g}); "
+            "a linear expression matrix has none. This looks like a log-scale matrix; declare normalized_scale=log2."
         )
 
 
@@ -663,15 +761,16 @@ def _fallback_row(
         )
     source_path = _contained_local_path(candidate, bundle_root)
     allowed_samples = set(map(str, inspection.get("sample_columns", [])))
-    control_samples = [str(value) for value in entry.get("control_samples", [])]
-    treatment_samples = [str(value) for value in entry.get("treatment_samples", [])]
+    # A trailing space from a copy-paste is not a different sample.
+    control_samples = [str(value).strip() for value in entry.get("control_samples", []) if str(value).strip()]
+    treatment_samples = [str(value).strip() for value in entry.get("treatment_samples", []) if str(value).strip()]
     requested = set(control_samples + treatment_samples)
     unknown = sorted(requested.difference(allowed_samples))
     if unknown:
         raise DiscoveryError("selected sample column(s) were not found in the inspected matrix: " + ", ".join(unknown))
     role = str(candidate.get("role") or inspection.get("declared_role") or "")
     if role == "unknown_matrix":
-        role = _text(entry.get("matrix_type"), field="matrix_type", required=True, maximum=40)
+        role = _text(entry.get("matrix_type"), field="matrix_type", required=True, maximum=40).strip().lower().replace("-", "_").replace(" ", "_")
         if role not in {"count_matrix", "normalized_expression_matrix"}:
             # Reader-correctable input; the derivation raised a bare ValueError for it.
             raise DiscoveryError(
@@ -685,30 +784,36 @@ def _fallback_row(
         _require_whole_number_counts(source_path, control_samples + treatment_samples)
     normalized_scale = ""
     if role == "normalized_expression_matrix":
-        normalized_scale = _text(entry.get("normalized_scale"), field="normalized_scale", required=True, maximum=16)
+        normalized_scale = _text(entry.get("normalized_scale"), field="normalized_scale", required=True, maximum=16).strip().lower()
         if normalized_scale not in {"log2", "linear"}:
             raise DiscoveryError("normalized_scale must be log2 or linear for a normalized expression matrix")
+        _require_plausible_scale(source_path, control_samples + treatment_samples, normalized_scale)
     gene_column = _text(entry.get("gene_column") or inspection.get("gene_column"), field="gene_column", required=True)
     accession = _study_accession_key(study)
     derived_path = derived_dir / f"{spec.key}_{accession}_{str(candidate['candidate_id'])[:10]}_welch.csv"
-    summary = derive_welch_deg(
-        source_path,
-        derived_path,
-        role=role,
-        gene_column=gene_column,
-        control_samples=control_samples,
-        treatment_samples=treatment_samples,
-        normalized_scale=normalized_scale or None,
-        sheet_name=inspection.get("sheet_name") or None,
-        command=replay_command,
-        metadata={
-            "accession": study.get("accession", ""),
-            "species": spec.scientific_name,
-            "source_url": _source_url(study, candidate),
-            "biological_replicates_confirmed": True,
-            "inference_scope": "exploratory_screening_not_confirmatory",
-        },
-    )
+    try:
+        summary = derive_welch_deg(
+            source_path,
+            derived_path,
+            role=role,
+            gene_column=gene_column,
+            control_samples=control_samples,
+            treatment_samples=treatment_samples,
+            normalized_scale=normalized_scale or None,
+            sheet_name=inspection.get("sheet_name") or None,
+            command=replay_command,
+            metadata={
+                "accession": study.get("accession", ""),
+                "species": spec.scientific_name,
+                "source_url": _source_url(study, candidate),
+                "biological_replicates_confirmed": True,
+                "inference_scope": "exploratory_screening_not_confirmatory",
+            },
+        )
+    except ValueError as exc:
+        # The derivation reports a bad selection as a ValueError; to the reader
+        # that was a traceback for a mistake they can correct.
+        raise DiscoveryError(f"fallback contrast could not be derived: {exc}") from exc
     row = _base_catalog_row(
         study=study,
         candidate=candidate,
@@ -863,6 +968,7 @@ def _execute_discovery_analysis(
     author_derivations: list[dict[str, Any]] = []
     fallback_summaries: list[dict[str, Any]] = []
     seen_activations: set[tuple[str, ...]] = set()
+    selection_warnings = _check_fallback_selection_consistency(entries, prepared)
     for sequence, entry in enumerate(entries, start=1):
         candidate_id = _text(entry.get("candidate_id"), field="candidate_id", required=True, maximum=64)
         pair = candidate_index.get(candidate_id)
@@ -872,7 +978,7 @@ def _execute_discovery_analysis(
         if str(study.get("species") or "") != spec.key:
             raise DiscoveryError("cross-species candidate detected in a species-specific bundle")
         _validate_mixed_activation(study)
-        mode = _text(entry.get("mode"), field="mode", required=True, maximum=24)
+        mode = _text(entry.get("mode"), field="mode", required=True, maximum=24).strip().lower()
         if mode == "author":
             activation_key = _author_activation_key(candidate_id, candidate.get("inspection", {}), entry)
             if activation_key in seen_activations:
@@ -1010,6 +1116,7 @@ def _execute_discovery_analysis(
         "metrics": metrics,
         "author_derivations": author_derivations,
         "fallback_derivations": fallback_summaries,
+        "selection_warnings": selection_warnings,
         "cross_species_pooling": False,
     }
 

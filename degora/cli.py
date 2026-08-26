@@ -1195,6 +1195,8 @@ def main(argv: list[str] | None = None) -> int:
                 min_studies=min_studies,
                 force=args.force,
             )
+            for warning in result.get("selection_warnings", []):
+                print(f"WARNING: {warning}", file=sys.stderr)
             print(f"DEGORA {args.species} discovery run complete: {result['db_path']}")
             print(f"Top genes: {', '.join(result['top_genes'][:10])}")
             return 0

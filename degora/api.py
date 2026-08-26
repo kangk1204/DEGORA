@@ -435,6 +435,9 @@ INDEX_HTML = """<!doctype html>
     .candidate-advanced > summary::before { content: "\25B8 "; }
     .candidate-advanced[open] > summary::before { content: "\25BE "; }
     .unanalyzable-group { margin-top: 18px; border-top: 1px dashed var(--line); padding-top: 10px; }
+    .preferred-note { margin: 4px 0 2px; color: var(--muted); font-size: 12px; }
+    .alternative-candidates { margin-top: 8px; }
+    .alternative-candidates > summary { cursor: pointer; color: var(--muted); font-size: 12px; font-weight: 700; }
     .unanalyzable-group > summary { cursor: pointer; font-weight: 700; color: var(--muted); }
     .is-unanalyzable .candidate-row { background: #f7f8f8; }
     .is-unanalyzable .candidate-row input:disabled,
@@ -2836,6 +2839,23 @@ INDEX_HTML = """<!doctype html>
       </div>`;
     }
 
+    // Mirrors discovery.candidate_preference for bundles prepared before the
+    // server stamped preference_rank on each file. Lower is shown first.
+    function candidatePreferenceRank(candidate) {
+      if (Number.isFinite(candidate.preference_rank)) return candidate.preference_rank;
+      const status = String((candidate.inspection || {}).status || "");
+      const name = String(candidate.name || "");
+      if (status === "ready_for_review") return 0;
+      if (["requires_pvalue_mapping", "requires_lfc_confirmation", "candidate_header", "requires_column_mapping"].includes(status)) return 1;
+      if (status.startsWith("upstream_matrix")) {
+        if (/log2|log_2|tmm|vst|rlog|voom/i.test(name)) return 3;
+        if (/fpkm|tpm|rpkm|cpm|normali[sz]ed|expression/i.test(name)) return 4;
+        if (/raw|counts?|htseq|featurecounts|salmon|kallisto|rsem/i.test(name)) return 2;
+        return 4;
+      }
+      return 9;
+    }
+
     function renderPreparedState() {
       const state = activeDiscoveryState();
       $("downloadAnalysisExcel").disabled = !state.run?.excel_workbook;
@@ -2889,16 +2909,35 @@ INDEX_HTML = """<!doctype html>
       const analyzable = allStudies.filter((study) => (study.files || []).some(eligibleCandidate));
       const unanalyzable = allStudies.filter((study) => !(study.files || []).some(eligibleCandidate));
       const renderStudy = (study) => {
-        const candidates = (study.files || []).filter(eligibleCandidate);
+        // One file in front, the rest behind it. A series that ships the same
+        // samples as raw counts, log2 TMM and FPKM is one experiment three
+        // times; showing all three as peers invited selecting all three, which
+        // the server now refuses. The preferred one is the least processed
+        // evidence (server-ranked; ranked here too for bundles prepared before).
+        const candidates = (study.files || []).filter(eligibleCandidate)
+          .map((candidate, index) => ({ candidate, index, rank: candidatePreferenceRank(candidate) }))
+          .sort((a, b) => a.rank - b.rank || a.index - b.index)
+          .map((entry) => entry.candidate);
         const hasAuthor = candidates.some(isAuthorReviewable);
         const firstAuthor = candidates.findIndex(isAuthorReviewable);
-        const rows = candidates.map((candidate, index) => {
+        const renderCandidate = (candidate, index) => {
           if (!isAuthorReviewable(candidate)) return fallbackCandidateHtml(study, candidate);
           const keys = authorDraftKeys(candidate.candidate_id);
           const base = authorCandidateHtml(study, candidate, hasAuthor && index === firstAuthor, candidate.candidate_id, false);
           const clones = keys.filter((key) => key !== candidate.candidate_id).map((key) => authorCandidateHtml(study, candidate, false, key, true)).join("");
           return base + clones;
-        }).join("");
+        };
+        const primary = candidates.length ? renderCandidate(candidates[0], 0) : "";
+        const preferredNote = candidates.length && candidates[0].preference_reason
+          ? `<p class="preferred-note">Shown first: ${esc(candidates[0].preference_reason)}.</p>`
+          : "";
+        const others = candidates.slice(1);
+        const alternatives = others.length
+          ? `<details class="alternative-candidates"><summary>${others.length} other file${others.length === 1 ? "" : "s"} from this series`
+            + ` - usually the same samples in another normalization; open only if the file above is not the one to use</summary>`
+            + others.map((candidate, offset) => renderCandidate(candidate, offset + 1)).join("") + `</details>`
+          : "";
+        const rows = preferredNote + primary + alternatives;
         return `<div class="candidate-study"><h4>${esc([study.accession, study.paper_title || study.title || "Untitled study"].filter(Boolean).join(" · "))}</h4><p>${esc(study.preparation_status || "review required")}</p>${rows || unusableStudyHtml(study)}</div>`;
       };
       const html = analyzable.map(renderStudy).join("")

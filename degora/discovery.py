@@ -1051,6 +1051,79 @@ def _is_number(text: str) -> bool:
     return True
 
 
+# Which file of a series to put in front of the reader when several hold the
+# same samples. Not the most frequent - a series ships one of each - but the
+# least processed evidence: the authors' own statistics, then raw counts (which
+# can be normalised here), then a log2-normalised matrix, then a linear one that
+# has to be transformed first. Lower rank is preferred.
+PREFERENCE_AUTHOR_READY = 0
+PREFERENCE_AUTHOR_REVIEW = 1
+PREFERENCE_RAW_COUNTS = 2
+PREFERENCE_LOG2_MATRIX = 3
+PREFERENCE_LINEAR_MATRIX = 4
+PREFERENCE_UNUSABLE = 9
+_RAW_COUNT_NAME_RE = re.compile(r"raw|(?<![a-z])counts?(?![a-z])|htseq|featurecounts|salmon|kallisto|rsem", re.IGNORECASE)
+_LOG2_NAME_RE = re.compile(r"log2|log_2|tmm|vst|rlog|voom", re.IGNORECASE)
+_LINEAR_NAME_RE = re.compile(r"fpkm|tpm|rpkm|(?<![a-z])cpm|normali[sz]ed|expression", re.IGNORECASE)
+
+
+def candidate_preference(record: dict[str, Any]) -> tuple[int, str]:
+    """(rank, reason) for one prepared file; lower rank is put first."""
+
+    inspection = record.get("inspection") or {}
+    status = str(inspection.get("status") or "")
+    name = str(record.get("name") or "")
+    if status == "ready_for_review":
+        return PREFERENCE_AUTHOR_READY, "the authors' own differential-expression statistics"
+    if status in {"requires_pvalue_mapping", "requires_lfc_confirmation", "candidate_header", "requires_column_mapping"}:
+        return PREFERENCE_AUTHOR_REVIEW, "an author results table that needs one mapping confirmed"
+    if status in {"upstream_matrix_ready_for_contrast", "upstream_matrix_requires_contrast"}:
+        role = str(record.get("role") or inspection.get("declared_role") or "")
+        # A name says "normalized" or "FPKM" before it says "counts":
+        # GSE343715_Normalized_FPKM_gene_counts_matrix is FPKM, not raw counts.
+        linear_hint = _LINEAR_NAME_RE.search(name)
+        log2_hint = _LOG2_NAME_RE.search(name)
+        raw_hint = _RAW_COUNT_NAME_RE.search(name)
+        if role == "count_matrix":
+            return PREFERENCE_RAW_COUNTS, "raw counts - the least processed matrix; DEGORA normalises them itself"
+        if role == "normalized_expression_matrix":
+            if str(inspection.get("normalized_scale") or "") == "log2" or log2_hint:
+                return PREFERENCE_LOG2_MATRIX, "a log2-normalised matrix"
+            return PREFERENCE_LINEAR_MATRIX, "a linear normalised matrix (FPKM/TPM); transformed with log2(x + 1) before testing"
+        if log2_hint:
+            return PREFERENCE_LOG2_MATRIX, "a log2-normalised matrix"
+        if linear_hint:
+            return PREFERENCE_LINEAR_MATRIX, "a linear normalised matrix (FPKM/TPM); transformed with log2(x + 1) before testing"
+        if raw_hint:
+            return PREFERENCE_RAW_COUNTS, "raw counts - the least processed matrix; DEGORA normalises them itself"
+        return PREFERENCE_LINEAR_MATRIX, "a matrix of unstated scale; confirm its scale before using it"
+    return PREFERENCE_UNUSABLE, ""
+
+
+def annotate_candidate_preference(files: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Stamp preference_rank/preference_reason on each file and mark the one to show first."""
+
+    ranked = []
+    for record in files:
+        rank, reason = candidate_preference(record)
+        record["preference_rank"] = rank
+        record["preference_reason"] = reason
+        ranked.append(record)
+    usable = [item for item in ranked if item["preference_rank"] < PREFERENCE_UNUSABLE]
+    if usable:
+        best = min(
+            usable,
+            key=lambda item: (
+                item["preference_rank"],
+                -len((item.get("inspection") or {}).get("sample_columns") or []),
+                str(item.get("name") or ""),
+            ),
+        )
+        for item in ranked:
+            item["preferred"] = item is best
+    return ranked
+
+
 def _inspect_rows(rows: list[list[Any]], *, sheet: str = "") -> dict[str, Any]:
     best: dict[str, Any] | None = None
     best_score = -1
@@ -2237,7 +2310,7 @@ def _prepare_geo_studies_in_place(
                 "title": str(record.get("title") or soft.get("title") or ""),
                 "design": str(soft.get("design") or ""),
                 "sample_labels": sample_labels,
-                "files": files,
+                "files": annotate_candidate_preference(files),
                 "candidate_file_count": sum(item.get("tier") in {"strong", "weak", "upstream"} for item in files),
                 "ready_for_review_count": len(ready_author),
                 "upstream_matrix_count": len(upstream),
