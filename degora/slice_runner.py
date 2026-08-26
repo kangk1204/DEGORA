@@ -40,6 +40,7 @@ from .harmonize import (
     duplicate_source_headers,
     harmonize_frame,
     normalize_header_row,
+    normalize_lfc_scale,
     normalize_table_scope,
     read_deg_table,
     resolve_column_name,
@@ -194,6 +195,11 @@ OPTIONAL_CATALOG_DEFAULTS = {
     "include_in_analysis": True,
     "notes": "",
 }
+
+# A declared biological group size above this is a typing slip, not a design.
+# `degora/discovery_run.py` applies the same bound to the browser's review panel;
+# the catalog path had no equivalent check until 0.4.33.
+MAX_DECLARED_GROUP_SIZE = 10_000
 
 TIME_COURSE_MODE_ALIASES = {
     "": "mean",
@@ -933,6 +939,17 @@ def _validate_optional_scope_values(catalog: pd.DataFrame, include_mask: pd.Seri
             )
             fixes.append("Use table_scope=auto, full_results, deg_only, or ambiguous.")
 
+        try:
+            normalize_lfc_scale(row.get("lfc_scale", ""))
+        except ValueError as exc:
+            problems.append(
+                f"Row {_user_row_number(index)} has unsupported lfc_scale={row.get('lfc_scale')!r}: {exc}"
+            )
+            fixes.append(
+                "Write lfc_scale=log2 to state that lfc_column already holds log2 fold changes, "
+                "or leave the cell blank. DEGORA never converts a scale."
+            )
+
         time_course_mode = row.get("time_course_mode", "mean")
         if _normalize_time_course_setting(time_course_mode) is None:
             problems.append(
@@ -1239,6 +1256,18 @@ def _validate_optional_replicate_counts(catalog: pd.DataFrame, include_mask: pd.
             if invalid:
                 problems.append(
                     f"Row {_user_row_number(index)} has {label}={raw_value!r}; it must be a positive whole number."
+                )
+                continue
+            # The same implausible-size bound the discovery review panel applies.
+            # Without it here, a typing slip in a workbook (3 becomes 999999)
+            # passed validation and saturated the contrast's sample-size weight
+            # at its min(sqrt(n_ctrl + n_treat), 4) ceiling, moving almost every
+            # rank with no warning anywhere in the run.
+            if float(numeric) > MAX_DECLARED_GROUP_SIZE:
+                problems.append(
+                    f"Row {_user_row_number(index)} has {label}={raw_value!r}; that is not a plausible "
+                    f"number of biological replicates for one contrast (maximum "
+                    f"{MAX_DECLARED_GROUP_SIZE:,}). Enter the samples in this group, not cells or reads."
                 )
     if problems:
         raise DegoraConfigError(
@@ -1877,7 +1906,7 @@ def _validate_numeric_source_columns(
                 numeric,
                 study_id=str(row["study_id"]),
                 source_column=str(source_column),
-                declared_log2=str(row.get("lfc_scale") or "").strip().lower() == "log2",
+                declared_log2=normalize_lfc_scale(row.get("lfc_scale")) == "log2",
             )
             problems.extend(scale_problems)
             warnings.extend(scale_warnings)
@@ -2040,6 +2069,63 @@ def _try_write_parquet(frame: pd.DataFrame, path: Path) -> str | None:
     return None
 
 
+def _check_identifier_space_overlap(
+    identifiers_by_unit: dict[str, set[str]], path: Path
+) -> list[str]:
+    """Warn when source units do not share a gene identifier space.
+
+    `degora run` already diagnoses this precisely, but only after harmonizing and
+    scoring: a config mixing Ensembl IDs in one study with symbols in another
+    passed `validate` with "config OK" and then failed at the end of the run.
+    The preflight has the same identifier sets in hand, so it says so first.
+
+    This warns rather than refuses on purpose. The run-time message is computed
+    from the harmonized table and is the better of the two - it names the largest
+    pairwise overlap and a sample identifier from each unit - so replacing it
+    with an earlier refusal would cost more than it gained. A run at
+    `min_studies=1`, or one whose overlap is partial, is also legitimate. The
+    preflight's job here is to tell the reader before the work, not to decide
+    for them.
+    """
+
+    units = {unit: genes for unit, genes in identifiers_by_unit.items() if genes}
+    if len(units) < 2:
+        return []
+    counts = ", ".join(f"{unit} ({len(genes):,})" for unit, genes in list(units.items())[:6])
+    shared = set.intersection(*units.values())
+    if shared:
+        return []
+
+    items = list(units.items())
+    best_pair = ""
+    largest = 0
+    for i, (left_name, left) in enumerate(items):
+        for right_name, right in items[i + 1 :]:
+            overlap = len(left & right)
+            if overlap > largest:
+                largest = overlap
+                best_pair = f"{left_name} vs {right_name}"
+
+    samples = "; ".join(
+        f"{unit}: {sorted(genes)[0]!r}" for unit, genes in items[:3] if genes
+    )
+    if largest == 0:
+        return [
+            f"no two of the {len(units)} source units share a single gene identifier. "
+            f"Identifiers per source unit: {counts}. First identifier in each: {samples}. "
+            "No gene can reach a replication floor of 2, so a run at min_studies=2 or above will "
+            "score nothing. Map every source onto one identifier space - all gene symbols, or all "
+            "Ensembl IDs - or check that gene_column points at the identifier column and not at a "
+            "probe ID, row number or rank."
+        ]
+    return [
+        f"no identifier is shared by all {len(units)} source units; the largest overlap between "
+        f"any two is {largest:,} ({best_pair}). Identifiers per source unit: {counts}. Genes are "
+        "matched by identifier, so sources written in different identifier spaces contribute no "
+        "shared evidence."
+    ]
+
+
 def validate_catalog_inputs(
     catalog_path: Path,
     *,
@@ -2070,6 +2156,13 @@ def validate_catalog_inputs(
 
     checked_sources: list[str] = []
     rows = catalog.to_dict(orient="records")
+    # Validation already opens and harmonizes every source table, so the gene
+    # identifier each one actually carries is in hand here. Collecting them per
+    # source unit lets the preflight say that two sources share no identifier
+    # space - the commonest way a config that validates cleanly goes on to score
+    # zero genes at the end of a full run.
+    identifiers_by_unit: dict[str, set[str]] = {}
+    unit_ids = _source_unit_series(catalog).tolist()
     total_rows = len(rows)
     if progress is not None:
         progress(0, total_rows, "")
@@ -2133,6 +2226,11 @@ def validate_catalog_inputs(
                     "Use the full results sheet rather than a notes or metadata sheet.",
                 ],
             )
+        unit_id = str(unit_ids[index - 1]) if index - 1 < len(unit_ids) else ""
+        if unit_id and "gene_symbol" in harmonized.columns:
+            identifiers_by_unit.setdefault(unit_id, set()).update(
+                harmonized["gene_symbol"].dropna().astype(str)
+            )
         checked_sources.append(str(source_path))
         if progress is not None:
             progress(index, total_rows, str(row.get("study_id") or source_path.name))
@@ -2142,11 +2240,13 @@ def validate_catalog_inputs(
     # disagree with aggregate.py / score_db.py.
     unit_series = _source_unit_series(catalog)
     source_units = set(unit_series[unit_series.ne("")].tolist())
+    identifier_overlap_warnings = _check_identifier_space_overlap(identifiers_by_unit, catalog_path)
     gold_panel = _read_locked_gold_panel(catalog_path)
     warnings = [
         *catalog.attrs.get("promoted_alias_warnings", []),
         *_microarray_warnings(catalog),
         *_mixed_species_warnings(catalog),
+        *identifier_overlap_warnings,
         *source_warnings,
     ]
     if gold_panel["status"] in {"invalid", "read_error"}:

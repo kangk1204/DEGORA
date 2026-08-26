@@ -504,11 +504,18 @@ The included synthetic demo is numerically and semantically reproducible from th
   row, refuse a mapping onto a header the table carries twice, and refuse one
   result table declared under two different source units. Rows dropped for a
   missing gene, effect or p-value are always reported, whatever their share.
-- Source units whose log2 fold changes run against the rest of the corpus
-  (pairwise Spearman below -0.10 and significantly negative for at least half
-  of the unit's comparisons) are flagged `source_direction_conflict_flag` in
-  the source-quality diagnostics and named in the run warnings as a possibly
-  reversed contrast. The flag changes no weight and no rank.
+- Source units whose log2 fold changes run against the rest of the corpus are
+  flagged `source_direction_conflict_flag` in the source-quality diagnostics and
+  named in the run warnings as a possibly reversed contrast. A unit qualifies
+  when at least half of its pairwise comparisons are below -0.10 and
+  significantly negative **and** its own median pairwise correlation is below
+  -0.10. The median condition is what keeps a well-formed unit out of it: with
+  two comparisons, "at least half" is satisfied by the single comparison against
+  a reversed partner, so in a three-source corpus with one reversed contrast
+  every unit used to be named. Where the flagged units are not a minority the
+  corpus is split rather than one source being wrong, and the warning says so
+  instead of accusing each unit in turn. The flag changes no weight and no
+  rank.
 - Related contrasts are collapsed by source unit before cross-source aggregation.
 - `time_course_mode` chooses which contrasts of a source unit are kept before that collapse, and every row sharing a source unit must use the same mode. `mean` keeps all of them; `early` and `late` keep all gene rows at that source unit's globally smallest and largest numeric `duration_h`, and every active row of such a unit must carry `duration_h` as a plain number of hours (`0.5`, `24`; `30min` or a blank cell is refused at validation); `peak_mean` keeps each gene's strongest half by `|signed_z|`, at least two. `peak_mean` selects on statistical strength, not effect size: `signed_z` is derived from the p-value, so a time point with a large fold change but a weak p-value is not the peak.
 - A row with `pvalue = 1` or zero effect is neutral evidence and does not contribute directional signed-z support. Values below `1e-300` are floored and reported in the run warnings.
@@ -516,9 +523,9 @@ The included synthetic demo is numerically and semantically reproducible from th
 - `heterogeneity_i2` is a sample-size-weighted descriptive dispersion index, not calibrated Higgins I-squared. The heterogeneity-adjusted Stouffer fields are screening aids only.
 - Random-effects effect-size intervals are descriptive when few source units contribute; in particular, Hartung-Knapp-Sidik-Jonkman intervals with fewer than three source units are unstable.
 - Leave-one-source-out stability is a `priority_rank` diagnostic over global source-unit omission folds. Each fold applies the same `min_studies` eligibility rule and deterministic tie-break as the full priority lane. Median, IQR, and top-N fractions summarize rank-evaluable folds only; the stability score still treats ineligible folds as negative evidence. If no fold keeps a gene eligible, numeric LOO fields are reported as unavailable rather than as zero; the conditional reliability summary then uses the other three mandatory diagnostics with their weights renormalized. These LOO columns are therefore nullable. `evidence_reliability_components_used` records whether three or four diagnostics contributed. Compare reliability values across runs or corpora only when the contributing diagnostic count and LOO eligibility conditions match. The default browser/API ordering remains `quality_weighted_degora_rank`, and reliability does not determine that ordering.
-- Missing group sizes receive the documented neutral replicate multiplier of 0.75. `validate` rejects a zero, negative, fractional or non-numeric group size, so the 0.35 zero-count branch is reachable only through the Python API.
+- Missing group sizes receive the documented neutral replicate multiplier of 0.75. `validate` rejects a zero, negative, fractional or non-numeric group size, and one above 10,000 biological replicates for a single contrast — the same bound the browser's review panel applies — so the 0.35 zero-count branch is reachable only through the Python API. The cap matters because the per-contrast weight is `min(sqrt(n_ctrl + n_treat), 4)`: a typing slip that turns 3 into 999999 saturates that weight at its ceiling rather than producing an obviously wrong number.
 - `sign_convention` records provenance only. DEGORA does not infer or automatically reverse the input effect direction, so the supplied effect must already represent treatment relative to control.
-- `lfc_scale` is optional. Write `log2` to state that `lfc_column` already holds log2 fold changes when its header does not say so (a column named `lfc`, `beta` or `effect`). Without it, a column with no negative values and values on both sides of 1 is refused as a linear fold change; with it, that shape is reported and the run proceeds. `degora init` writes it from the answer to its scale question. DEGORA never converts a scale itself. The shape checks need at least 10 numeric values; a smaller table is taken at its declared or named scale, and the run says so.
+- `lfc_scale` is optional, and `log2` is the only value it takes. Write it to state that `lfc_column` already holds log2 fold changes when its header does not say so (a column named `lfc`, `beta` or `effect`). Any other value — `log10`, `ln`, `linear` — is refused at validation rather than treated as a blank cell, because DEGORA never converts a scale and a declaration it ignores is worse than none. Without it, a column with no negative values and values on both sides of 1 is refused as a linear fold change; with it, that shape is reported and the run proceeds. `degora init` writes it from the answer to its scale question. DEGORA never converts a scale itself. The shape checks need at least 10 numeric values; a smaller table is taken at its declared or named scale, and the run says so.
 - `direction_confirmed`, `biological_replicates_confirmed`, the sample groups of a matrix contrast and `lfc_scale` are the reviewer's statements. DEGORA records them with every run (`reviewer_attestations` in the discovery run summary) and cannot verify them; a wrong attestation produces a ranking that looks ordinary.
 - Public-data fallback uses a documented Welch workflow and does not automatically correct study-level batch or condition confounding.
 - Result-table semantics, contrast direction, group labels, and species must be reviewed before activation.
@@ -533,6 +540,79 @@ make smoke
 ```
 
 ## Release notes
+
+### 0.4.33
+
+The score contract is unchanged: `degora_gene_scores.csv`, `slice_harmonized.csv`
+and `slice_consensus.csv` are byte-identical to 0.4.32 for the same inputs, and
+the `genes`, `gene_evidence` and `studies` tables of the database are unchanged.
+What moved is the `source_direction_conflict_rule` text in the database metadata
+and the four validation gaps below. This release answers two independent audits
+of 0.4.32: an external installation and long-run validation, and a
+multi-keyword / multi-study / multi-parameter sweep of about 660 `degora run`
+invocations across 20 topics.
+
+**A group size the browser refuses is refused from a workbook too.** The 10,000
+biological-replicate cap lived only in the discovery review panel. From a
+catalog, `n_treat=999999` — the exact typing slip 0.4.30 named — passed
+`validate` and `run` in silence, and because the per-contrast weight is
+`min(sqrt(n_ctrl + n_treat), 4)` it saturated that source at the ceiling instead
+of the `sqrt(6) = 2.45` it had earned. On a two-source corpus of 300 genes it
+moved 289 ranks, by a median of 15 places and a maximum of 134. `validate` now
+applies the same bound it already applied to zero, negative, fractional and
+non-numeric sizes.
+
+**The direction-conflict flag stops naming well-formed sources.** The rule was
+"at least half of a unit's pairwise comparisons conflict", and half of two is
+one — so in a three-source corpus with one reversed contrast, both well-formed
+units were flagged too, each with a median Spearman of 0.00 printed inside a
+sentence asserting it disagreed with the rest. A unit's own median must now
+clear the same -0.10 threshold. Two sources still both flag, because with two
+DEGORA cannot tell which is reversed and says so. Where the flagged units are
+not a minority the corpus is split rather than one source being wrong, and one
+warning now says that instead of four that each contradict their own numbers.
+
+**`lfc_scale` refuses a value it cannot honour.** Only `log2` ever meant
+anything; `log10`, `ln`, `linear` and anything else were silently equivalent to
+an empty cell. `table_scope` and `time_course_mode` both refuse an unknown
+value, and `lfc_scale` is the field whose entire purpose is to record a
+statement the reader is making about their data. It is now refused at validation
+with the accepted vocabulary named.
+
+**`--inspection-budget` is a global cap again.** Reported by the external
+validation as P2: one expression,
+`max(1, min(12, inspection_budget // selected_count))`, produced three contract
+violations. A negative budget was refused by legacy GEO and accepted by
+federated `--select`, which turned it into one file per record; `0` became one
+file per record rather than no inspection; and a budget of 1 over two selections
+implied a total of 2. The option is validated once at the CLI entry point, `0`
+is carried through as zero inspection, and the budget is passed to the
+preparation backend as the total it always claimed to be rather than being
+re-derived per record. A budget smaller than the selection is refused with the
+arithmetic named instead of quietly exceeding itself.
+
+**The search API type-checks `page`.** 0.4.31 gave `query` and `species` a type
+contract and 0.4.32 tested it over HTTP; `limit` had one already. `page` did
+not, so `0`, `-3`, `1e9`, `1.5` and `"two"` each started a job with 202. The CLI
+had always refused them. `POST /api/discovery/searches` now applies the same
+bound.
+
+**Smaller.** `peak_mean` records what it selected: `time_course_selection` was
+written for `early` and `late` only, and `peak_mean` is the one mode whose
+selection is per gene, so which contrasts survived differs from row to row; the
+report also carries `row_retention`, because a per-gene subset can keep every
+gene while dropping half the evidence. `rank_universe_size_declared` keeps the
+catalog's own number when the observed row count overrides it — both columns
+used to read the clamped value, so the pair that exists to be read against each
+other carried one number. `reviewer_attestations` is written into
+`analysis_request.json` and the run marker and printed by
+`degora discovery-analyze`; it had existed only as a key of an in-process return
+value, which the browser rendered and no artifact recorded. `validate` warns
+when source units share no gene identifier space — the commonest way a config
+that validates cleanly goes on to score nothing — while `run` keeps its own
+later and more precise diagnostic. Federated `publication_search.json` records
+`degora_version` and `degora_code_revision`, which the GEO snapshots already
+did.
 
 ### 0.4.32
 

@@ -57,6 +57,7 @@ def prepare_publication_records(
     materialize_dir: str | Path,
     max_records: int = 20,
     max_files_per_record: int = 6,
+    inspection_budget: int | None = None,
     transport: Any | None = None,
     geo_client: Any | None = None,
     force: bool = False,
@@ -70,6 +71,12 @@ def prepare_publication_records(
 
     ``progress`` is an optional ``callback(fraction, message)`` over this
     function's own work. Reporting is advisory and never interrupts a run.
+
+    ``inspection_budget`` is a global cap on candidate-file inspections across
+    the whole preparation, not a per-record allowance; ``max_files_per_record``
+    is the per-record ceiling within it. ``0`` inspects nothing. When it is left
+    unset the previous per-record derivation is kept, so existing callers that
+    only pass ``max_files_per_record`` behave as before.
     """
 
     def report(fraction: float, message: str) -> None:
@@ -108,6 +115,7 @@ def prepare_publication_records(
             query=query,
             staging=staging,
             max_files_per_record=max_files_per_record,
+            inspection_budget=inspection_budget,
             transport=transport,
             geo_client=geo_client,
             excluded=excluded,
@@ -142,6 +150,7 @@ def _prepare_into_staging(
     query: str,
     staging: Path,
     max_files_per_record: int,
+    inspection_budget: int | None = None,
     transport: Any | None,
     geo_client: Any | None,
     excluded: list[dict[str, Any]],
@@ -209,7 +218,15 @@ def _prepare_into_staging(
                   # of a full selection with "at most 20 studies".
                   max_studies=max(len(accessions), 1),
                   query=query,
-                  inspection_budget=max(1, len(accessions) * max_files_per_record),
+                  # The caller's budget is a total across the whole preparation.
+                  # Deriving it as len(accessions) * max_files_per_record turned a
+                  # global cap into a per-record allowance, so the implied total
+                  # exceeded what was asked for.
+                  inspection_budget=(
+                      inspection_budget
+                      if inspection_budget is not None
+                      else max(1, len(accessions) * max_files_per_record)
+                  ),
                   max_files_per_study=max_files_per_record,
                   materialize_dir=staging,
                   client=geo_client,

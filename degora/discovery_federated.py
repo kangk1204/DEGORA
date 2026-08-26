@@ -12,6 +12,7 @@ import math
 import re
 from typing import Any, Callable, Iterable
 
+from . import runtime_version_info
 from .provenance import redact_secrets_in_text
 from .discovery import (
     classify_filename,
@@ -398,6 +399,11 @@ def search_publications(
         # snapshot that actually gets persisted - and read back months later -
         # carried no record of which readiness rules produced it.
         "assessment_version": SEARCH_ASSESSMENT_VERSION,
+        # The same argument applies to the build that produced the snapshot. GEO
+        # snapshots carry degora_version and degora_code_revision; federated ones
+        # did not, so a persisted publication_search.json was not self-contained
+        # for reproduction.
+        **runtime_version_info(),
         # Terms set aside because they carry no Latin letter or digit. Empty for
         # an English query; named so the reader knows what was not searched for.
         "ignored_terms": ignored_query_terms(query),
