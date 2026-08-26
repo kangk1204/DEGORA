@@ -190,7 +190,7 @@ def test_local_api_serves_health_gene_list_and_detail(tmp_path, monkeypatch) -> 
     assert "biological-replicates-confirmed" in html
     # The assertion still has to be made; it is phrased for a reader who does not
     # already know what "independent biological replicate" rules out.
-    assert "a separate biological sample, not a repeat measurement of the same one" in html
+    assert "each column is a separate biological sample" in html
     assert "Enter exact contrasts, mappings, positive whole-number biological group sizes" in html
     assert "fallback matrices also require scale, biological-replicate attestation, and 2 + 2 sample assignment" in html
     assert "data-source-unit" in html
@@ -1442,7 +1442,7 @@ def test_every_hidden_confirmation_sits_in_something_that_can_be_hidden() -> Non
     from degora.api import INDEX_HTML
 
     wrapped = set(
-        re.findall(r'<label class="confirm-line"><input class="([a-z0-9-]+)"', INDEX_HTML)
+        re.findall(r'<label class="confirm-line[^"]*"[^>]*><input class="([a-z0-9-]+)"', INDEX_HTML)
     )
     toggled = re.findall(r"showWhenRequired\((\w+),", INDEX_HTML)
     control_classes = {

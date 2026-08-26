@@ -453,6 +453,12 @@ INDEX_HTML = """<!doctype html>
     .sample-bulk .sample-filter { flex: 1 1 130px; min-width: 110px; height: 26px; font-size: 11px; }
     .sample-bulk button { width: auto; min-width: 0; height: 26px; padding: 0 8px; border-radius: 6px; font-size: 11px; }
     .sample-bulk-count { color: var(--muted); font-size: 10px; }
+    .sample-suggest-row { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding-bottom: 4px; }
+    .sample-suggest-row button { width: auto; min-width: 0; height: 26px; padding: 0 8px; border-radius: 6px; font-size: 11px; }
+    .sample-suggest { background: #eef7f5 !important; border-color: var(--accent, #1f7a6f) !important; }
+    .sample-suggest-note { flex: 1 1 100%; color: #1f5c54; font-size: 11px; }
+    .confirm-primary { font-weight: 600; }
+    .confirm-when { color: var(--muted); }
     .sample-item.is-filtered-out { display: none; }
     .sample-item select { grid-area: select; }
     .sample-item select { height: 28px; padding: 0 5px; font-size: 11px; }
@@ -2640,7 +2646,7 @@ INDEX_HTML = """<!doctype html>
       const status = inspection.status || "";
       const draft = activeDiscoveryState().draft[activationKey] || {};
       const checked = draft.enabled === undefined ? defaultChecked : draft.enabled;
-      const contrast = draft.contrast === undefined ? "" : draft.contrast;
+      const contrast = draft.contrast === undefined ? suggestedContrastLabel(candidate.name) : draft.contrast;
       const cellSystem = draft.cellSystem === undefined ? "" : draft.cellSystem;
       const durationH = draft.durationH === undefined ? "" : draft.durationH;
       const nCtrl = draft.nCtrl === undefined ? "" : draft.nCtrl;
@@ -2653,6 +2659,12 @@ INDEX_HTML = """<!doctype html>
       const lfcColumn = draft.lfcColumn === undefined ? (mapping.lfc_column || "") : draft.lfcColumn;
       const pColumn = draft.pColumn === undefined ? (mapping.p_column || "") : draft.pColumn;
       const padjColumn = draft.padjColumn === undefined ? (mapping.padj_column || "") : draft.padjColumn;
+      // Which attestations this table actually needs. Six lines stood at equal
+      // weight under every table; a reader could not tell the one that always
+      // matters (direction) from the ones that apply to a table with no raw
+      // p-value, a filter, or a mapping the inspector was not sure of.
+      const needsMappingConfirm = status !== "ready_for_review";
+      const padjAsP = Boolean(pColumn && padjColumn && pColumn === padjColumn) || (Boolean(padjColumn) && !pColumn);
       const rowFilterColumn = draft.rowFilterColumn === undefined ? "" : draft.rowFilterColumn;
       const rowFilterValue = draft.rowFilterValue === undefined ? "" : draft.rowFilterValue;
       const duplicateGenePolicy = draft.duplicateGenePolicy || "harmonizer";
@@ -2668,7 +2680,8 @@ INDEX_HTML = """<!doctype html>
           + `Enter the numbers for this contrast only; together they cannot exceed ${seriesSamples}.</p>`
         : "";
       const columnsOpen = status !== "ready_for_review"
-        || anyValueSet(draft.sheetName, draft.geneColumn, draft.lfcColumn, draft.pColumn, draft.padjColumn);
+        || anyValueSet(draft.sheetName, draft.geneColumn, draft.lfcColumn, draft.pColumn, draft.padjColumn)
+        || (draft.tableScope !== undefined && draft.tableScope !== "auto");
       // And never hide a setting that is already carrying a value, or the reader
       // cannot see what their run is actually going to do.
       const advancedOpen = anyValueSet(
@@ -2685,14 +2698,14 @@ INDEX_HTML = """<!doctype html>
         <div><span class="candidate-name">${esc(candidate.name)}${clone ? " · additional cohort/contrast" : ""}</span><span class="candidate-note">Author DEG candidate · ${esc(status)} · ${esc(geneColumn)} / ${esc(lfcColumn)} / ${esc(pColumn)}${identifierSpaceNote(candidate)}</span><div class="candidate-tools"><span class="status-pill">${status === "ready_for_review" ? "One-click mapping accepted" : "Mapping review required"}</span><button class="action-secondary clone-author-candidate" type="button">Add cohort/contrast</button></div></div>
         <div class="candidate-fields">
           <label>Contrast label<input class="contrast-label" value="${esc(contrast)}" placeholder="Enter exact paper/GEO contrast" autocomplete="off"></label>
-          <label>Table scope<select class="table-scope"><option value="auto" ${draft.tableScope === "auto" || draft.tableScope === undefined ? "selected" : ""}>Auto review</option><option value="full_results" ${draft.tableScope === "full_results" ? "selected" : ""}>Full results</option><option value="deg_only" ${draft.tableScope === "deg_only" ? "selected" : ""}>Significant genes only</option></select></label>
           <label>Control biological n<input class="n-ctrl" type="number" min="1" step="1" inputmode="numeric" value="${esc(nCtrl)}" required title="Independent biological control samples in this exact contrast, not total GEO samples"></label>
           <label>Treatment biological n<input class="n-treat" type="number" min="1" step="1" inputmode="numeric" value="${esc(nTreat)}" required title="Independent biological treatment/case samples in this exact contrast, not total GEO samples"></label>
         </div>
         ${seriesSampleNote}
         <details class="candidate-advanced" ${columnsOpen ? "open" : ""}>
-          <summary>Columns DEGORA read from the file${columnsOpen ? "" : " - detected, open to change"}</summary>
+          <summary>Columns and table scope DEGORA read from the file${columnsOpen ? "" : " - detected, open to change"}</summary>
         <div class="candidate-fields">
+          <label>Table scope<select class="table-scope"><option value="auto" ${draft.tableScope === "auto" || draft.tableScope === undefined ? "selected" : ""}>Auto review</option><option value="full_results" ${draft.tableScope === "full_results" ? "selected" : ""}>Full results</option><option value="deg_only" ${draft.tableScope === "deg_only" ? "selected" : ""}>Significant genes only</option></select></label>
           <label>Sheet name<input class="sheet-name" value="${esc(sheetName)}" maxlength="160" autocomplete="off"></label>
           <label>Gene column<input class="gene-column" value="${esc(geneColumn)}" maxlength="160" autocomplete="off"></label>
           <label>log2FC column<input class="lfc-column" value="${esc(lfcColumn)}" maxlength="160" autocomplete="off"></label>
@@ -2714,12 +2727,12 @@ INDEX_HTML = """<!doctype html>
         </div>
         </details>
         <div class="candidate-fields candidate-confirms">
-          <label class="confirm-line"><input class="direction-confirmed" type="checkbox" ${draft.direction ? "checked" : ""}> A positive value here means the gene went UP in the treated group, not the control group</label>
-          <label class="confirm-line"><input class="column-mapping-confirmed" type="checkbox" ${draft.columnMappingConfirmed ? "checked" : ""}> The gene, effect and p-value columns chosen above are the right ones</label>
-          <label class="confirm-line"><input class="adjusted-p-as-pvalue-confirmed" type="checkbox" ${draft.adjustedPAsPvalueConfirmed ? "checked" : ""}> This table has no separate raw p-value, so its adjusted p-value is being used as one</label>
-          <label class="confirm-line"><input class="lfc-scale-confirmed-log2" type="checkbox" ${draft.lfcScaleConfirmedLog2 ? "checked" : ""}> The effect column is already a log2 fold change, not a plain ratio</label>
-          <label class="confirm-line"><input class="row-filter-confirmed" type="checkbox" ${draft.rowFilterConfirmed ? "checked" : ""}> The filter above picks one comparison and does not mix several together</label>
-          <label class="confirm-line"><input class="duplicate-gene-policy-confirmed" type="checkbox" ${draft.duplicateGenePolicyConfirmed ? "checked" : ""}> Keeping the first row for each repeated gene reproduces how this table was originally read</label>
+          <label class="confirm-line confirm-primary"><input class="direction-confirmed" type="checkbox" ${draft.direction ? "checked" : ""}> A positive value here means the gene went UP in the treated group, not the control group</label>
+          <label class="confirm-line confirm-when" data-when="mapping" ${needsMappingConfirm ? "" : "hidden"}><input class="column-mapping-confirmed" type="checkbox" ${draft.columnMappingConfirmed ? "checked" : ""}> The gene, effect and p-value columns chosen above are the right ones</label>
+          <label class="confirm-line confirm-when" data-when="padj" ${padjAsP ? "" : "hidden"}><input class="adjusted-p-as-pvalue-confirmed" type="checkbox" ${draft.adjustedPAsPvalueConfirmed ? "checked" : ""}> This table has no separate raw p-value, so its adjusted p-value is being used as one</label>
+          <label class="confirm-line confirm-when" data-when="lfc" ${status === "requires_lfc_confirmation" ? "" : "hidden"}><input class="lfc-scale-confirmed-log2" type="checkbox" ${draft.lfcScaleConfirmedLog2 ? "checked" : ""}> The effect column is already a log2 fold change, not a plain ratio</label>
+          <label class="confirm-line confirm-when" data-when="filter" ${rowFilterColumn || rowFilterValue ? "" : "hidden"}><input class="row-filter-confirmed" type="checkbox" ${draft.rowFilterConfirmed ? "checked" : ""}> The filter above picks one comparison and does not mix several together</label>
+          <label class="confirm-line confirm-when" data-when="duplicates" ${duplicateGenePolicy === "keep_first" ? "" : "hidden"}><input class="duplicate-gene-policy-confirmed" type="checkbox" ${draft.duplicateGenePolicyConfirmed ? "checked" : ""}> Keeping the first row for each repeated gene reproduces how this table was originally read</label>
         </div>
       </div>`;
     }
@@ -2729,6 +2742,149 @@ INDEX_HTML = """<!doctype html>
     // reviewable - the reader still sees which rows moved - while removing the
     // clicking. Any bulk move clears the direction attestations, because they
     // were made about a different assignment.
+    // A file called "ATRA_vs_cntrl_SKNO1_gene_deseq2_out.txt.gz" already says the
+    // comparison; the reader was asked to type it again into an empty box.
+    function suggestedContrastLabel(name) {
+      const stem = String(name || "").replace(/^GSE\\d+_?/i, "").replace(/\\.(csv|tsv|txt|xlsx|xls)(\\.gz)?$/i, "");
+      const match = stem.match(/([^_. -]+)[_. -]+(?:vs|versus)[_. -]+([^_. -]+)/i);
+      return match ? `${match[1]} vs ${match[2]}` : "";
+    }
+
+    const CONTROL_LABEL_RE = /(?<!anti[ -]?)(?<!non[ -]?)(?:^|[^a-z]|(?<=s[ih]))(control|ctrl|ctl|vehicle|veh|dmso|mock|untreated|unstim|wt|wild[ -]?type|sham|healthy|normal|normoxia|baseline|parental|scramble|scr|si[ -]?(ctrl|nc|control|scr)|sh[ -]?(ctrl|nc|control|scr)|nc|non[ -]?target(ing)?|empty vector|ev)(?=$|[^a-z])/i;
+
+    // The submitter's characteristics ("treatment: A-485" / "treatment: CPI-637")
+    // usually already split the samples into the two groups the reader is about
+    // to assign one dropdown at a time. Propose that split, name the key it came
+    // from, guess which side is control from its wording, and leave every
+    // dropdown editable - the attestation below is still the reader's.
+    function suggestSampleGroups(row) {
+      const norm = (value) => String(value || "").trim().toLowerCase();
+      const items = [...row.querySelectorAll(".sample-item")];
+      const facts = items.map((item) => {
+        // The characteristics live in their own span; the title tooltip also
+        // carries the sample's own name, which would parse as a bogus key.
+        const traitSpan = item.querySelector(".sample-traits");
+        const traits = traitSpan ? String(traitSpan.textContent || "") : String(item.getAttribute("title") || "").split(" — ").slice(-1)[0];
+        const pairs = {};
+        traits.split(" · ").forEach((piece) => {
+          const at = piece.indexOf(":");
+          if (at > 0) pairs[norm(piece.slice(0, at))] = piece.slice(at + 1).trim();
+        });
+        // A column GEO could not match has no label to read; it stays at Ignore.
+        const labelled = !item.querySelector(".sample-label-missing");
+        const title = labelled
+          ? (item.querySelector(".sample-label")?.textContent || item.querySelector(".sample-id")?.textContent || "").trim()
+          : "";
+        return { item, pairs, title, labelled };
+      });
+      const keys = new Set();
+      facts.forEach((fact) => Object.keys(fact.pairs).forEach((key) => keys.add(key)));
+      const preferred = ["treatment", "condition", "agent", "group", "genotype", "stimulation", "exposure", "disease state", "disease", "phenotype", "status"];
+      const ordered = [...keys].sort((a, b) => (preferred.indexOf(a) + 1 || 99) - (preferred.indexOf(b) + 1 || 99));
+      const note = row.querySelector(".sample-suggest-note");
+      const say = (text) => { if (note) note.textContent = text; };
+      // A key that every sample carries and that takes three or more values is
+      // a multi-arm design: no two-way split is honest, from this key or from
+      // the titles, because "the others" would pool arms the reader never chose.
+      const multiArm = ordered.map((key) => {
+        const values = facts.map((fact) => fact.pairs[key]);
+        const distinctNorm = [...new Set(values.map(norm).filter(Boolean))];
+        // Shown in the first spelling seen, compared normalised.
+        const distinct = distinctNorm.map((value) => values.find((raw) => norm(raw) === value));
+        return values.every(Boolean) && distinct.length >= 3 ? { key, distinct } : null;
+      }).find(Boolean);
+      let best = null;
+      ordered.forEach((key) => {
+        if (best) return;
+        const values = facts.map((fact) => fact.pairs[key]);
+        const distinctNorm = [...new Set(values.map(norm).filter(Boolean))];
+        if (values.every(Boolean) && distinctNorm.length === 2) {
+          // Display the first spelling seen for each value; compare normalised.
+          const shown = distinctNorm.map((value) => values.find((raw) => norm(raw) === value));
+          best = { key, values: shown };
+        }
+      });
+      let split = null;
+      if (best) {
+        const [a, b] = best.values;
+        const aControl = CONTROL_LABEL_RE.test(a);
+        const bControl = CONTROL_LABEL_RE.test(b);
+        if (aControl !== bControl) {
+          const controlValue = aControl ? a : b;
+          const treatValue = aControl ? b : a;
+          split = { basis: best.key, control: controlValue, treatment: treatValue,
+            assign: (fact) => (norm(fact.pairs[best.key]) === norm(controlValue) ? "control" : "treatment") };
+        } else {
+          say(`Two groups by ${best.key} (${a} / ${b}), but ${aControl ? "both read" : "neither reads"} as a control - set Control and Treatment by hand.`);
+          return;
+        }
+      } else if (multiArm) {
+        say(`${multiArm.key} has ${multiArm.distinct.length} values (${multiArm.distinct.join(" / ")}): a contrast compares two. Set the one arm to compare against its control and leave the others at Ignore.`);
+        return;
+      } else {
+        // No characteristic splits them in two: fall back to the sample titles,
+        // and say that the other side may mix several conditions.
+        const controls = facts.filter((fact) => fact.labelled && CONTROL_LABEL_RE.test(fact.title));
+        const others = facts.filter((fact) => fact.labelled && !CONTROL_LABEL_RE.test(fact.title));
+        if (controls.length >= 2 && others.length >= 2) {
+          split = { basis: "sample titles", control: "titles that read as a control", treatment: "every other labelled sample (may mix several conditions)",
+            assign: (fact) => (!fact.labelled ? "" : CONTROL_LABEL_RE.test(fact.title) ? "control" : "treatment") };
+        }
+      }
+      if (!split) {
+        say("No two-way split in the sample labels; assign the groups by hand.");
+        return;
+      }
+      let nControl = 0, nTreatment = 0;
+      facts.forEach((fact) => {
+        const group = split.assign(fact);
+        const select = fact.item.querySelector("[data-sample]");
+        if (select) select.value = group;
+        if (group === "control") nControl += 1; else if (group === "treatment") nTreatment += 1;
+      });
+      // A second characteristic that still varies inside a proposed group - a
+      // dose, a time point, a genotype - is pooled by this split. Say so.
+      const varying = split.basis === "sample titles" ? [] : ordered.filter((key) => key !== split.basis && ["control", "treatment"].some((group) =>
+        new Set(facts.filter((fact) => split.assign(fact) === group).map((fact) => norm(fact.pairs[key]))).size > 1));
+      const label = row.querySelector(".contrast-label");
+      if (label && !label.value.trim() && split.basis !== "sample titles") label.value = `${split.treatment} vs ${split.control}`;
+      say(`Suggested from ${split.basis}: control = ${split.control} (${nControl}), treatment = ${split.treatment} (${nTreatment}).`
+        + (varying.length ? ` Note: ${varying.join(", ")} still varies inside a group, so this pools those levels; set the ones you do not mean to Ignore.` : "")
+        + " Check every row, then confirm below.");
+      ["direction-confirmed", "biological-replicates-confirmed"].forEach((name) => {
+        const box = row.querySelector(`.${name}`);
+        if (box && box.checked) box.checked = false;
+      });
+      updateSampleCounts(row);
+      capturePreparedDraft();
+      updateAnalysisEligibility();
+    }
+
+    // Author-table attestations appear only when they apply; recomputed as the
+    // reader edits the mapping or the filter.
+    function refreshConditionalConfirms(row) {
+      if (row.dataset.mode === "fallback") return;
+      const text = (selector) => (row.querySelector(selector)?.value || "").trim();
+      const status = row.dataset.authorStatus || "";
+      const edited = ["sheet-name:detectedSheetName", "gene-column:detectedGeneColumn", "lfc-column:detectedLfcColumn", "p-column:detectedPColumn", "padj-column:detectedPadjColumn"]
+        .some((pair) => { const [cls, key] = pair.split(":"); return text(`.${cls}`) !== (row.dataset[key] || ""); });
+      const pColumn = text(".p-column"), padjColumn = text(".padj-column");
+      const show = {
+        mapping: status !== "ready_for_review" || edited,
+        padj: Boolean(pColumn && padjColumn && pColumn === padjColumn),
+        lfc: status === "requires_lfc_confirmation",
+        filter: Boolean(text(".row-filter-column") || text(".row-filter-value")),
+        duplicates: text(".duplicate-gene-policy") === "keep_first",
+      };
+      row.querySelectorAll(".confirm-when").forEach((line) => { line.hidden = !show[line.dataset.when]; });
+    }
+
+    function sampleSuggestHtml() {
+      return `<div class="sample-suggest-row">
+        <button class="action-secondary sample-suggest" type="button">Suggest groups from sample labels</button>
+        <span class="sample-suggest-note" aria-live="polite"></span>
+      </div>`;
+    }
     function sampleBulkHtml() {
       return `<div class="sample-bulk">
         <input class="sample-filter" type="search" placeholder="Filter by label, e.g. uninduced" aria-label="Filter samples by label" autocomplete="off">
@@ -2840,10 +2996,10 @@ INDEX_HTML = """<!doctype html>
           ${matrixTypeControl}
           ${normalizedScaleControl}
           <label>Gene column<input class="gene-column" value="${esc(draft.geneColumn === undefined ? (inspection.gene_column || "") : draft.geneColumn)}"></label>
-          <label class="confirm-line"><input class="direction-confirmed" type="checkbox" ${draft.direction ? "checked" : ""}> The control and treated groups above are correct, and the comparison runs treated minus control</label>
-          <label class="confirm-line"><input class="biological-replicates-confirmed" type="checkbox" ${draft.biologicalReplicates ? "checked" : ""}> Each selected column is a separate biological sample, not a repeat measurement of the same one</label>
+          <label class="confirm-line confirm-primary"><input class="direction-confirmed" type="checkbox" ${draft.direction && draft.biologicalReplicates ? "checked" : ""}> The Control and Treatment groups assigned in the sample list are right, the comparison is treated minus control, and each column is a separate biological sample, not a repeat measurement of the same one</label>
+          <input class="biological-replicates-confirmed" type="checkbox" hidden aria-hidden="true" tabindex="-1" ${draft.direction && draft.biologicalReplicates ? "checked" : ""}>
         </div>
-        <div class="sample-groups" role="group" aria-label="Assign independent biological control and treatment samples"><div class="sample-counts" aria-live="polite"><span>Control <strong data-control-count>0</strong></span><span>Treatment <strong data-treatment-count>0</strong></span><span>Required: 2 + 2</span>${columns.length && !labelledCount ? `<span class="sample-labels-missing">GEO returned no matching sample labels for these columns — check the series page before assigning.</span>` : ""}</div>${columns.length > 4 ? sampleBulkHtml() : ""}${samples || `<span class="candidate-note">No numeric sample columns detected.</span>`}</div>
+        <div class="sample-groups" role="group" aria-label="Assign independent biological control and treatment samples"><div class="sample-counts" aria-live="polite"><span>Control <strong data-control-count>0</strong></span><span>Treatment <strong data-treatment-count>0</strong></span><span>Required: 2 + 2</span>${columns.length && !labelledCount ? `<span class="sample-labels-missing">GEO returned no matching sample labels for these columns — check the series page before assigning.</span>` : ""}</div>${sampleSuggestHtml()}${columns.length > 4 ? sampleBulkHtml() : ""}${samples || `<span class="candidate-note">No numeric sample columns detected.</span>`}</div>
       </div>`;
     }
 
@@ -2982,6 +3138,9 @@ INDEX_HTML = """<!doctype html>
       $("preparedCandidates").innerHTML = blockedNotice + (html + excluded || `<div class="discovery-empty">No candidates were prepared.</div>`);
       $("preparedCandidates").classList.toggle("is-unanalyzable", blocked);
       $("preparedCandidates").querySelectorAll(".candidate-row").forEach(refreshSampleFilter);
+      // The attestation lines that apply depend on the restored inputs, not only
+      // on the inspector's status: an edited column needs its confirmation shown.
+      $("preparedCandidates").querySelectorAll(".candidate-row").forEach(refreshConditionalConfirms);
       $("preparedCandidates")
         .querySelectorAll(".candidate-row input, .candidate-row select, .candidate-row button")
         .forEach((control) => { control.disabled = blocked; });
@@ -4140,12 +4299,24 @@ INDEX_HTML = """<!doctype html>
     });
     $("downloadSearchExcel").addEventListener("click", downloadSearchExcel);
     $("prepareSelected").addEventListener("click", prepareSelectedStudies);
-    $("preparedCandidates").addEventListener("change", () => { capturePreparedDraft(); updateAnalysisEligibility(); });
+    $("preparedCandidates").addEventListener("change", (event) => {
+      const row = event.target.closest(".candidate-row");
+      // One box stands for both facts on a matrix; the hidden twin keeps the
+      // server contract (direction_confirmed + biological_replicates_confirmed).
+      if (row && row.dataset.mode === "fallback" && event.target.classList.contains("direction-confirmed")) {
+        const twin = row.querySelector(".biological-replicates-confirmed");
+        if (twin) twin.checked = event.target.checked;
+      }
+      if (row) refreshConditionalConfirms(row);
+      capturePreparedDraft();
+      updateAnalysisEligibility();
+    });
     // The species attestation lives in the card footer, outside #preparedCandidates,
     // so the listener above never saw it: ticking the box left Run disabled until
     // some other field was touched, and unticking it left Run enabled.
     $("speciesConfirmed").addEventListener("change", updateAnalysisEligibility);
     $("preparedCandidates").addEventListener("input", (event) => {
+      { const row = event.target.closest(".candidate-row"); if (row) refreshConditionalConfirms(row); }
       const filter = event.target.closest(".sample-filter");
       if (filter) {
         const filterRow = filter.closest(".candidate-row");
@@ -4160,6 +4331,8 @@ INDEX_HTML = """<!doctype html>
         void cancelDiscoveryJob("prepare");
         return;
       }
+      const suggest = event.target.closest(".sample-suggest");
+      if (suggest) { const row = suggest.closest(".candidate-row"); if (row) suggestSampleGroups(row); return; }
       const bulk = event.target.closest(".sample-bulk-apply");
       if (bulk) {
         const bulkRow = bulk.closest(".candidate-row");

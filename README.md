@@ -527,6 +527,58 @@ make smoke
 
 ## Release notes
 
+### 0.4.28
+
+The score contract is unchanged. This release makes the prepared-evidence card
+concise for a first-time reader, without loosening what the analysis requires.
+
+**One attestation that always matters, the rest only when they apply.** Six
+attestation lines stood at equal weight under every author table, so the one a
+reader must always answer - a positive value means UP in the treated group -
+could not be told from the ones that apply to a table with no unadjusted
+p-value, a filter, a duplicate-gene policy, an unconfirmed log2 scale, or a
+column mapping the inspector was not sure of. Those five appear only when their
+condition holds, and follow the reader's edits. The server asks for exactly the
+same confirmations it did.
+
+**A matrix asks one question.** "The groups above are right, the comparison is
+treated minus control, and each column is a separate biological sample" - one
+box for the two facts DEGORA cannot infer. Its hidden twin keeps the contract
+(`direction_confirmed` and `biological_replicates_confirmed`) unchanged.
+
+**Groups can be suggested from the sample labels.** GEO's sample
+characteristics ("treatment: vehicle" / "treatment: rapamycin", "condition:
+normoxia" / "hypoxia", "transfection: siControl" / "siHIF1A") usually already
+split the samples in two. "Suggest groups from sample labels" proposes that
+split, names the characteristic it came from and which side it took as control
+and why, fills the contrast label ("rapamycin vs vehicle"), and leaves every
+dropdown editable. Two groups with no recognisable control - two drugs, no
+vehicle - are reported as exactly that, and nothing is assigned. A time series
+or a three-arm design gets no suggestion.
+
+**What the suggestion refuses to do.** An independent review of the change
+tried to make it guess wrong, and each way it found is closed. A design with
+three or more arms (vehicle / drugA / drugB, or 0h / 6h / 24h) gets no split -
+"a contrast compares two; set the one arm to compare against its control and
+leave the others at Ignore" - rather than two arms pooled as "the others". Two
+values that both read as a control (control / mock), or neither (IgG /
+anti-control antibody), are reported as exactly that; a negating prefix
+(anti-, non-) is not a control word. A column GEO could not match stays at
+Ignore. `DMSO` and `dmso` are one value. And when a second characteristic - a
+dose, a time point, a genotype - still varies inside a proposed group, the note
+says which one and that the split pools those levels. The same review found
+that re-rendering the card (adding a cohort, switching species) hid a required
+mapping confirmation after a column had been edited; the conditional lines
+are now recomputed from the restored inputs on every render.
+
+**Table scope is behind the fold.** Auto is right for nearly every table; the
+choice sits in the collapsed "Columns DEGORA read" panel with the sheet name.
+A DEG-only table without a rank universe still gets the run-time caveat.
+
+**The contrast label is prefilled when the file says the comparison.**
+`ATRA_vs_cntrl_SKNO1_gene_deseq2_out.txt.gz` becomes "ATRA vs cntrl" - the
+tokens beside the "vs", to edit rather than to type.
+
 ### 0.4.27
 
 The score contract is unchanged. This release answers a review of options and
