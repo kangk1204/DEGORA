@@ -175,11 +175,25 @@ def test_run_slice_output_dir_is_a_file_is_explained(tmp_path) -> None:
 
 # --- read_deg_table -------------------------------------------------------------------
 
-def test_read_deg_table_detects_wrong_separator(tmp_path) -> None:
-    p = tmp_path / "tab_in.csv"  # tab-delimited content in a .csv -> auto sep=','
+def test_read_deg_table_reads_tab_content_in_a_csv_by_sniffing_the_header(tmp_path) -> None:
+    """A .csv that is really tab-delimited used to fail with a hint; it is read now.
+
+    The header line decides the delimiter when the catalog does not say. The
+    hint about a wrong delimiter still applies when the catalog states one that
+    does not match the file - see the next test.
+    """
+
+    p = tmp_path / "tab_in.csv"
+    p.write_text("gene\tlfc\tpval\nA\t1.0\t0.01\n")
+    frame = read_deg_table(p, TableMapping("gene", "lfc", "pval"))
+    assert list(frame.columns) == ["gene", "lfc", "pval"]
+
+
+def test_read_deg_table_detects_an_explicitly_wrong_separator(tmp_path) -> None:
+    p = tmp_path / "tab_in.csv"
     p.write_text("gene\tlfc\tpval\nA\t1.0\t0.01\n")
     with pytest.raises(ValueError, match="single column"):
-        read_deg_table(p, TableMapping("gene", "lfc", "pval"))
+        read_deg_table(p, TableMapping("gene", "lfc", "pval", sep=","))
 
 
 # --- harmonize_frame ------------------------------------------------------------------

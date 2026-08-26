@@ -250,6 +250,16 @@ def normalize_species(value: str) -> SpeciesSpec:
     return SPECIES_BY_KEY[key]
 
 
+_LATIN_TOKEN_RE = re.compile(r"[A-Za-z0-9]")
+
+
+def ignored_query_terms(query: str) -> list[str]:
+    """The terms of a query that carry no Latin letter or digit, in order."""
+
+    terms = re.findall(r"[^\W_]+(?:[-'][^\W_]+)*", str(query), flags=re.UNICODE)
+    return [term[:64] for term in terms if term and not _LATIN_TOKEN_RE.search(term)]
+
+
 def _query_terms(query: str) -> list[str]:
     text = str(query).strip()
     if not text:
@@ -264,6 +274,20 @@ def _query_terms(query: str) -> list[str]:
     terms = [term[:64] for term in terms if term]
     if not terms:
         raise DiscoveryError("discovery query must contain at least one word or number")
+    # DEGORA searches English databases. NCBI's tokenizer drops a term written in
+    # another script without saying so, and a query with nothing left is the
+    # organism filter alone: every Human record in GEO, newest first, presented
+    # as a result. A term with no Latin letter or digit is set aside here, and a
+    # query with none left is refused before any request is sent. Greek letters
+    # inside an English term (TGF-β, α-synuclein) are handled by NCBI and kept.
+    kept = [term for term in terms if _LATIN_TOKEN_RE.search(term)]
+    if not kept:
+        raise DiscoveryError(
+            "discovery query has no English term: DEGORA searches PubMed and GEO, which index "
+            "English text, and a query with nothing they recognise would return the whole database. "
+            "Use an English keyword (for example 'hypoxia', 'placenta', 'TGF-beta')."
+        )
+    terms = kept
     if len(terms) > MAX_QUERY_TERMS:
         raise DiscoveryError(f"discovery query has too many terms; maximum is {MAX_QUERY_TERMS}")
     return terms
@@ -842,7 +866,11 @@ NON_GENE_IDENTIFIER_RE = re.compile(
     r"^(?:gsm|srr|err|drr)(?:[_ .-]?(?:id|accession|identifier))?$",
     re.I,
 )
-LFC_HIGH_RE = re.compile(r"log2[\W_]*fold[\W_]*change|log2fc|log[_. ]?fc|log2ratio", re.I)
+# `log2(fc)`, `log2 (FC)`, `log2.fc` and `log2_fc` all say log2 fold change; the
+# separator between "log2" and "fc" is whatever the author's tool wrote. One
+# real table carried `fc` and `log2(fc)` side by side and the classifier
+# recognised neither, so the reader was offered the linear one.
+LFC_HIGH_RE = re.compile(r"log2[\W_]*fold[\W_]*change|log2?[\W_]*fc\b|log2ratio", re.I)
 LFC_AMBIGUOUS_RE = re.compile(
     r"fold[_. -]?change|foldchange|(?:^|_)beta$|effect[_. -]?size", re.IGNORECASE
 )

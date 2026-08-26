@@ -36,6 +36,8 @@ from .discovery import (
 from .excel_export import _force_formula_like_text
 from .formula_safety import formula_guard_metadata, neutralize_formula_text
 from .harmonize import (
+    _excel_payload,
+    _record_duplicate_headers,
     TableMapping,
     _is_binary_probability_indicator,
     assess_table_scope,
@@ -123,6 +125,10 @@ class SourceInference:
     sheet_name: str = ""
     header_row: int | None = None
     plausible: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    # True when the file had more rows than INFERENCE_MAX_ROWS and only that many
+    # were read. Column choices are unaffected; the scope is not decided from a
+    # prefix, and the row count shown is a floor.
+    sampled: bool = False
     # Keyed by column name, because the reader may override the gene column and
     # the identifier space has to describe the column actually being used.
     identifier_space_by_column: dict[str, str] = field(default_factory=dict)
@@ -205,7 +211,17 @@ def find_source_tables(directory: str | Path) -> list[Path]:
     return found
 
 
-def _read_header(path: Path, *, sheet_name: str = "", header_row: int | None = None) -> tuple[pd.DataFrame, str]:
+# A DEG table is at most transcript-scale; anything past this is an interaction
+# matrix, a count file or a per-cell table, and reading it in full only to say so
+# stalled `degora init` for minutes on one file with nothing on screen.
+INFERENCE_MAX_ROWS = 250_000
+# Rows enough to classify a candidate header row; the chosen one is then read in full.
+SCAN_SAMPLE_ROWS = 500
+
+
+def _read_header(
+    path: Path, *, sheet_name: str = "", header_row: int | None = None, nrows: int | None = INFERENCE_MAX_ROWS
+) -> tuple[pd.DataFrame, str]:
     """Read a table for inspection, reporting why if it cannot be read."""
 
     try:
@@ -218,6 +234,7 @@ def _read_header(path: Path, *, sheet_name: str = "", header_row: int | None = N
                 sheet_name=sheet_name or None,
                 header_row=header_row,
             ),
+            nrows=nrows,
         )
     except Exception as exc:  # noqa: BLE001 - one unreadable file must not end the walk
         return pd.DataFrame(), f"{type(exc).__name__}: {exc}"
@@ -258,25 +275,127 @@ def _locate_table_in_workbook(path: Path) -> tuple[str, int | None, pd.DataFrame
     results table", and skipped the file. Every sheet and the first few rows of
     each are tried; the first that classifies wins, and where it was found is
     recorded so the catalog can say so.
+
+    The workbook is opened once. openpyxl parses the whole shared-string table on
+    every open, about three seconds for a 12 MB file, and the search used to open
+    it twice per attempt - twenty-four times, eighty seconds, nothing on screen.
+    Each sheet is read raw into memory and the candidate header rows are tried by
+    slicing it.
     """
 
-    frame, problem = _read_header(path)
-    if problem:
-        return "", None, frame, problem
-    if _looks_like_deg_frame(frame):
-        return "", None, frame, ""
-    sheets = _workbook_sheet_names(path)
-    for sheet in sheets:
-        for header_row in range(1, HEADER_SCAN_ROWS + 1):
-            candidate, candidate_problem = _read_header(path, sheet_name=sheet, header_row=header_row)
-            if candidate_problem or candidate.empty:
+    try:
+        sheets = _read_workbook_raw(path)
+    except Exception as exc:  # noqa: BLE001 - one unreadable file must not end the walk
+        return "", None, pd.DataFrame(), f"{type(exc).__name__}: {exc}"
+    if not sheets:
+        return "", None, pd.DataFrame(), "workbook has no sheets"
+    names = list(sheets)
+    first = _frame_from_raw(sheets[names[0]], 1)
+    if _looks_like_deg_frame(first):
+        return "", None, first, ""
+    for sheet in names:
+        raw = sheets[sheet]
+        for header_row in _candidate_header_rows(raw):
+            candidate = _frame_from_raw(raw, header_row)
+            if candidate.empty or not _looks_like_deg_frame(candidate):
                 continue
-            if _looks_like_deg_frame(candidate):
-                # The first sheet's first row is read_deg_table's default; do not
-                # write what the reader would have got anyway.
-                is_default = sheet == sheets[0] and header_row == 1
-                return ("" if is_default else sheet), (None if header_row == 1 else header_row), candidate, ""
-    return "", None, frame, ""
+            # The first sheet's first row is read_deg_table's default; do not
+            # write what the reader would have got anyway.
+            is_default = sheet == names[0] and header_row == 1
+            return ("" if is_default else sheet), (None if header_row == 1 else header_row), candidate, ""
+    return "", None, first, ""
+
+
+def _read_workbook_raw(path: Path) -> dict[str, pd.DataFrame]:
+    """Every sheet, header-less, capped at INFERENCE_MAX_ROWS rows, from one open."""
+
+    payload = _excel_payload(path)
+    with pd.ExcelFile(payload) as workbook:
+        return {
+            str(name): workbook.parse(name, header=None, nrows=INFERENCE_MAX_ROWS + HEADER_SCAN_ROWS)
+            for name in workbook.sheet_names
+        }
+
+
+def _frame_from_raw(raw: pd.DataFrame, header_row: int) -> pd.DataFrame:
+    """The table a reader would get with `header_row` (1-based) as its header."""
+
+    if header_row < 1 or header_row > len(raw):
+        return pd.DataFrame()
+    header = raw.iloc[header_row - 1].tolist()
+    body = raw.iloc[header_row:].reset_index(drop=True)
+    if body.empty:
+        return pd.DataFrame(columns=[str(value) for value in header])
+    columns = []
+    for index, value in enumerate(header):
+        columns.append(f"Unnamed: {index}" if value is None or (isinstance(value, float) and pd.isna(value)) else str(value))
+    # pandas disambiguates a repeated header as name, name.1, ...; do the same so
+    # the columns are what read_deg_table would hand back.
+    seen: dict[str, int] = {}
+    unique: list[str] = []
+    for name in columns:
+        if name in seen:
+            seen[name] += 1
+            unique.append(f"{name}.{seen[name]}")
+        else:
+            seen[name] = 0
+            unique.append(name)
+    body.columns = unique
+    body = body.infer_objects()
+    for column in body.columns:
+        if body[column].dtype == object:
+            converted = pd.to_numeric(body[column], errors="coerce")
+            if converted.notna().sum() >= body[column].notna().sum() * 0.9 and body[column].notna().any():
+                body[column] = converted
+    return _record_duplicate_headers(body, header)
+
+
+# DEGORA matches genes across studies on the identifier itself, and most published
+# tables carry symbols, so a symbol column is the default that joins the most.
+GENE_SPACE_PREFERENCE = ("gene symbol", "Ensembl ID", "RefSeq ID", "Entrez ID", "Affymetrix probe ID")
+
+
+def _prefer_symbol_looking_gene_column(header: dict[str, Any], frame: pd.DataFrame) -> None:
+    """Among several gene-column candidates, default to the one whose values join best.
+
+    A table with GENEID, GENENAME and SYMBOL side by side offered GENENAME - the
+    column holding "SPARC like 1" - because its name matched first. The names of
+    those three columns cannot settle it; their values can. Header order still
+    breaks ties, and every candidate stays on offer.
+    """
+
+    candidates = [name for name in header.get("gene_columns") or () if name in frame.columns]
+    if len(candidates) < 2 or not header["mapping"].get("gene_column"):
+        return
+    spaces = {name: identifier_space(frame[name]) for name in candidates}
+
+    def rank(name: str) -> int:
+        space = spaces[name]
+        return GENE_SPACE_PREFERENCE.index(space) if space in GENE_SPACE_PREFERENCE else len(GENE_SPACE_PREFERENCE)
+
+    ordered = sorted(candidates, key=lambda name: (rank(name), candidates.index(name)))
+    header["mapping"]["gene_column"] = ordered[0]
+    header["gene_columns"] = ordered
+
+
+def _candidate_header_rows(raw: pd.DataFrame) -> list[int]:
+    """The 1-based rows among the first HEADER_SCAN_ROWS that could head a table."""
+
+    rows: list[int] = []
+    for offset in range(min(HEADER_SCAN_ROWS, len(raw))):
+        cells = [str(value).strip() for value in raw.iloc[offset].tolist() if pd.notna(value)]
+        # A header names at least the gene, effect and p-value columns.
+        if len(cells) >= 3 and sum(1 for cell in cells if not _looks_numeric(cell)) >= 3:
+            rows.append(offset + 1)
+    return rows
+
+
+def _looks_numeric(text: str) -> bool:
+    try:
+        float(text)
+    except ValueError:
+        return False
+    return True
 
 
 # Enough rows to tell a p-value column from a fold change, few enough that a
@@ -374,6 +493,37 @@ def _can_be_gene_label_column(name: Any, values: Iterable[Any]) -> bool:
     return True
 
 
+# Case-sensitive lookarounds so camelCase counts as a word boundary: ReadCount,
+# baseMean and FPKM.A_1 are abundances as surely as CP1_count is. Bare "mean" is
+# not in the list - mean_diff is an effect column.
+EXPRESSION_MEASURE_RE = re.compile(
+    r"(?:^|[_. -]|(?<=[a-z0-9]))"
+    r"(?i:counts?|reads?|fpkm|rpkm|tpm|cpm|expression|abundance|intensity|signal|base[_. -]?mean)"
+    r"(?=$|[_. -]|[A-Z0-9])"
+)
+
+
+def _has_no_effect_size_column(inference: SourceInference) -> bool:
+    """True when neither a name nor the values point at any effect-size column."""
+
+    for choice in inference.needs_a_question:
+        if choice.role != "lfc_column":
+            continue
+        by_name = [name for name in (choice.chosen, *choice.alternatives) if name]
+        return not by_name and not inference.plausible.get("lfc_column")
+    return False
+
+
+def _looks_like_large_integers(finite: pd.Series) -> bool:
+    """True when nearly every value is a whole number beyond any log2 fold change."""
+
+    if len(finite) < 10:
+        return False
+    values = finite.to_numpy(dtype=float)
+    whole = np.isclose(values, np.round(values))
+    return bool((whole & (np.abs(values) > 30)).mean() >= 0.95)
+
+
 def _plausible_columns(frame: pd.DataFrame) -> dict[str, tuple[str, ...]]:
     """Which columns could hold each role, judged by their values, not their names.
 
@@ -393,15 +543,26 @@ def _plausible_columns(frame: pd.DataFrame) -> dict[str, tuple[str, ...]]:
         finite = column[np.isfinite(column)] if len(column) else column
         share_numeric = (len(finite) / len(sample)) if len(sample) else 0.0
         if share_numeric >= 0.5:
-            numeric.append(str(name))
+            # A count, FPKM, TPM or CPM column holds an abundance, and a column
+            # named as a p-value or FDR holds a probability; neither is a
+            # contrast. Offering CP1_count as the effect size, and having it
+            # taken, put a count in the sign that decides up from down.
             distinct = sample[name].nunique(dropna=True)
-            if (
+            entrez_label = (
                 identifier_space(sample[name]) == "Entrez ID"
                 and _can_be_gene_label_column(name, sample[name])
                 and len(finite)
                 and distinct / len(finite) >= 0.5
-            ):
+            )
+            if entrez_label:
                 labels.append(str(name))
+            # An identifier column is numeric too, and EntrezID was offered - and
+            # taken - as the effect size, which scored gene ids as fold changes.
+            # So is a coordinate: GeneLeft, a base-pair position, was offered on
+            # an interaction table. Whatever the name, a column of large integers
+            # is not a log2 fold change, and the values say so.
+            if not EXPRESSION_MEASURE_RE.search(str(name)) and not entrez_label and not _looks_like_large_integers(finite):
+                numeric.append(str(name))
             binary_indicator = _is_binary_probability_indicator(finite, column=str(name))
             if (
                 len(finite)
@@ -416,9 +577,11 @@ def _plausible_columns(frame: pd.DataFrame) -> dict[str, tuple[str, ...]]:
             distinct = sample[name].astype(str).nunique(dropna=True)
             if distinct > max(1, len(sample) // 100) and _can_be_gene_label_column(name, sample[name]):
                 labels.append(str(name))
+    # No fallback to the probability columns: a table whose only numbers are
+    # counts, FPKM and an FDR has no effect size, and an empty list is the
+    # honest answer. Offering the FDR as a fold change was how a probability
+    # ended up as a sign.
     lfc_candidates = [name for name in numeric if not PROBABILITY_COLUMN_NAME_RE.search(name)]
-    if not lfc_candidates:
-        lfc_candidates = numeric
     return {
         "gene_column": tuple(labels),
         "lfc_column": tuple(lfc_candidates),
@@ -609,6 +772,7 @@ def infer_source_table(path: str | Path) -> SourceInference:
 
     plausible = _plausible_columns(frame)
     header = classify_header(frame.columns)
+    _prefer_symbol_looking_gene_column(header, frame)
     thresholded_probability_columns: list[str] = []
     for role, candidates_key in (("p_column", "p_columns"), ("padj_column", "padj_columns")):
         candidates = list(header.get(candidates_key) or ())
@@ -626,8 +790,14 @@ def infer_source_table(path: str | Path) -> SourceInference:
     choices = _column_choices(header)
     mapping = {choice.role: choice.chosen for choice in choices}
 
+    sampled = len(frame) >= INFERENCE_MAX_ROWS
     scope_label, scope_reason = "auto", "not enough of a p-value column to tell"
-    if mapping.get("p_column"):
+    if sampled:
+        # A results table is usually sorted by p-value, so its first rows are all
+        # significant: deciding the scope from a prefix would call a full table
+        # DEG-only. The run reads the whole file and decides there.
+        scope_reason = f"only the first {INFERENCE_MAX_ROWS:,} rows were read; the run decides from the whole table"
+    elif mapping.get("p_column"):
         scope = assess_table_scope(
             frame,
             TableMapping(
@@ -656,6 +826,7 @@ def infer_source_table(path: str | Path) -> SourceInference:
         n_rows=len(frame),
         columns=tuple(str(name) for name in frame.columns),
         choices=choices,
+        sampled=sampled,
         table_scope=scope_label,
         table_scope_reason=scope_reason,
         sheet_name=sheet_name,
@@ -673,7 +844,12 @@ def describe_inference(inference: SourceInference) -> list[str]:
 
     if not inference.readable:
         return [f"{inference.path.name}: could not be read - {inference.problem}"]
-    lines = [f"{inference.path.name}: {inference.n_rows:,} rows, {len(inference.columns)} columns"]
+    rows = (
+        f"{inference.n_rows:,}+ rows (only the first {inference.n_rows:,} were read)"
+        if inference.sampled
+        else f"{inference.n_rows:,} rows"
+    )
+    lines = [f"{inference.path.name}: {rows}, {len(inference.columns)} columns"]
     if inference.sheet_name or inference.header_row:
         where = []
         if inference.sheet_name:
@@ -771,6 +947,9 @@ def catalog_row(
         "n_treat": answers.n_treat,
         "table_scope": table_scope,
         "sign_convention": sign_convention,
+        # The scale question was asked; the answer has to reach validate, which
+        # otherwise refuses an up-only log2 table whose header does not say log2.
+        "lfc_scale": "log2" if answers.effect_is_log2 else "",
         "include_in_analysis": "yes" if usable else "no",
         "notes": notes,
     }
@@ -795,6 +974,7 @@ def build_catalog(rows: Sequence[dict[str, Any]]) -> pd.DataFrame:
         "n_treat",
         "table_scope",
         "sign_convention",
+        "lfc_scale",
         "include_in_analysis",
         "notes",
     ]
@@ -944,7 +1124,14 @@ def run_init(
     tables = [path for path in find_source_tables(deg_dir) if path.resolve() != output.resolve()]
     if not tables:
         raise FileNotFoundError(f"no CSV, TSV, TXT or Excel tables were found under {deg_dir}")
-    inferences = [(path, infer_source_table(path)) for path in tables]
+    inferences = []
+    for path in tables:
+        size_mb = path.stat().st_size / 1e6
+        if size_mb >= 5:
+            # A large file is read before anything is printed; name it first so
+            # the pause has a cause.
+            echo(f"Reading {path.name} ({size_mb:.0f} MB)...")
+        inferences.append((path, infer_source_table(path)))
     empty_tables = [path.name for path, inference in inferences if inference.readable and inference.n_rows == 0]
     if empty_tables and not any(inference.looks_like_a_deg_table for _, inference in inferences):
         detail = ", ".join(empty_tables[:3])
@@ -966,13 +1153,36 @@ def run_init(
         for line in describe_inference(inference):
             echo(line)
         if not inference.looks_like_a_deg_table:
-            echo("  -> this does not look like a DEG results table; skipping.")
+            if _has_no_effect_size_column(inference):
+                echo(
+                    "  -> this table has no effect-size column (only abundances such as counts or FPKM); "
+                    "DEGORA needs a log2 fold change, so it is skipped."
+                )
+            else:
+                echo("  -> this does not look like a DEG results table; skipping.")
             echo("")
-            skipped.append({"path": path.name, "reason": inference.problem or "not a DEG results table"})
+            skipped.append(
+                {
+                    "path": path.name,
+                    "reason": inference.problem
+                    or ("no effect-size column" if _has_no_effect_size_column(inference) else "not a DEG results table"),
+                }
+            )
             continue
 
         overrides: dict[str, str] = {}
         skip_reason = ""
+        if _has_no_effect_size_column(inference):
+            # A table of counts, FPKM and an FDR is a results file without an
+            # effect size. There is nothing here DEGORA can take a sign from, and
+            # offering the abundance columns as candidates got one of them taken.
+            echo(
+                "  -> this table has no effect-size column (only abundances such as counts or FPKM); "
+                "DEGORA needs a log2 fold change, so it is skipped."
+            )
+            echo("")
+            skipped.append({"path": path.name, "reason": "no effect-size column"})
+            continue
         for choice in inference.needs_a_question:
             picked = _ask_column_choice(
                 choice=choice,

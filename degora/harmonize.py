@@ -312,7 +312,45 @@ def duplicate_source_headers(frame: pd.DataFrame) -> dict[str, int]:
     return dict(duplicates) if isinstance(duplicates, dict) else {}
 
 
-def read_deg_table(path: str | Path, mapping: TableMapping) -> pd.DataFrame:
+def _sniff_delimiter(path: Path, default: str) -> str:
+    """Choose the delimiter from the header line when the catalog does not say.
+
+    A `.csv` written by R's write.csv2, or by Excel on a machine whose decimal
+    mark is a comma, is semicolon-delimited. Reading it with a comma split every
+    gene description that contained one and failed with "Error tokenizing data",
+    a message that names neither the cause nor the `sep` column that fixes it.
+    The header line is the one line that has to be delimited correctly, so it
+    decides: whichever of the candidates splits it into the most fields wins,
+    and the suffix's default stands unless another candidate clearly beats it.
+    """
+
+    try:
+        with _open_text(path) as handle:
+            header = handle.readline()
+    except (OSError, UnicodeDecodeError):
+        return default
+    if not header.strip():
+        return default
+    counts = {candidate: header.count(candidate) for candidate in (",", "\t", ";", "|")}
+    best = max(counts, key=counts.get)
+    # The default keeps precedence on a tie or a near-tie: a comma-delimited file
+    # with one stray semicolon is still comma-delimited.
+    if counts[best] >= 2 and counts[best] > 2 * counts.get(default, 0):
+        return best
+    return default
+
+
+def _open_text(path: Path):
+    if "".join(path.suffixes).lower().endswith(".gz"):
+        return gzip.open(path, "rt", encoding="utf-8-sig", errors="replace")
+    return open(path, "r", encoding="utf-8-sig", errors="replace")
+
+
+def read_deg_table(path: str | Path, mapping: TableMapping, *, nrows: int | None = None) -> pd.DataFrame:
+    """Read a DEG table. ``nrows`` caps the data rows read; inference passes it so a
+    203 MB interaction file in the same folder is not parsed in full to learn that
+    it is not a DEG table. A run never passes it."""
+
     path = Path(path)
     suffixes = "".join(path.suffixes).lower()
     header_row = normalize_header_row(mapping.header_row)
@@ -321,7 +359,7 @@ def read_deg_table(path: str | Path, mapping: TableMapping) -> pd.DataFrame:
     if suffixes.endswith((".xlsx", ".xls", ".xlsx.gz", ".xls.gz")):
         sheet_name: str | int | None = 0 if mapping.sheet_name in (None, "") else mapping.sheet_name
         payload = _excel_payload(path)
-        frame = pd.read_excel(payload, sheet_name=sheet_name, header=skip)
+        frame = pd.read_excel(payload, sheet_name=sheet_name, header=skip, nrows=nrows)
         if isinstance(payload, io.BytesIO):
             payload.seek(0)
         raw_header = pd.read_excel(payload, sheet_name=sheet_name, header=None, skiprows=skip, nrows=1)
@@ -330,23 +368,28 @@ def read_deg_table(path: str | Path, mapping: TableMapping) -> pd.DataFrame:
     raw_sep = mapping.sep
     auto_sep = raw_sep in (None, "")
     if auto_sep:
-        sep = "\t" if suffixes.endswith((".tsv", ".txt", ".tsv.gz", ".txt.gz")) else ","
+        sep = _sniff_delimiter(path, "\t" if suffixes.endswith((".tsv", ".txt", ".tsv.gz", ".txt.gz")) else ",")
     else:
         sep = _normalize_separator(raw_sep)
     # A multi-character separator is a regex to pandas, and the C parser cannot take
     # one. Choosing the engine here keeps a plain ParserWarning off the user's screen.
     engine = "python" if len(sep) > 1 else None
-    frame = pd.read_csv(path, sep=sep, engine=engine, skiprows=skip or None)
+    # utf-8-sig strips a byte-order mark when there is one and is plain UTF-8
+    # otherwise; without it a BOM became part of the first header, so GENEID read
+    # as "\ufeffGENEID" and matched nothing.
+    frame = pd.read_csv(path, sep=sep, engine=engine, skiprows=skip or None, nrows=nrows, encoding="utf-8-sig")
     # pandas renames a repeated header to `name.1` before anyone can see it, so the
     # raw header line is read once more, as data, to know what the file said. A
     # file whose header line cannot be re-read as data (an empty file) has no
     # duplicates to report.
     try:
-        raw_header = pd.read_csv(path, sep=sep, engine=engine, header=None, skiprows=skip or None, nrows=1)
+        raw_header = pd.read_csv(path, sep=sep, engine=engine, header=None, skiprows=skip or None, nrows=1, encoding="utf-8-sig")
         raw_values = raw_header.iloc[0].tolist() if len(raw_header) else []
     except (pd.errors.EmptyDataError, pd.errors.ParserError):
         raw_values = []
-    frame = restore_formula_text_if_marked(frame, path)
+    frame = restore_formula_text_if_marked(
+        frame, path, columns=[mapping.gene_column, mapping.lfc_column, mapping.p_column, mapping.padj_column or ""]
+    )
     frame = _restore_unnamed_row_labels(frame)
     # Attached last: the transforms above can hand back a new frame object.
     frame = _record_duplicate_headers(frame, raw_values)

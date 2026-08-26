@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import inspect
 import json
 import sys
 import time
@@ -996,7 +997,22 @@ def main(argv: list[str] | None = None) -> int:
             from .discovery_export import export_publication_search
             from .discovery_federated import page_publication_snapshot, resolve_publication_records, search_publications
 
-            snapshot = search_publications(args.query, args.species, limit=args.limit)
+            # The search issues dozens of paced requests to public repositories and
+            # takes tens of seconds; with no output until the end, a reader cannot
+            # tell a slow provider from a hung command. The provider layer already
+            # reports each stage - the browser shows it - so the CLI shows it too.
+            def report_stage(fraction: float, message: str) -> None:
+                percent = max(0, min(100, int(round(float(fraction) * 100))))
+                print(f"[{percent:3d}%] {message}", file=sys.stderr, flush=True)
+
+            # Test doubles and older provider modules may not take `progress`.
+            search_kwargs: dict[str, Any] = {"limit": args.limit}
+            try:
+                if "progress" in inspect.signature(search_publications).parameters:
+                    search_kwargs["progress"] = report_stage
+            except (TypeError, ValueError):
+                pass
+            snapshot = search_publications(args.query, args.species, **search_kwargs)
             records = list(snapshot.get("records", []))
             if args.select:
                 try:
@@ -1063,6 +1079,21 @@ def main(argv: list[str] | None = None) -> int:
                     page_size=DISCOVERY_PAGE_SIZE,
                 )
                 print(f"Search CSV: {exports['search_csv']}")
+                ignored = [str(term) for term in snapshot.get("ignored_terms", []) if str(term).strip()]
+                if ignored:
+                    print(
+                        f"Ignored (not English): {', '.join(ignored)}. DEGORA searches PubMed and GEO, "
+                        "which index English text; only the English terms were searched for.",
+                        file=sys.stderr,
+                    )
+                if snapshot.get("provider_status") not in (None, "complete"):
+                    errors = snapshot.get("diagnostics", {}).get("errors") or []
+                    named = "; ".join(str(error) for error in errors[:4]) or "one or more sources did not answer"
+                    print(
+                        f"WARNING: this snapshot is partial - {named}. Retry when those services are reachable "
+                        "before concluding that the query has no further matches.",
+                        file=sys.stderr,
+                    )
                 print("Review Human and Mouse snapshots separately; cross-species pooling is not performed.")
             return 0
         if args.command == "discovery-analyze":

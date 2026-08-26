@@ -80,6 +80,7 @@ CATALOG_COLUMNS = [
     "table_scope",
     "rank_universe_size",
     "sign_convention",
+    "lfc_scale",
     "include_in_analysis",
     "notes",
 ]
@@ -145,6 +146,7 @@ CATALOG_COLUMN_HELP = {
     "table_scope": "auto, full_results, or deg_only; use deg_only when the table only lists significant genes",
     "rank_universe_size": "optional number of genes originally tested; important for DEG-only lists",
     "sign_convention": "optional verified effect direction, including any explicit sign inversion applied before ingest",
+    "lfc_scale": "optional; write log2 to state that lfc_column is already a log2 fold change when its header does not say so",
     "assay_type": "RNA-seq, microarray, proteomics, or other source assay; blank means unknown",
     "source_input_type": "author_deg_table, derived_count_table, normalized_expression_matrix, or similar",
     "platform": "microarray platform such as GPL570, sequencing platform, or blank if not needed",
@@ -186,6 +188,7 @@ OPTIONAL_CATALOG_DEFAULTS = {
     "table_scope": "auto",
     "rank_universe_size": "",
     "sign_convention": "",
+    "lfc_scale": "",
     "include_in_analysis": True,
     "notes": "",
 }
@@ -1561,6 +1564,10 @@ def _require_readable_source_file(source_path: Path, row: dict[str, Any], catalo
 # negatives. |log2FC| beyond 30 is a 10^9-fold change and is not a log2 value.
 LINEAR_FOLD_CHANGE_MIN_ROWS = 10
 LOG2_FOLD_CHANGE_ABSURD = 30.0
+# Past this share of impossible values - and this many of them, so one outlier
+# in a thirty-row table stays a warning - the column is refused, not warned about.
+ABSURD_SHARE_REFUSED = 0.05
+ABSURD_COUNT_REFUSED = 20
 
 
 def _effect_scale_problems(
@@ -1569,13 +1576,19 @@ def _effect_scale_problems(
     *,
     study_id: str,
     source_column: str,
+    declared_log2: bool = False,
 ) -> tuple[list[str], list[str]]:
-    """Return (problems, warnings) about whether an effect column is log2-scaled."""
+    """Return (problems, warnings) about whether an effect column is log2-scaled.
+
+    ``declared_log2`` is the catalog's ``lfc_scale=log2``: the reader stating the
+    scale where the header does not. It carries the same weight as a header that
+    says log2, because it is the same claim made by a person instead of a file.
+    """
 
     values = numeric[np.isfinite(numeric.to_numpy(dtype=float))]
     if values.empty:
         return [], []
-    header_says_log = bool(re.search(r"log", str(source_column), re.IGNORECASE))
+    header_says_log = bool(re.search(r"log", str(source_column), re.IGNORECASE)) or declared_log2
     problems: list[str] = []
     warnings: list[str] = []
     n_negative = int((values < 0).sum())
@@ -1596,10 +1609,14 @@ def _effect_scale_problems(
         )
         # A header that says log2 is an explicit claim; a table of up-regulated
         # genes only can look like this. Without that claim the shape decides.
-        if header_says_log:
+        if declared_log2:
+            warnings.append(message + " The catalog declares lfc_scale=log2, so this is reported, not refused.")
+        elif header_says_log:
             warnings.append(message + " The column name says log2, so this is reported, not refused; check it.")
         else:
-            problems.append(message)
+            problems.append(
+                message + " If these values are already log2, say so: set lfc_scale to log2 on this row."
+            )
     elif n_negative == 0 and len(values) >= LINEAR_FOLD_CHANGE_MIN_ROWS and not header_says_log:
         warnings.append(
             f"{study_id}: lfc_column={source_column!r} has no negative values and its name does not say log2. "
@@ -1615,11 +1632,23 @@ def _effect_scale_problems(
     absurd = values.abs().max()
     if float(absurd) > LOG2_FOLD_CHANGE_ABSURD:
         n_absurd = int((values.abs() > LOG2_FOLD_CHANGE_ABSURD).sum())
-        warnings.append(
+        message = (
             f"{study_id}: lfc_column={source_column!r} has {n_absurd:,} value(s) with |log2FC| > "
             f"{LOG2_FOLD_CHANGE_ABSURD:g} (largest {float(absurd):g}). A log2 fold change that large is a "
             "10^9-fold change or more; check that the column is on a log2 scale and not a ratio, a count or a statistic."
         )
+        # A few values past the line are outliers worth a look. Thousands of them
+        # are a count or an intensity mapped as the effect size - a column of
+        # read counts reached scoring this way with a warning and nothing else -
+        # and no scale declaration can make a count a fold change.
+        if n_absurd >= ABSURD_COUNT_REFUSED and n_absurd / len(values) > ABSURD_SHARE_REFUSED:
+            problems.append(
+                message
+                + f" {n_absurd / len(values):.0%} of the values are past that line, so this column is not a log2 "
+                "fold change; map the log2 fold-change column instead."
+            )
+        else:
+            warnings.append(message)
     return problems, warnings
 
 
@@ -1657,7 +1686,11 @@ def _validate_numeric_source_columns(
         numeric = pd.to_numeric(raw, errors="coerce")
         if catalog_column == "lfc_column":
             scale_problems, scale_warnings = _effect_scale_problems(
-                raw, numeric, study_id=str(row["study_id"]), source_column=str(source_column)
+                raw,
+                numeric,
+                study_id=str(row["study_id"]),
+                source_column=str(source_column),
+                declared_log2=str(row.get("lfc_scale") or "").strip().lower() == "log2",
             )
             problems.extend(scale_problems)
             warnings.extend(scale_warnings)
@@ -1665,7 +1698,8 @@ def _validate_numeric_source_columns(
                 scale_problem_seen = True
                 fixes.append(
                     f"{row['study_id']}: convert {source_column!r} to log2 (log2 of the ratio, or sign x log2|value| "
-                    "for a signed linear fold change) and save the table, or map a log2 column instead."
+                    "for a signed linear fold change) and save the table, map a log2 column instead, or - if "
+                    "the values are already log2 - set lfc_scale to log2 on this row."
                 )
         unparsed = numeric.isna() & raw.notna()
         n_unparsed = int(unparsed.sum())

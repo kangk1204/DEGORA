@@ -706,10 +706,12 @@ def test_the_fallback_option_list_is_not_the_whole_spreadsheet(tmp_path) -> None
     inference = infer_source_table(path)
 
     assert inference.plausible["gene_column"] == ("NAME", "Feature ID")
-    # The expression columns are numeric, so they are offered for a fold change
-    # but never for a gene name.
-    assert "T0 - CPM" in inference.plausible["lfc_column"]
+    # The expression columns are numeric but they are abundances: never a gene
+    # name, and - since a count was once taken as the effect size - never an
+    # effect size either.
     assert "T0 - CPM" not in inference.plausible["gene_column"]
+    assert "T0 - CPM" not in inference.plausible["lfc_column"]
+    assert "logFC_T1" in inference.plausible["lfc_column"]
 
 
 def test_probability_columns_are_not_lfc_fallback_options_when_effects_exist(tmp_path) -> None:
@@ -800,7 +802,9 @@ def test_unit_interval_effect_values_stay_lfc_fallback_options(tmp_path) -> None
     inference = infer_source_table(path)
 
     assert "effect" in inference.plausible["lfc_column"]
-    assert "baseMean" in inference.plausible["lfc_column"]
+    # baseMean is an abundance, not a contrast: since a count column was once
+    # taken as the effect size, abundances are not offered for that role.
+    assert "baseMean" not in inference.plausible["lfc_column"]
     assert "P.Value" not in inference.plausible["lfc_column"]
 
 
@@ -855,7 +859,15 @@ def test_probability_vector_with_zero_one_and_interior_values_remains_usable(tmp
     assert inference.problem == ""
 
 
-def test_probability_only_numeric_columns_still_remain_lfc_fallback_options(tmp_path) -> None:
+def test_probability_only_numeric_columns_are_not_offered_as_an_effect_size(tmp_path) -> None:
+    """A p-value is never a fold change, so there is nothing here to offer.
+
+    The fallback that kept the probability columns on offer "so the reader can
+    still pick" is how, on a real table of counts, FPKM and an FDR, a count
+    was taken as the effect size. An empty list is the honest answer, and the
+    guided setup names the missing effect size when it skips the table.
+    """
+
     path = tmp_path / "probability_only.tsv"
     pd.DataFrame(
         {
@@ -867,7 +879,8 @@ def test_probability_only_numeric_columns_still_remain_lfc_fallback_options(tmp_
 
     inference = infer_source_table(path)
 
-    assert inference.plausible["lfc_column"] == ("P.Value", "adj.P.Val")
+    assert inference.plausible["lfc_column"] == ()
+    assert inference.plausible["p_column"] == ("P.Value", "adj.P.Val")
 
 
 def test_lfc_answer_is_not_rejected_before_missing_pvalue_is_asked(tmp_path) -> None:

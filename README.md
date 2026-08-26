@@ -474,6 +474,7 @@ The included synthetic demo is numerically and semantically reproducible from th
 - Leave-one-source-out stability is a `priority_rank` diagnostic over global source-unit omission folds. Each fold applies the same `min_studies` eligibility rule and deterministic tie-break as the full priority lane. Median, IQR, and top-N fractions summarize rank-evaluable folds only; the stability score still treats ineligible folds as negative evidence. If no fold keeps a gene eligible, numeric LOO fields are reported as unavailable rather than as zero; the conditional reliability summary then uses the other three mandatory diagnostics with their weights renormalized. These LOO columns are therefore nullable. `evidence_reliability_components_used` records whether three or four diagnostics contributed. Compare reliability values across runs or corpora only when the contributing diagnostic count and LOO eligibility conditions match. The default browser/API ordering remains `quality_weighted_degora_rank`, and reliability does not determine that ordering.
 - Missing group sizes receive the documented neutral replicate multiplier of 0.75. `validate` rejects a zero, negative, fractional or non-numeric group size, so the 0.35 zero-count branch is reachable only through the Python API.
 - `sign_convention` records provenance only. DEGORA does not infer or automatically reverse the input effect direction, so the supplied effect must already represent treatment relative to control.
+- `lfc_scale` is optional. Write `log2` to state that `lfc_column` already holds log2 fold changes when its header does not say so (a column named `lfc`, `beta` or `effect`). Without it, a column with no negative values and values on both sides of 1 is refused as a linear fold change; with it, that shape is reported and the run proceeds. `degora init` writes it from the answer to its scale question. DEGORA never converts a scale itself.
 - Public-data fallback uses a documented Welch workflow and does not automatically correct study-level batch or condition confounding.
 - Result-table semantics, contrast direction, group labels, and species must be reviewed before activation.
 - The Search workflow keeps Human and Mouse in separate workspaces and never pools them, and a prepared discovery bundle is refused if its species does not match the run. Scoring itself matches on gene symbol and is **not** species-specific: a hand-written config naming sources from two species produces one pooled ranking, in which those sources can satisfy the `min_studies` replication rule between them. The run warns when it sees more than one `species` value, and every evidence row records the species it came from.
@@ -487,6 +488,102 @@ make smoke
 ```
 
 ## Release notes
+
+### 0.4.19
+
+The score contract is unchanged. `SCORE_VERSION` remains
+`degora_score_v1_2_source_unit_mean`, and a run over unchanged valid inputs
+produces the same `degora_gene_scores.csv` as v0.4.18. What changes is what
+`degora init` offers, what `validate` refuses, and how long both take.
+
+Everything here came from pointing the guided setup at three topics' worth of
+tables downloaded straight from public repositories, uncurated: 40 files, from
+a 200 KB DESeq2 export to a 203 MB interaction table that happened to be in the
+same series. That kind of input finds what curated data cannot.
+
+**Columns that can never be an effect size are no longer offered as one.** A
+results file of counts, FPKM and an FDR - a real supplementary table with no
+fold change in it - was classified as a DEG table and its count column offered
+as the effect size, and taken. An Entrez ID column and a base-pair coordinate
+column were offered on two other tables, for the same reason: they are numeric.
+`degora init` now excludes abundances (count, FPKM, TPM, CPM, expression -
+`ReadCount` and `baseMean` as much as `CP1_count`), identifier columns and
+columns of large integers from the effect-size candidates, and a table left with no candidate is skipped
+with that reason - "no effect-size column" - rather than walked through. The
+fallback that kept the p-value columns on offer "so the reader can still pick"
+is gone: there was nothing correct to pick.
+
+**`validate` refuses a column that is mostly impossible log2 values.** The
+`|log2FC| > 30` check was a warning, so a count column, an Entrez ID column and
+a coordinate column each reached scoring with a note and exit 0. When more than
+5% of a column's values (and at least twenty of them) are past that line, the
+column is refused with the plain statement that it is not a log2 fold change.
+One outlier in a small table is still a warning.
+
+**A stated scale is honoured.** `degora init` asks whether an effect column
+whose header does not say log2 is on a log2 scale, and the answer went nowhere:
+`validate` refused an up-only log2 table named `lfc` as a linear fold change
+regardless. The optional `lfc_scale` column carries the answer (`log2`), the
+refusal names it as the way out, `init` writes it, and the template's
+ColumnGuide documents it.
+
+**`log2(fc)` is recognised.** A table carried `fc` and `log2(fc)` side by side
+and the header classifier matched neither, so the reader was offered the linear
+one. `log2` followed by `fc` with any separator - `log2(fc)`, `log2 (FC)`,
+`log2.fc`, `log2_fc` - is the effect column now.
+
+**The guided setup no longer stalls for minutes on a large file.** Inference
+read every table in full; a 203 MB file took minutes with nothing on screen.
+Reads are capped at 250,000 rows (any DEG table is far smaller), and a capped
+table reports its count as a floor and leaves the scope decision to the run,
+which reads everything. A workbook is opened once: openpyxl parses the whole
+shared-string table on each open, about three seconds for a 12 MB file, and
+locating a titled table on a later sheet opened it twenty-four times. Sheets
+are read into memory and candidate header rows are tried by slicing, and only
+rows that could head a table are tried at all. The 12 MB workbook went from 23
+seconds to 5; the 203 MB file from minutes to under a second. A file over 5 MB
+is named before it is read, so the pause has a cause.
+
+**Two common file shapes are read.** A `.csv` written by R's `write.csv2`, or
+by Excel where the decimal mark is a comma, is semicolon-delimited; read with a
+comma, a gene description containing one made the row ragged and the file
+failed with "Error tokenizing data". The header line now decides the delimiter
+when the catalog does not. A UTF-8 byte-order mark no longer becomes part of
+the first header, which had turned `GENEID` into a column no rule could match.
+
+**A symbol column is preferred over a descriptive name.** `GENEID`, `GENENAME`
+and `SYMBOL` side by side offered `GENENAME` - "SPARC like 1" - because its
+name matched first. Among several gene-column candidates the default is now the
+one whose values join best: symbols, then Ensembl, RefSeq and Entrez IDs. Every
+candidate stays on offer.
+
+**An author's table is read as written.** The formula guard added in v0.4.17
+refused a raw table because an unmapped notes column held `'=see figure 2`,
+and told the reader to restore a provenance sidecar DEGORA had never written.
+Only the columns a run will use can make a file ambiguous, and a file with no
+sidecar at all is refused only when one of those columns carries guard-like
+text - with a message that says what to do about it.
+
+**A search says what it did not search for.** DEGORA searches PubMed and GEO,
+which index English text. NCBI drops a term written in another script without
+saying so, and a query with nothing left is the organism filter alone - every
+Human record in GEO, newest first, presented as a result. A term with no Latin
+letter or digit is set aside before any request is sent and named in the output
+(`Ignored (not English): ...`); a query with no English term at all is refused
+with that explanation. Greek letters inside an English term (`TGF-β`,
+`α-synuclein`) are handled by NCBI and are kept. And when a source did not
+answer, the CLI now says the snapshot is partial and names the source, instead
+of printing a complete-looking list.
+
+**`degora discover` reports its stages.** Two live searches were silent for 98
+seconds and then printed everything at once; the provider layer had reported
+every stage through a callback the browser displays and the CLI never passed.
+It does now: the first line appears in under a second.
+
+**`make smoke` exercises the alias columns.** A blank `paper_id` beside a filled
+`source_unit_id`, and a legacy `temporal_mode`, now run through validate and
+run in CI under the top of the pandas range - the shapes that had crashed
+v0.4.16 without any job noticing.
 
 ### 0.4.18
 

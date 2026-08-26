@@ -402,6 +402,16 @@ def _guide_rows() -> pd.DataFrame:
             {"column": "cell_system", "required": "no", "checked_where": "metadata", "meaning": "Cell type, tissue, or experimental system for the contrast."},
             {"column": "species", "required": "no", "checked_where": "metadata", "meaning": "Species of the source data, such as Homo sapiens."},
             {"column": "pipeline", "required": "no", "checked_where": "metadata", "meaning": "DEG analysis pipeline or method, such as DESeq2 or limma_microarray."},
+            {
+                "column": "lfc_scale",
+                "required": "no",
+                "checked_where": "validate / run",
+                "meaning": (
+                    "Write log2 to state that lfc_column already holds log2 fold changes when its header does not "
+                    "say so. Without it, a column with no negative values and values on both sides of 1 is refused "
+                    "as a linear fold change; with it, that shape is reported and the run proceeds."
+                ),
+            },
             {"column": "notes", "required": "no", "checked_where": "metadata", "meaning": "Free-text note carried through to provenance; not used in scoring."},
             {"column": "include", "required": "no", "checked_where": "validated setting", "meaning": "yes to include, no to exclude."},
             {

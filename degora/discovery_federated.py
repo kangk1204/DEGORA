@@ -22,6 +22,7 @@ from .discovery import (
     network_failure_message,
     normalize_species as _normalize_species,
     SEARCH_ASSESSMENT_VERSION,
+    ignored_query_terms,
 )
 
 
@@ -397,6 +398,9 @@ def search_publications(
         # snapshot that actually gets persisted - and read back months later -
         # carried no record of which readiness rules produced it.
         "assessment_version": SEARCH_ASSESSMENT_VERSION,
+        # Terms set aside because they carry no Latin letter or digit. Empty for
+        # an English query; named so the reader knows what was not searched for.
+        "ignored_terms": ignored_query_terms(query),
         "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "provider_events": provider_events,
         "diagnostics": diagnostics,
