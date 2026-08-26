@@ -1295,7 +1295,7 @@ def test_no_prose_states_a_page_size_the_tool_does_not_honour() -> None:
     from degora.discovery import DEFAULT_PAGE_SIZE
 
     root = Path(__file__).resolve().parents[1]
-    sources = [root / "README.md", *sorted((root / "degora").glob("*.py"))]
+    sources = [root / "README.md", root / "CHANGELOG.md", *sorted((root / "degora").glob("*.py"))]
     # "N-row page", "N rows per page", "N per page" -- every way the docs have
     # spelled a page size so far.
     claim = re.compile(r"(\d+)(?:-row page|\s+rows?\s+per\s+(?:page|browser page)|\s+per page)")

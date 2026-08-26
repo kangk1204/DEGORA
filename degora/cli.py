@@ -273,6 +273,25 @@ def _path_setting(value: str | None, default: Path, *, base: Path | None = None)
     return path
 
 
+def _workbook_failure_cause(workbook_path: Path, exc: Exception) -> str:
+    """Name why the workbook could not be written, in the reader's terms.
+
+    Overwhelmingly the cause is the file still being open in Excel, and the
+    exception class alone never said so.
+    """
+
+    if isinstance(exc, PermissionError):
+        return (
+            f"{workbook_path.name} could not be written: permission denied. It is most likely still "
+            "open in Excel or another program; close it and run again."
+        )
+    if isinstance(exc, IsADirectoryError):
+        return f"{workbook_path} is a directory, so the workbook cannot be written there."
+    if isinstance(exc, OSError) and getattr(exc, "errno", None) == 28:
+        return f"there is not enough free disk space to write {workbook_path.name}."
+    return f"the writer reported: {type(exc).__name__}: {exc}."
+
+
 def _run_warning_messages(metrics: dict[str, Any]) -> list[str]:
     from .slice_runner import run_warning_messages
 
@@ -637,9 +656,9 @@ def _run_pipeline(
             )
         except Exception as exc:  # noqa: BLE001 - convert to the stable user-facing CLI error contract
             raise CliUsageError(
-                f"Excel workbook export failed ({type(exc).__name__}: {exc}). CSV and SQLite "
-                "artifacts were written, but the default run contract is incomplete. Fix the "
-                "export error and rerun, or explicitly use --no-excel if a workbook is not needed."
+                f"Excel workbook export failed - {_workbook_failure_cause(workbook_path, exc)} The CSV "
+                "and SQLite artifacts were written, but the default run contract is incomplete. Fix "
+                "that and run again, or pass --no-excel if a workbook is not needed."
             ) from exc
         workbook_size = workbook_path.stat().st_size if workbook_path.exists() else 0
         progress.done(f"{workbook_size / (1024 * 1024):.1f} MB" if workbook_size else "")

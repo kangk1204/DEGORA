@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_readme_and_installed_package_metadata_are_consistent() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8")
     workflow_path = ROOT / ".github/workflows/tests.yml"
@@ -48,7 +49,10 @@ def test_readme_and_installed_package_metadata_are_consistent() -> None:
     assert python_match is not None
     project_version = version_match.group(1)
     assert degora.__version__ == project_version
-    assert f"### {project_version}" in readme
+    # The history moved out of the README; the guarantee that every released
+    # version has an entry moved with it.
+    assert f"## {project_version}" in changelog
+    assert "CHANGELOG.md" in readme
     try:
         installed_version = metadata.version("degora")
     except metadata.PackageNotFoundError:

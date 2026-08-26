@@ -1639,6 +1639,10 @@ INDEX_HTML = """<!doctype html>
       ].map((text) => `<span>${esc(text)}</span>`).join("");
     }
 
+    // Set once the landing view is settled, by the boot decision or by the reader
+    // navigating first, whichever happens first.
+    let landingViewChosen = false;
+
     function isDiscoveryView() {
       return !$("discoveryView").hidden;
     }
@@ -4265,13 +4269,17 @@ INDEX_HTML = """<!doctype html>
     }
 
     $("discoverNav").addEventListener("click", () => {
+      landingViewChosen = true;
       if (!discoveryOpened) {
         discoveryOpened = true;
         setSpecies(preferredDiscoverySpecies);
       }
       showView("discover");
     });
-    $("atlasNav").addEventListener("click", () => showView("atlas"));
+    $("atlasNav").addEventListener("click", () => {
+      landingViewChosen = true;
+      showView("atlas");
+    });
     document.querySelectorAll("[data-species]").forEach((button) => {
       button.addEventListener("click", () => setSpecies(button.dataset.species));
     });
@@ -4585,6 +4593,11 @@ INDEX_HTML = """<!doctype html>
       // demo was built for; `degora demo --species mouse` used to open on Human
       // with an empty box and the keyword parked in an invisible state object.
       if (preferredDiscoverySpecies !== activeSpecies) setSpecies(preferredDiscoverySpecies);
+      // Choosing needs the scored-gene count, so this decision waits on /api/meta.
+      // A reader who navigates before it answers has already said where they want
+      // to be; landingViewChosen keeps this from pulling them back.
+      if (landingViewChosen) return;
+      landingViewChosen = true;
       showView(Number.isFinite(scored) && scored > 0 ? "atlas" : "discover");
     })();
   </script>

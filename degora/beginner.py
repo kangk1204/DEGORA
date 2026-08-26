@@ -229,6 +229,19 @@ INFERENCE_MAX_ROWS = 250_000
 SCAN_SAMPLE_ROWS = 500
 
 
+def _describe_read_failure(path: Path, exc: Exception) -> str:
+    """Explain an unreadable file instead of quoting the library that failed.
+
+    `degora init` is the first command a beginner runs, and it inspects every
+    table-shaped file in the folder, so a stray README or figure answered with a
+    raw ParserError, BadZipFile or UnicodeDecodeError.
+    """
+
+    from .slice_runner import describe_table_read_failure
+
+    return describe_table_read_failure(path, exc)
+
+
 def _read_header(
     path: Path, *, sheet_name: str = "", header_row: int | None = None, nrows: int | None = INFERENCE_MAX_ROWS
 ) -> tuple[pd.DataFrame, str]:
@@ -247,7 +260,7 @@ def _read_header(
             nrows=nrows,
         )
     except Exception as exc:  # noqa: BLE001 - one unreadable file must not end the walk
-        return pd.DataFrame(), f"{type(exc).__name__}: {exc}"
+        return pd.DataFrame(), _describe_read_failure(path, exc)
     return frame, ""
 
 
@@ -296,7 +309,7 @@ def _locate_table_in_workbook(path: Path) -> tuple[str, int | None, pd.DataFrame
     try:
         sheets = _read_workbook_raw(path)
     except Exception as exc:  # noqa: BLE001 - one unreadable file must not end the walk
-        return "", None, pd.DataFrame(), f"{type(exc).__name__}: {exc}"
+        return "", None, pd.DataFrame(), _describe_read_failure(path, exc)
     if not sheets:
         return "", None, pd.DataFrame(), "workbook has no sheets"
     names = list(sheets)

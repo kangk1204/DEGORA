@@ -555,7 +555,53 @@ def _readable_read_failure(path: Path, exc: Exception) -> str:
     encoding_hint = _text_encoding_hint(path, exc)
     if encoding_hint:
         return encoding_hint
-    return str(exc)
+    return describe_table_read_failure(path, exc)
+
+
+def describe_table_read_failure(path: Path, exc: BaseException) -> str:
+    """Say in plain language why a table could not be read.
+
+    The Excel and encoding branches above already do this; the CSV/TSV path fell
+    through to the parser's own message ("Error tokenizing data. C error: EOF
+    inside string starting at row 1"), which names neither the row a reader
+    should look at nor anything they can change.
+    """
+
+    name = getattr(path, "name", str(path))
+    text = " ".join(str(exc).split())
+    lowered = text.lower()
+    if "expected" in lowered and "fields" in lowered:
+        detail = re.search(r"line (\d+)", text)
+        where = f" at line {detail.group(1)}" if detail else ""
+        return (
+            f"{name} has rows with different numbers of columns{where}. A value containing the "
+            "separator needs quoting, or the file mixes commas and tabs; set sep in the config if "
+            "the separator is not the one DEGORA inferred."
+        )
+    if "eof inside string" in lowered:
+        detail = re.search(r"row (\d+)", text)
+        where = f" starting around row {detail.group(1)}" if detail else ""
+        return (
+            f"{name} has an unclosed quotation mark{where}, so the rest of the file reads as one "
+            "value. Fix the stray quote, or re-export the table from the tool that made it."
+        )
+    if "no columns to parse" in lowered:
+        return f"{name} is empty, or every line in it is blank."
+    if isinstance(exc, UnicodeDecodeError) or "codec can't decode" in lowered:
+        return (
+            f"{name} is not text DEGORA can read; it looks like a binary file with a table's "
+            "extension. Re-save it as CSV, TSV or XLSX."
+        )
+    if isinstance(exc, PermissionError):
+        return (
+            f"{name} could not be opened: permission denied. Close it if it is open in another "
+            "program, or check the file's permissions."
+        )
+    if isinstance(exc, MemoryError):
+        return f"{name} is too large to read into memory on this machine."
+    # Anything unrecognised still reaches the reader, but labelled as the parser's
+    # own words rather than presented as DEGORA's explanation.
+    return f"{name} could not be parsed. The reader reported: {text[:200]}"
 
 
 def _text_encoding_hint(path: Path, exc: Exception) -> str:
@@ -1658,6 +1704,12 @@ def _count_normalized_gene_symbols(harmonized: pd.DataFrame) -> int:
         target = "" if symbol is None or (not isinstance(symbol, str) and pd.isna(symbol)) else str(symbol)
         if not text.strip() or not target.strip():
             continue
+        # The whole label first: a gene column legitimately carrying "TP53;TP53P1"
+        # is stored verbatim, and splitting it would count every part as a rename
+        # that never happened. Only a label that really differs is then split, to
+        # cover the ";"-joined form the collapse step writes for merged labels.
+        if text.strip().upper() == target:
+            continue
         parts = [part.strip().upper() for part in text.split(";") if part.strip()]
         if any(part != target for part in parts):
             renamed.add(target)
@@ -1670,16 +1722,34 @@ def _report_all_missing_source_files(catalog: pd.DataFrame, catalog_path: Path) 
     Leaving the Excel template's example rows in place is the commonest beginner
     mistake, and it leaves more than one broken path behind. Reporting them one at
     a time turned a single edit into a fix-and-re-run loop, so collect the whole
-    set before raising. Rows that exist but are not regular files are left to the
-    per-row check, which explains what the path is instead.
+    set before raising. Paths that exist but are not regular files - a folder
+    instead of the file inside it - are collected the same way.
     """
 
     problems: list[str] = []
+    unusable: list[str] = []
     for row in catalog.to_dict(orient="records"):
         source_path = _resolve_source_path(row["source_path"], catalog_path)
-        if source_path.exists():
+        if source_path.is_file():
             continue
-        problems.append(_source_path_problem(row, source_path, catalog_path, "but that file does not exist."))
+        if not source_path.exists():
+            problems.append(_source_path_problem(row, source_path, catalog_path, "but that file does not exist."))
+            continue
+        # Pointing source_path at the containing folder is copied down every row
+        # exactly like a wrong path is, so batch it the same way.
+        kind = "which is a directory." if source_path.is_dir() else (
+            "which is not a regular file (for example a pipe, socket or device)."
+        )
+        unusable.append(_source_path_problem(row, source_path, catalog_path, kind))
+    if unusable:
+        raise DegoraConfigError(
+            "source DEG table path is not a readable file",
+            problems=unusable,
+            fixes=[
+                "Point source_path at a CSV, TSV, TXT, XLS or XLSX file on disk, not at the folder holding it.",
+                "DEGORA reads each source table more than once, so a stream or pipe cannot be used.",
+            ],
+        )
     if not problems:
         return
     raise DegoraConfigError(
@@ -1716,7 +1786,7 @@ def _require_readable_source_file(source_path: Path, row: dict[str, Any], catalo
                 "If the file was moved, update source_path rather than editing analysis outputs by hand.",
             ],
         )
-    kind = "directory" if source_path.is_dir() else "not a regular file (for example a pipe, socket or device)"
+    kind = "a directory" if source_path.is_dir() else "not a regular file (for example a pipe, socket or device)"
     raise DegoraConfigError(
         "source DEG table path is not a readable file",
         problems=[_source_path_problem(row, source_path, catalog_path, f"which is {kind}.")],

@@ -777,8 +777,11 @@ def canonical_gene_symbol(value: Any) -> str:
         if pd.isna(value):
             return ""
     except (TypeError, ValueError):
-        # Arrays and other non-scalars: fall through to the string form below.
-        pass
+        # Arrays and other non-scalars have no single truth value, and the repair
+        # below asks pd.isna() the same question again. This runs per distinct
+        # label inside _clean_gene_symbol, so letting that raise would end a whole
+        # run with a pandas message about truth values instead of a gene problem.
+        return ""
     repaired = _repair_excel_date_gene_symbol(value)
     text = _strip_accession_version(str(repaired).strip()).upper()
     return "" if text in _MISSING_GENE_LABELS else text
@@ -859,16 +862,27 @@ def _collapse_duplicate_gene_symbols(out: pd.DataFrame, study_meta: dict[str, An
         # Two rows can reach one symbol from different labels (a table carrying
         # both "SEPT9" and "9-Sep"). Keeping only the surviving row's label would
         # hide the other one, so record every distinct label the gene came from.
-        merged_labels = (
-            frame.loc[frame["input_gene_label"].astype("string").fillna("").ne(""), ["gene_symbol", "input_gene_label"]]
-            .astype({"input_gene_label": "string"})
-            .drop_duplicates()
-            .groupby("gene_symbol", dropna=False)["input_gene_label"]
-            .agg(lambda labels: ";".join(sorted(dict.fromkeys(str(label) for label in labels))))
-        )
-        collapsed["input_gene_label"] = (
-            collapsed["gene_symbol"].map(merged_labels).fillna(collapsed["input_gene_label"])
-        )
+        #
+        # Only a gene reached from more than one distinct label needs merging: for
+        # every other gene the surviving row already carries the only label there
+        # was. Running the per-group join over every gene instead made harmonizing
+        # a 200k-row source about four times slower than not recording labels at
+        # all, and that cost is paid once per source table.
+        labels = frame["input_gene_label"].astype("string").fillna("")
+        named = labels.ne("")
+        pairs = pd.DataFrame(
+            {"gene_symbol": frame.loc[named, "gene_symbol"], "input_gene_label": labels.loc[named]}
+        ).drop_duplicates()
+        multi_label = pairs.loc[pairs.duplicated("gene_symbol", keep=False)]
+        if not multi_label.empty:
+            merged_labels = (
+                multi_label.sort_values(["gene_symbol", "input_gene_label"])
+                .groupby("gene_symbol", dropna=False)["input_gene_label"]
+                .agg(";".join)
+            )
+            collapsed["input_gene_label"] = (
+                collapsed["gene_symbol"].map(merged_labels).fillna(collapsed["input_gene_label"])
+            )
     # Record what was actually applied (best-probe) and what the config declared, so the
     # two can never silently disagree downstream.
     collapsed["gene_symbol_collapse_rule"] = GENE_SYMBOL_COLLAPSE_RULE

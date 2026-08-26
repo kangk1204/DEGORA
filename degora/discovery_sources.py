@@ -139,6 +139,12 @@ def _safe_remote_error(exc: Exception) -> str:
         return f"HTTPError: remote service returned HTTP {exc.code}"
     text = redact_secrets_in_text(str(exc))
     text = re.sub(r"[\r\n\t]+", " ", text).strip()
+    if isinstance(exc, (DiscoveryError, DiscoveryUnavailableError)) and text:
+        # DEGORA's own discovery errors already carry a plain-language sentence.
+        # The federated copy of this helper dropped the class name in front of
+        # them; this one kept stapling it onto exactly those sentences, so the
+        # same failure read two different ways depending on which path saw it.
+        return text[:240]
     return f"{type(exc).__name__}: {(text or 'remote request failed')[:240]}"
 
 
