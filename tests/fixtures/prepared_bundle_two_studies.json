@@ -132,7 +132,8 @@
       "sample_rows": 20,
       "sheet_name": "",
       "statistic_columns": [],
-      "status": "upstream_matrix_ready_for_contrast"
+      "status": "upstream_matrix_ready_for_contrast",
+      "whole_number_share": 0.0
      },
      "name": "GSE343715_Normalized_FPKM_gene_counts_matrix.txt.gz",
      "preference_rank": 4,
@@ -234,7 +235,8 @@
       "sample_rows": 20,
       "sheet_name": "",
       "statistic_columns": [],
-      "status": "upstream_matrix_ready_for_contrast"
+      "status": "upstream_matrix_ready_for_contrast",
+      "whole_number_share": 0.0
      },
      "name": "GSE343715_Normalized_LOG2_TMM_gene_counts_matrix.txt.gz",
      "preference_rank": 3,
@@ -336,11 +338,12 @@
       "sample_rows": 20,
       "sheet_name": "",
       "statistic_columns": [],
-      "status": "upstream_matrix_ready_for_contrast"
+      "status": "upstream_matrix_ready_for_contrast",
+      "whole_number_share": 0.32
      },
      "name": "GSE343715_SALMON_tx2gene_counts_matrix.txt.gz",
      "preference_rank": 2,
-     "preference_reason": "raw counts - the least processed matrix; DEGORA normalises them itself",
+     "preference_reason": "estimated counts (fractional, as Salmon, RSEM and kallisto write them) - the least processed matrix; declare them as estimated counts and DEGORA normalises them itself",
      "preferred": true,
      "reason": "tabular file with an uninformative name",
      "role": "unknown_matrix",

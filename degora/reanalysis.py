@@ -22,7 +22,11 @@ from .harmonize import WORKBOOK_SUFFIXES, _read_excel_any, _clean_gene_symbol
 from .provenance import apply_default_file_mode, write_source_sidecar
 
 
-SUPPORTED_MATRIX_ROLES = frozenset({"count_matrix", "normalized_expression_matrix"})
+# Estimated counts are what Salmon, RSEM and kallisto write: fractional by
+# design, counts in every other respect, normalised like counts (as tximport
+# hands them to DESeq2) without the integer test that raw counts must pass.
+SUPPORTED_MATRIX_ROLES = frozenset({"count_matrix", "estimated_count_matrix", "normalized_expression_matrix"})
+COUNT_MATRIX_ROLES = frozenset({"count_matrix", "estimated_count_matrix"})
 MAX_GROUP_SAMPLES = 100
 # Welch's t-test divides by the within-group variances. When both groups of a
 # gene hold identical replicate values - rounded array intensities, a gene at a
@@ -199,7 +203,7 @@ def derive_welch_deg(
     """Derive a full DEG-like table using the documented Welch fallback."""
 
     if role not in SUPPORTED_MATRIX_ROLES:
-        raise ValueError("role must be count_matrix or normalized_expression_matrix")
+        raise ValueError("role must be count_matrix, estimated_count_matrix or normalized_expression_matrix")
     source = Path(matrix_path).resolve()
     output = Path(output_path).resolve()
     if not source.exists():
@@ -225,14 +229,15 @@ def derive_welch_deg(
         raise ValueError("matrix has no complete finite rows after gene and sample validation")
 
     values.insert(0, "__gene__", genes.astype(str).to_numpy())
-    if role == "count_matrix":
+    if role in COUNT_MATRIX_ROLES:
         sample_values = values[control + treatment]
         if (sample_values < 0).any().any():
             raise ValueError("count matrix contains negative values")
-        numeric_counts = sample_values.to_numpy(dtype=float)
-        integer_like = np.isclose(numeric_counts, np.rint(numeric_counts), rtol=0.0, atol=1e-6)
-        if not bool(integer_like.all()):
-            raise ValueError("count matrix must contain non-negative integer-like raw counts")
+        if role == "count_matrix":
+            numeric_counts = sample_values.to_numpy(dtype=float)
+            integer_like = np.isclose(numeric_counts, np.rint(numeric_counts), rtol=0.0, atol=1e-6)
+            if not bool(integer_like.all()):
+                raise ValueError("count matrix must contain non-negative integer-like raw counts")
         collapsed = values.groupby("__gene__", sort=True)[control + treatment].sum(min_count=1)
         # Library sizes come from the full count matrix, before the expression filter
         # removes low-count genes. Summing the filtered matrix instead would make each
@@ -248,7 +253,7 @@ def derive_welch_deg(
         transformed = np.log2(collapsed.divide(libraries, axis=1).mul(1_000_000.0).fillna(0.0) + 1.0)
         source_input_type = "derived_count_table"
         pipeline = "logCPM_Welch_derived_from_public_counts"
-        normalization = "logCPM_from_raw_counts"
+        normalization = "logCPM_from_raw_counts" if role == "count_matrix" else "logCPM_from_estimated_counts"
     else:
         collapsed = values.groupby("__gene__", sort=True)[control + treatment].median()
         if normalized_scale == "linear":

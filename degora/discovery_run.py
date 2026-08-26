@@ -47,6 +47,12 @@ def _text(value: Any, *, field: str, required: bool = False, maximum: int = MAX_
     return text
 
 
+# Biological replicates in one contrast. The largest expression cohorts run to
+# a few thousand samples; a value beyond this is a typing slip (3 -> 999999)
+# or a cell or read count, and the weight it would earn is capped anyway.
+MAX_GROUP_SIZE = 10_000
+
+
 def _optional_count(value: Any, *, field: str, required: bool = False) -> int | str:
     message = f"{field} must be a positive whole number" + ("" if required else " or blank")
     if value is None:
@@ -65,6 +71,11 @@ def _optional_count(value: Any, *, field: str, required: bool = False) -> int | 
     number = int(text)
     if number < 1:
         raise DiscoveryError(message)
+    if number > MAX_GROUP_SIZE:
+        raise DiscoveryError(
+            f"{field}={number:,} is not a plausible number of biological replicates for one contrast "
+            f"(maximum {MAX_GROUP_SIZE:,}); enter the samples in this group, not cells or reads"
+        )
     return number
 
 
@@ -612,8 +623,13 @@ COUNT_SAMPLE_ROWS = 2000
 COUNT_WHOLE_NUMBER_SHARE = 0.95
 
 
-def _require_whole_number_counts(source_path: Path, sample_columns: list[str]) -> None:
-    """Refuse matrix_type=count_matrix when the selected columns are not whole numbers."""
+ESTIMATED_COUNT_MATRIX = "estimated_count_matrix"
+MATRIX_TYPES = ("count_matrix", "normalized_expression_matrix", ESTIMATED_COUNT_MATRIX)
+ESTIMATED_COUNT_FRACTIONAL_SHARE = 0.5
+
+
+def _selected_values(source_path: Path, sample_columns: list[str]) -> "pd.Series | None":
+    """Numeric values of the selected sample columns in the first COUNT_SAMPLE_ROWS rows."""
 
     suffixes = "".join(Path(source_path).suffixes).lower()
     try:
@@ -623,23 +639,63 @@ def _require_whole_number_counts(source_path: Path, sample_columns: list[str]) -
             separator = "\t" if suffixes.endswith((".tsv", ".txt", ".tsv.gz", ".txt.gz")) else ","
             frame = pd.read_csv(source_path, sep=separator, nrows=COUNT_SAMPLE_ROWS)
     except Exception:  # noqa: BLE001 - the derivation reports an unreadable file itself
-        return
+        return None
     # Deduplicated: a sample named in both groups is reported by the disjointness
     # check in its own words, not by pandas refusing to stack repeated columns.
     columns = [name for name in dict.fromkeys(sample_columns) if name in frame.columns]
     if not columns:
-        return
+        return None
     values = pd.to_numeric(frame[columns].stack(), errors="coerce").dropna()
-    if values.empty:
+    return None if values.empty else values
+
+
+def _whole_number_share(values: "pd.Series") -> float:
+    return float(((values - values.round()).abs() < 1e-9).mean())
+
+
+def _require_whole_number_counts(source_path: Path, sample_columns: list[str]) -> None:
+    """Refuse matrix_type=count_matrix when the selected columns are not whole numbers."""
+
+    values = _selected_values(source_path, sample_columns)
+    if values is None:
         return
-    whole = float(((values - values.round()).abs() < 1e-9).mean())
+    whole = _whole_number_share(values)
     if whole < COUNT_WHOLE_NUMBER_SHARE:
         raise DiscoveryError(
             f"matrix_type=count_matrix, but only {whole:.0%} of the selected columns' values in the first "
-            f"{COUNT_SAMPLE_ROWS:,} rows are whole numbers (preflight; the derivation checks every row); "
-            "this looks like a normalized matrix (FPKM, TPM, CPM or a log scale). Select it as "
-            "normalized_expression_matrix with normalized_scale log2 or linear, or choose the raw count file."
+            f"{COUNT_SAMPLE_ROWS:,} rows are whole numbers (preflight; the derivation checks every row). "
+            "Either this is a normalized matrix (FPKM, TPM, CPM or a log scale) - select it as "
+            "normalized_expression_matrix with normalized_scale log2 or linear - or these are estimated counts "
+            "as Salmon, RSEM and kallisto write them, fractional by design: select matrix_type=estimated_count_matrix."
         )
+
+
+def _require_estimated_counts(source_path: Path, sample_columns: list[str]) -> float | None:
+    """Refuse matrix_type=estimated_count_matrix over values that cannot be counts at all.
+
+    Estimated counts are fractional, so the whole-number share says nothing;
+    the sign and the magnitude still do. Returns the whole-number share for
+    the row's notes.
+    """
+
+    values = _selected_values(source_path, sample_columns)
+    if values is None:
+        return None
+    lowest = float(values.min())
+    if lowest < 0:
+        raise DiscoveryError(
+            f"matrix_type=estimated_count_matrix, but the selected columns contain negative values (down to "
+            f"{lowest:g}); counts, estimated or not, are never negative. This looks like a log-scale matrix; "
+            "declare normalized_expression_matrix with normalized_scale log2."
+        )
+    whole = _whole_number_share(values)
+    if float(values.quantile(0.99)) <= LOG2_EXPRESSION_CEILING and whole < ESTIMATED_COUNT_FRACTIONAL_SHARE:
+        raise DiscoveryError(
+            f"matrix_type=estimated_count_matrix, but the selected columns never exceed {float(values.max()):g} "
+            f"in the first {COUNT_SAMPLE_ROWS:,} rows and are mostly fractional; estimated counts reach the thousands. "
+            "This looks like a log-scale matrix; declare normalized_expression_matrix with normalized_scale log2."
+        )
+    return whole
 
 
 def _check_fallback_selection_consistency(entries: list[dict[str, Any]], prepared: dict[str, Any] | None = None) -> list[str]:
@@ -769,15 +825,30 @@ def _fallback_row(
     if unknown:
         raise DiscoveryError("selected sample column(s) were not found in the inspected matrix: " + ", ".join(unknown))
     role = str(candidate.get("role") or inspection.get("declared_role") or "")
+    chosen = (
+        _text(entry.get("matrix_type"), field="matrix_type", required=role == "unknown_matrix", maximum=40)
+        .strip().lower().replace("-", "_").replace(" ", "_")
+    )
     if role == "unknown_matrix":
-        role = _text(entry.get("matrix_type"), field="matrix_type", required=True, maximum=40).strip().lower().replace("-", "_").replace(" ", "_")
-        if role not in {"count_matrix", "normalized_expression_matrix"}:
+        role = chosen
+        if role not in MATRIX_TYPES:
             # Reader-correctable input; the derivation raised a bare ValueError for it.
             raise DiscoveryError(
-                f"matrix_type={role!r} is not recognised; use count_matrix for raw counts or "
+                f"matrix_type={role!r} is not recognised; use count_matrix for raw counts, "
+                "estimated_count_matrix for the fractional counts Salmon, RSEM and kallisto write, or "
                 "normalized_expression_matrix for a normalized matrix (with normalized_scale log2 or linear)"
             )
-    if role == "count_matrix":
+    elif role == "count_matrix" and chosen == ESTIMATED_COUNT_MATRIX:
+        # A file the repository labels as counts whose values are fractional:
+        # the reader may say what it is instead of being refused with no way on.
+        role = ESTIMATED_COUNT_MATRIX
+    estimated_share: float | None = None
+    if role == ESTIMATED_COUNT_MATRIX:
+        # Salmon, RSEM and kallisto write fractional counts by design; the
+        # whole-number test would refuse them all. They take the count path
+        # (library-size normalised, log2), as tximport hands them to DESeq2.
+        estimated_share = _require_estimated_counts(source_path, control_samples + treatment_samples)
+    elif role == "count_matrix":
         # A fractional matrix (FPKM, TPM, a log scale) selected as raw counts
         # would be handed to a count model as if it were counts. The values say
         # which it is before any test is run.
@@ -789,8 +860,17 @@ def _fallback_row(
             raise DiscoveryError("normalized_scale must be log2 or linear for a normalized expression matrix")
         _require_plausible_scale(source_path, control_samples + treatment_samples, normalized_scale)
     gene_column = _text(entry.get("gene_column") or inspection.get("gene_column"), field="gene_column", required=True)
+    if gene_column in allowed_samples or gene_column in requested:
+        # Expression values are not identifiers; the run used to end in a
+        # "zero genes" diagnosis long after this could have been said.
+        detected = str(inspection.get("gene_column") or "")
+        raise DiscoveryError(
+            f"gene_column={gene_column!r} is one of the sample columns; it holds expression values, not gene "
+            f"identifiers. Use the identifier column" + (f" (the inspector detected {detected!r})" if detected else "") + "."
+        )
     accession = _study_accession_key(study)
-    derived_path = derived_dir / f"{spec.key}_{accession}_{str(candidate['candidate_id'])[:10]}_welch.csv"
+    # The sequence keeps two contrasts derived from one file apart on disk.
+    derived_path = derived_dir / f"{spec.key}_{accession}_{str(candidate['candidate_id'])[:10]}_{sequence}_welch.csv"
     try:
         summary = derive_welch_deg(
             source_path,
@@ -831,7 +911,7 @@ def _fallback_row(
             "padj_column": summary["padj_column"],
             "source_input_type": summary["source_input_type"],
             "normalization": summary["normalization"],
-            "probe_collapse": "median_expression" if role != "count_matrix" else "",
+            "probe_collapse": "median_expression" if role not in ("count_matrix", ESTIMATED_COUNT_MATRIX) else "",
             "table_scope": "full_results",
             "notes": (
                 "Labeled fallback derived from a public matrix by the documented Welch workflow. "
@@ -843,6 +923,14 @@ def _fallback_row(
     metadata_note = _publication_metadata_note(study)
     if metadata_note:
         row["notes"] = f"{row['notes']} Publication metadata: {metadata_note}."
+    if estimated_share is not None:
+        note = (
+            f"The matrix was declared estimated counts ({estimated_share:.0%} whole numbers in the first "
+            f"{COUNT_SAMPLE_ROWS:,} rows; fractional as Salmon, RSEM and kallisto write them) and was "
+            "library-size normalised as counts, as tximport does."
+        )
+        row["notes"] = f"{row['notes']} {note}"
+        summary["estimated_counts_note"] = f"{accession}: {note}"
     return row, summary
 
 
@@ -998,9 +1086,20 @@ def _execute_discovery_analysis(
             )
             author_derivations.append(summary)
         elif mode == "fallback":
-            activation_key = (candidate_id, "fallback")
+            # One matrix file may carry a multi-arm design: a shared control
+            # against several treatments is several contrasts from one file.
+            # Identical or swapped groups are refused by the selection
+            # consistency check above, in its own words; only the exact same
+            # activation is a duplicate here.
+            activation_key = (
+                candidate_id,
+                "fallback",
+                *sorted(str(value).strip() for value in entry.get("control_samples", []) or []),
+                "|",
+                *sorted(str(value).strip() for value in entry.get("treatment_samples", []) or []),
+            )
             if activation_key in seen_activations:
-                raise DiscoveryError(f"candidate selected more than once: {candidate_id}")
+                raise DiscoveryError(f"candidate selected more than once with the same groups: {candidate_id}")
             seen_activations.add(activation_key)
             row, summary = _fallback_row(
                 study=study,
@@ -1017,6 +1116,12 @@ def _execute_discovery_analysis(
             raise DiscoveryError("mode must be author or fallback")
         rows.append(row)
 
+    # A matrix taken as estimated counts is said so in the run's own warnings,
+    # beside the identifier-space and DEG-only notes the reader already gets.
+    selection_warnings = [
+        *selection_warnings,
+        *(summary["estimated_counts_note"] for summary in fallback_summaries if summary.get("estimated_counts_note")),
+    ]
     source_units = sorted({str(row["source_unit_id"]) for row in rows})
     if len(source_units) < min_studies:
         raise DiscoveryError(

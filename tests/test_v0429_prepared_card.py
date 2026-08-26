@@ -201,7 +201,8 @@ def test_the_prepared_card_renders_a_real_bundle_without_throwing(tmp_path) -> N
     assert out["cardHidden"] is False
     html = out["html"]
     # The least processed matrix in front, the other normalizations folded away.
-    assert "Shown first: raw counts" in html
+    assert "Shown first: estimated counts (fractional" in html
+    assert 'value="estimated_count_matrix"' in html  # offered beside Raw counts on an unknown matrix
     assert html.index("GSE343715_SALMON_tx2gene_counts_matrix.txt.gz") < html.index('<details class="alternative-candidates">')
     assert "<summary>2 other files from this series" in html
     assert "Supplementary Table 7.xlsx" in html

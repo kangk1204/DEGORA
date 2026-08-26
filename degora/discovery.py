@@ -1067,6 +1067,38 @@ _LOG2_NAME_RE = re.compile(r"log2|log_2|tmm|vst|rlog|voom", re.IGNORECASE)
 _LINEAR_NAME_RE = re.compile(r"fpkm|tpm|rpkm|(?<![a-z])cpm|normali[sz]ed|expression", re.IGNORECASE)
 
 
+ESTIMATED_COUNTS_WHOLE_SHARE = 0.95
+
+
+def _whole_number_share(rows: list[list[str]], positions: list[int]) -> float | None:
+    """Share of numeric sample values that are whole numbers, or None with none."""
+
+    numeric: list[float] = []
+    for values in rows:
+        for position in positions:
+            if position >= len(values):
+                continue
+            try:
+                number = float(str(values[position]).strip().replace(",", ""))
+            except ValueError:
+                continue
+            if number == number and abs(number) != float("inf"):
+                numeric.append(number)
+    if not numeric:
+        return None
+    return round(sum(1 for number in numeric if abs(number - round(number)) < 1e-9) / len(numeric), 3)
+
+
+def _raw_count_preference(inspection: dict[str, Any]) -> tuple[int, str]:
+    share = inspection.get("whole_number_share")
+    if isinstance(share, (int, float)) and not isinstance(share, bool) and share < ESTIMATED_COUNTS_WHOLE_SHARE:
+        return PREFERENCE_RAW_COUNTS, (
+            "estimated counts (fractional, as Salmon, RSEM and kallisto write them) - the least processed matrix; "
+            "declare them as estimated counts and DEGORA normalises them itself"
+        )
+    return PREFERENCE_RAW_COUNTS, "raw counts - the least processed matrix; DEGORA normalises them itself"
+
+
 def candidate_preference(record: dict[str, Any]) -> tuple[int, str]:
     """(rank, reason) for one prepared file; lower rank is put first."""
 
@@ -1085,7 +1117,7 @@ def candidate_preference(record: dict[str, Any]) -> tuple[int, str]:
         log2_hint = _LOG2_NAME_RE.search(name)
         raw_hint = _RAW_COUNT_NAME_RE.search(name)
         if role == "count_matrix":
-            return PREFERENCE_RAW_COUNTS, "raw counts - the least processed matrix; DEGORA normalises them itself"
+            return _raw_count_preference(inspection)
         if role == "normalized_expression_matrix":
             if str(inspection.get("normalized_scale") or "") == "log2" or log2_hint:
                 return PREFERENCE_LOG2_MATRIX, "a log2-normalised matrix"
@@ -1095,7 +1127,7 @@ def candidate_preference(record: dict[str, Any]) -> tuple[int, str]:
         if linear_hint:
             return PREFERENCE_LINEAR_MATRIX, "a linear normalised matrix (FPKM/TPM); transformed with log2(x + 1) before testing"
         if raw_hint:
-            return PREFERENCE_RAW_COUNTS, "raw counts - the least processed matrix; DEGORA normalises them itself"
+            return _raw_count_preference(inspection)
         return PREFERENCE_LINEAR_MATRIX, "a matrix of unstated scale; confirm its scale before using it"
     return PREFERENCE_UNUSABLE, ""
 
@@ -1410,6 +1442,10 @@ def _inspect_upstream_rows(rows: list[list[Any]], *, declared_role: str, sheet: 
         blocked_unknown_statistics = declared_role == "unknown_matrix" and bool(statistic_columns)
         if blocked_unknown_statistics:
             sample_columns = []
+        # Whole-number share of the sample values in the rows read: raw counts
+        # are whole, Salmon/RSEM/kallisto estimated counts are fractional by
+        # design, and the card must not call the latter "raw counts".
+        whole_number_share = _whole_number_share(following, [columns.index(name) for name in sample_columns if name in columns])
         score = len(sample_columns) + (3 if gene_candidates else 0)
         if score <= best_score:
             continue
@@ -1431,6 +1467,7 @@ def _inspect_upstream_rows(rows: list[list[Any]], *, declared_role: str, sheet: 
             "sample_columns": sample_columns,
             "statistic_columns": statistic_columns,
             "numeric_fractions": numeric_fractions,
+            "whole_number_share": whole_number_share,
             "sample_rows": len(following),
             "requires": ["control_samples", "treatment_samples", "contrast_direction"],
         }

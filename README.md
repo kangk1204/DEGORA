@@ -527,6 +527,48 @@ make smoke
 
 ## Release notes
 
+### 0.4.30
+
+The score contract is unchanged. This release closes the last gap a live check
+of the prepared-evidence card left open - a matrix the card put first was one
+the run then refused - and answers an adversarial review of 0.4.29 (30 cases,
+no High finding).
+
+**Estimated counts are named, offered and accepted.** Salmon, RSEM and kallisto
+write fractional counts by design. The card put a `tx2gene_counts` matrix first
+as "raw counts - the least processed matrix", and the run refused it because
+only 32% of its values were whole numbers - both right about the file, each
+wrong about the other. The inspector now records the whole-number share of the
+sample values it read; a count file whose values are fractional is introduced as
+"estimated counts (fractional, as Salmon, RSEM and kallisto write them)"; the
+matrix-type choice offers "Estimated counts" beside "Raw counts" and "Normalized
+expression", also for a file the repository itself labels as counts; and
+`matrix_type=estimated_count_matrix` takes the count path (library-size
+normalised, log2, as tximport hands such counts to DESeq2) without the
+whole-number test. What cannot be counts is still refused - negative values, or
+a matrix that never leaves the log2 range - and the raw-count refusal now names
+the estimated-counts alternative. The run's warnings say when a matrix was
+taken as estimated counts, with the share of whole numbers it saw.
+
+**One matrix file may carry several contrasts.** A multi-arm design - a shared
+control against two or more treatments in one expression matrix - could
+activate only one arm: the second activation of the same file was refused as
+"selected more than once" whatever its groups. A second contrast with different
+groups is now accepted, from the browser ("Add another contrast from this
+matrix", which keeps the control arm and starts the treatment arm and the
+attestation over) and from a selection file; identical or swapped groups are
+still refused, a sample that changes role between contrasts is still reported,
+and both contrasts fold into the one source unit the file is, so a series
+still casts one vote. The derived tables no longer share a file name.
+
+**Three smaller findings from the same review.** A declared group size is
+capped at 10,000 biological replicates, so a typing slip (3 becomes 999,999) is
+refused instead of silently accepted; a fallback whose gene column is one of the
+sample columns is refused at once ("holds expression values, not gene
+identifiers"), not diagnosed as zero genes after the run; and a query with no
+Latin letter or digit (an emoji, a word in another script) is refused for its
+script, not for its length.
+
 ### 0.4.29
 
 The score contract is unchanged. This release repairs the browser's prepare

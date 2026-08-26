@@ -1074,3 +1074,171 @@ def test_the_result_warning_list_carries_each_warning_once(tmp_path: Path) -> No
     warnings = result["warnings"]
     assert any("no negative values" in w for w in warnings), warnings
     assert len(warnings) == len(set(warnings))
+
+
+def _fractional_counts(rows: int = 40) -> dict[str, list[float]]:
+    """Salmon-style estimated counts: non-negative, fractional, reaching the thousands."""
+
+    return {
+        "c1": [round(3.0 + i * 41.37, 2) for i in range(rows)],
+        "c2": [round(1.0 + i * 39.11, 2) for i in range(rows)],
+        "t1": [round(8.0 + i * 87.53, 2) for i in range(rows)],
+        "t2": [round(6.0 + i * 91.27, 2) for i in range(rows)],
+    }
+
+
+def test_estimated_counts_take_the_count_path_once_declared(tmp_path: Path) -> None:
+    """Salmon, RSEM and kallisto write fractional counts; the whole-number guard refused them all."""
+
+    from degora.discovery import normalize_species
+    from degora.discovery_run import _fallback_row
+
+    study, candidate, bundle = _matrix_candidate(tmp_path, _fractional_counts())
+    row, summary = _fallback_row(
+        study=study, candidate=candidate, entry=_fallback_entry(matrix_type="estimated_count_matrix", contrast_label="drug vs ctrl"),
+        spec=normalize_species("human"), bundle_root=bundle, derived_dir=tmp_path / "derived",
+        sequence=1, replay_command="degora",
+    )
+    assert row["pipeline"] == "logCPM_Welch_derived_from_public_counts"
+    assert "declared estimated counts" in row["notes"]
+    assert summary["estimated_counts_note"].startswith("GSE100002: The matrix was declared estimated counts")
+
+
+def test_the_count_refusal_names_the_estimated_counts_alternative(tmp_path: Path) -> None:
+    from degora.discovery import normalize_species
+    from degora.discovery_run import DiscoveryError, _fallback_row
+
+    study, candidate, bundle = _matrix_candidate(tmp_path, _fractional_counts())
+    with pytest.raises(DiscoveryError, match="select matrix_type=estimated_count_matrix"):
+        _fallback_row(
+            study=study, candidate=candidate, entry=_fallback_entry(matrix_type="count_matrix"),
+            spec=normalize_species("human"), bundle_root=bundle, derived_dir=tmp_path / "derived",
+            sequence=1, replay_command="degora",
+        )
+
+
+def test_estimated_counts_still_refuse_what_cannot_be_counts(tmp_path: Path) -> None:
+    """The whole-number share says nothing about estimated counts; sign and magnitude still do."""
+
+    from degora.discovery import normalize_species
+    from degora.discovery_run import DiscoveryError, _fallback_row
+
+    log_scale = {"c1": [1.37 + i * 0.1 for i in range(40)], "c2": [-2.51 + i * 0.1 for i in range(40)],
+                 "t1": [4.09 + i * 0.1 for i in range(40)], "t2": [3.73 + i * 0.1 for i in range(40)]}
+    study, candidate, bundle = _matrix_candidate(tmp_path, log_scale)
+    with pytest.raises(DiscoveryError, match="never negative"):
+        _fallback_row(
+            study=study, candidate=candidate, entry=_fallback_entry(matrix_type="estimated_count_matrix", contrast_label="drug vs ctrl"),
+            spec=normalize_species("human"), bundle_root=bundle, derived_dir=tmp_path / "derived",
+            sequence=1, replay_command="degora",
+        )
+    small = {key: [abs(value) for value in values] for key, values in log_scale.items()}
+    study, candidate, bundle = _matrix_candidate(tmp_path, small)
+    with pytest.raises(DiscoveryError, match="never exceed"):
+        _fallback_row(
+            study=study, candidate=candidate, entry=_fallback_entry(matrix_type="estimated_count_matrix", contrast_label="drug vs ctrl"),
+            spec=normalize_species("human"), bundle_root=bundle, derived_dir=tmp_path / "derived",
+            sequence=1, replay_command="degora",
+        )
+
+
+def test_a_file_labeled_counts_by_the_repository_may_be_declared_estimated(tmp_path: Path) -> None:
+    """A declared count_matrix role ignored matrix_type, so a fractional one had no way on."""
+
+    from degora.discovery import normalize_species
+    from degora.discovery_run import DiscoveryError, _fallback_row
+
+    study, candidate, bundle = _matrix_candidate(tmp_path, _fractional_counts())
+    candidate["role"] = "count_matrix"
+    with pytest.raises(DiscoveryError, match="whole numbers"):
+        _fallback_row(
+            study=study, candidate=candidate, entry=_fallback_entry(matrix_type=""),
+            spec=normalize_species("human"), bundle_root=bundle, derived_dir=tmp_path / "derived",
+            sequence=1, replay_command="degora",
+        )
+    row, _summary = _fallback_row(
+        study=study, candidate=candidate, entry=_fallback_entry(matrix_type="estimated_count_matrix", contrast_label="drug vs ctrl"),
+        spec=normalize_species("human"), bundle_root=bundle, derived_dir=tmp_path / "derived",
+        sequence=1, replay_command="degora",
+    )
+    assert "declared estimated counts" in row["notes"]
+    # ...but a declared count file cannot be talked into being a normalized matrix.
+    study, candidate, bundle = _matrix_candidate(tmp_path, {"c1": [10.0] * 40, "c2": [12.0] * 40, "t1": [30.0] * 40, "t2": [33.0] * 40})
+    candidate["role"] = "count_matrix"
+    row, _summary = _fallback_row(
+        study=study, candidate=candidate, entry=_fallback_entry(matrix_type="normalized_expression_matrix", normalized_scale="log2", contrast_label="drug vs ctrl"),
+        spec=normalize_species("human"), bundle_root=bundle, derived_dir=tmp_path / "derived",
+        sequence=1, replay_command="degora",
+    )
+    assert row["pipeline"] == "logCPM_Welch_derived_from_public_counts"
+
+
+def _two_arm_matrix(tmp_path: Path):
+    """One file, a shared control and two treatment arms (multi-arm design)."""
+
+    values = {"c1": [10.0] * 40, "c2": [12.0] * 40, "t1": [30.0] * 40, "t2": [33.0] * 40, "u1": [50.0] * 40, "u2": [55.0] * 40}
+    return _matrix_candidate(tmp_path, values)
+
+
+def test_one_matrix_file_may_carry_two_contrasts_with_different_groups(tmp_path: Path) -> None:
+    """A shared control against two treatment arms was refused as "selected more than once"."""
+
+    from degora.discovery import normalize_species
+    from degora.discovery_run import _fallback_row
+
+    study, candidate, bundle = _two_arm_matrix(tmp_path)
+    spec = normalize_species("human")
+    first = _fallback_entry(matrix_type="count_matrix", contrast_label="drug A vs ctrl")
+    second = _fallback_entry(matrix_type="count_matrix", contrast_label="drug B vs ctrl", treatment_samples=["u1", "u2"])
+    rows = [
+        _fallback_row(study=study, candidate=candidate, entry=entry, spec=spec, bundle_root=bundle,
+                      derived_dir=tmp_path / "derived", sequence=index, replay_command="degora")[0]
+        for index, entry in enumerate((first, second), start=1)
+    ]
+    assert len(rows) == 2 and rows[0] != rows[1]
+    derived = sorted(path.name for path in (tmp_path / "derived").glob("*_welch.csv"))
+    assert len(derived) == 2  # the two derivations do not overwrite each other
+
+
+def test_identical_and_swapped_groups_from_one_file_are_still_refused() -> None:
+    from degora.discovery_run import _check_fallback_selection_consistency
+
+    prepared = {"studies": [{"accession": "GSE1", "files": [{"candidate_id": "m1"}]}]}
+    same = {"candidate_id": "m1", "mode": "fallback", "control_samples": ["c1", "c2"], "treatment_samples": ["t1", "t2"], "contrast_label": "A"}
+    with pytest.raises(Exception, match="selected twice"):
+        _check_fallback_selection_consistency([same, {**same, "contrast_label": "B"}], prepared)
+    swapped = {**same, "control_samples": ["t1", "t2"], "treatment_samples": ["c1", "c2"], "contrast_label": "B"}
+    with pytest.raises(Exception):
+        _check_fallback_selection_consistency([same, swapped], prepared)
+    # A shared control against another arm is allowed and is not a warning: that
+    # is what a multi-arm design looks like. Only a sample that changes role
+    # between contrasts is reported.
+    other = {**same, "treatment_samples": ["u1", "u2"], "contrast_label": "B"}
+    assert _check_fallback_selection_consistency([same, other], prepared) == []
+    crossed = {**same, "control_samples": ["t1", "t2"], "treatment_samples": ["u1", "u2"], "contrast_label": "C"}
+    warnings = _check_fallback_selection_consistency([same, crossed], prepared)
+    assert warnings and "control sample in one selected contrast and a treatment sample in another" in str(warnings[0])
+
+
+def test_a_declared_group_size_has_a_plausibility_ceiling() -> None:
+    from degora.discovery_run import DiscoveryError, _optional_count
+
+    assert _optional_count("3", field="n_ctrl") == 3
+    assert _optional_count("10000", field="n_ctrl") == 10000
+    with pytest.raises(DiscoveryError, match="not a plausible number of biological replicates"):
+        _optional_count("999999", field="n_ctrl")
+
+
+def test_a_sample_column_is_refused_as_the_gene_column_up_front(tmp_path: Path) -> None:
+    """The run used to end in a zero-genes diagnosis long after this could be said."""
+
+    from degora.discovery import normalize_species
+    from degora.discovery_run import DiscoveryError, _fallback_row
+
+    study, candidate, bundle = _matrix_candidate(tmp_path, {"c1": [10.0] * 40, "c2": [12.0] * 40, "t1": [30.0] * 40, "t2": [33.0] * 40})
+    with pytest.raises(DiscoveryError, match="gene_column='c1' is one of the sample columns"):
+        _fallback_row(
+            study=study, candidate=candidate, entry=_fallback_entry(matrix_type="count_matrix", contrast_label="x", gene_column="c1"),
+            spec=normalize_species("human"), bundle_root=bundle, derived_dir=tmp_path / "derived",
+            sequence=1, replay_command="degora",
+        )

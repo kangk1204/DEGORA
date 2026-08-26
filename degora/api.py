@@ -2714,7 +2714,7 @@ INDEX_HTML = """<!doctype html>
       ) || duplicateGenePolicy === "keep_first";
       return `<div class="candidate-row" data-candidate-id="${esc(candidate.candidate_id)}" data-activation-key="${esc(activationKey)}" data-clone="${clone ? "true" : "false"}" data-accession="${esc(study.accession)}" data-source-unit="${esc(study.source_unit_id || study.accession)}" data-mode="author" data-author-status="${esc(status)}" data-series-samples="${esc(String(seriesSamples || ""))}" data-detected-sheet-name="${esc(detectedAuthorValue(candidate, "sheet_name"))}" data-detected-gene-column="${esc(detectedAuthorValue(candidate, "gene_column"))}" data-detected-lfc-column="${esc(detectedAuthorValue(candidate, "lfc_column"))}" data-detected-p-column="${esc(detectedAuthorValue(candidate, "p_column"))}" data-detected-padj-column="${esc(detectedAuthorValue(candidate, "padj_column"))}">
         <input class="candidate-enable" type="checkbox" aria-label="Use ${esc(candidate.name)}" ${checked ? "checked" : ""}>
-        <div><span class="candidate-name">${esc(candidate.name)}${clone ? " · additional cohort/contrast" : ""}</span><span class="candidate-note">Author DEG candidate · ${esc(status)} · ${esc(geneColumn)} / ${esc(lfcColumn)} / ${esc(pColumn)}${identifierSpaceNote(candidate)}</span><div class="candidate-tools"><span class="status-pill">${status === "ready_for_review" ? "One-click mapping accepted" : "Mapping review required"}</span><button class="action-secondary clone-author-candidate" type="button">Add cohort/contrast</button></div></div>
+        <div><span class="candidate-name">${esc(candidate.name)}${clone ? " · additional cohort/contrast" : ""}</span><span class="candidate-note">Author DEG candidate · ${esc(status)} · ${esc(geneColumn)} / ${esc(lfcColumn)} / ${esc(pColumn)}${identifierSpaceNote(candidate)}</span><div class="candidate-tools"><span class="status-pill">${status === "ready_for_review" ? "One-click mapping accepted" : "Mapping review required"}</span><button class="action-secondary clone-author-candidate clone-candidate" type="button">Add cohort/contrast</button></div></div>
         <div class="candidate-fields">
           <label>Contrast label<input class="contrast-label" value="${esc(contrast)}" placeholder="Enter exact paper/GEO contrast" autocomplete="off"></label>
           <label>Control biological n<input class="n-ctrl" type="number" min="1" step="1" inputmode="numeric" value="${esc(nCtrl)}" required title="Independent biological control samples in this exact contrast, not total GEO samples"></label>
@@ -2969,13 +2969,28 @@ INDEX_HTML = """<!doctype html>
       updateAnalysisEligibility();
     }
 
-    function fallbackCandidateHtml(study, candidate) {
+    function matrixTypeOption(selected, value, label) {
+      return `<option value="${value}" ${selected === value ? "selected" : ""}>${label}</option>`;
+    }
+
+    function fallbackCandidateHtml(study, candidate, activationKey, clone) {
+      activationKey = activationKey || candidate.candidate_id;
       const inspection = candidate.inspection || {};
-      const draft = activeDiscoveryState().draft[candidate.candidate_id] || {};
+      const draft = activeDiscoveryState().draft[activationKey] || {};
       const contrast = draft.contrast === undefined ? "" : draft.contrast;
       const role = candidate.role || inspection.declared_role || "";
       const matrixType = draft.matrixType || "";
-      const matrixTypeControl = role === "unknown_matrix" ? `<label>Matrix type<select class="matrix-type"><option value="" ${matrixType === "" ? "selected" : ""}>Choose matrix type</option><option value="normalized_expression_matrix" ${matrixType === "normalized_expression_matrix" ? "selected" : ""}>Normalized expression</option><option value="count_matrix" ${matrixType === "count_matrix" ? "selected" : ""}>Raw counts</option></select></label>` : "";
+      const wholeShare = typeof inspection.whole_number_share === "number" ? inspection.whole_number_share : null;
+      // A file the repository labels as counts whose values are fractional is
+      // estimated counts (Salmon, RSEM, kallisto) or a mislabeled normalized
+      // matrix; the reader says which, instead of being refused with no way on.
+      const fractionalCounts = role === "count_matrix" && wholeShare !== null && wholeShare < 0.95;
+      const estimatedOption = matrixTypeOption(matrixType, "estimated_count_matrix", "Estimated counts (Salmon, RSEM, kallisto; fractional)");
+      const matrixTypeControl = role === "unknown_matrix"
+        ? `<label>Matrix type<select class="matrix-type">${matrixTypeOption(matrixType, "", "Choose matrix type")}${matrixTypeOption(matrixType, "normalized_expression_matrix", "Normalized expression")}${matrixTypeOption(matrixType, "count_matrix", "Raw counts")}${estimatedOption}</select></label>`
+        : fractionalCounts
+        ? `<label>Matrix type<select class="matrix-type">${matrixTypeOption(matrixType, "", "Choose matrix type")}${matrixTypeOption(matrixType, "count_matrix", "Raw counts")}${estimatedOption}</select></label>`
+        : "";
       const normalizedScale = draft.normalizedScale || "";
       const normalizedScaleControl = role === "count_matrix" ? "" : `<label>Normalized value scale<select class="normalized-scale"><option value="" ${normalizedScale === "" ? "selected" : ""}>Choose confirmed scale</option><option value="log2" ${normalizedScale === "log2" ? "selected" : ""}>Already log2 scale</option><option value="linear" ${normalizedScale === "linear" ? "selected" : ""}>Linear, apply log2(x + 1)</option></select></label>`;
       // A GSM accession on its own tells a reader nothing about which arm it
@@ -3007,9 +3022,9 @@ INDEX_HTML = """<!doctype html>
           : "";
         return `<label class="sample-item" title="${esc(tip)}"><span class="sample-id">${esc(sample)}</span>${labelLine}${traits ? `<span class="sample-traits">${esc(traits)}</span>` : ""}<select data-sample="${esc(sample)}"><option value="" ${group === "" ? "selected" : ""}>Ignore</option><option value="control" ${group === "control" ? "selected" : ""}>Control</option><option value="treatment" ${group === "treatment" ? "selected" : ""}>Treatment</option></select></label>`;
       }).join("");
-      return `<div class="candidate-row" data-candidate-id="${esc(candidate.candidate_id)}" data-accession="${esc(study.accession)}" data-source-unit="${esc(study.source_unit_id || study.accession)}" data-mode="fallback" data-role="${esc(role)}">
+      return `<div class="candidate-row" data-candidate-id="${esc(candidate.candidate_id)}" data-activation-key="${esc(activationKey)}" data-clone="${clone ? "true" : "false"}" data-accession="${esc(study.accession)}" data-source-unit="${esc(study.source_unit_id || study.accession)}" data-mode="fallback" data-role="${esc(role)}">
         <input class="candidate-enable" type="checkbox" aria-label="Use ${esc(candidate.name)}" ${draft.enabled ? "checked" : ""}>
-        <div><span class="candidate-name">${esc(candidate.name)}</span><span class="candidate-note">Labeled fallback · ${esc(role)} · choose biological groups explicitly${identifierSpaceNote(candidate)}</span></div>
+        <div><span class="candidate-name">${esc(candidate.name)}${clone ? " · additional contrast" : ""}</span><span class="candidate-note">Labeled fallback · ${esc(role)} · choose biological groups explicitly${identifierSpaceNote(candidate)}</span><div class="candidate-tools"><button class="action-secondary clone-candidate" type="button" data-tip="A shared control against another treatment arm is a second contrast from the same file. Both count as one source unit.">Add another contrast from this matrix</button></div></div>
         <div class="candidate-fields">
           <label>Contrast label<input class="contrast-label" value="${esc(contrast)}" placeholder="Enter exact paper/GEO contrast" autocomplete="off"></label>
           ${matrixTypeControl}
@@ -3113,8 +3128,14 @@ INDEX_HTML = """<!doctype html>
         const hasAuthor = candidates.some(isAuthorReviewable);
         const firstAuthor = candidates.findIndex(isAuthorReviewable);
         const renderCandidate = (candidate, index) => {
-          if (!isAuthorReviewable(candidate)) return fallbackCandidateHtml(study, candidate);
           const keys = authorDraftKeys(candidate.candidate_id);
+          const extra = keys.filter((key) => key !== candidate.candidate_id);
+          if (!isAuthorReviewable(candidate)) {
+            // A multi-arm design in one matrix file: the shared control against
+            // each treatment arm is its own contrast, drawn as its own card.
+            return fallbackCandidateHtml(study, candidate, candidate.candidate_id, false)
+              + extra.map((key) => fallbackCandidateHtml(study, candidate, key, true)).join("");
+          }
           const base = authorCandidateHtml(study, candidate, hasAuthor && index === firstAuthor, candidate.candidate_id, false);
           const clones = keys.filter((key) => key !== candidate.candidate_id).map((key) => authorCandidateHtml(study, candidate, false, key, true)).join("");
           return base + clones;
@@ -3436,8 +3457,9 @@ INDEX_HTML = """<!doctype html>
         }
         if (!(row.querySelector(".gene-column")?.value || "").trim()) return false;
         if (!row.querySelector(".biological-replicates-confirmed")?.checked) return false;
-        if (row.dataset.role === "unknown_matrix" && !row.querySelector(".matrix-type")?.value) return false;
-        const resolvedRole = row.dataset.role === "unknown_matrix" ? row.querySelector(".matrix-type")?.value : row.dataset.role;
+        const typeSelect = row.querySelector(".matrix-type");
+        if (typeSelect && !typeSelect.value) return false;
+        const resolvedRole = typeSelect ? typeSelect.value : row.dataset.role;
         if (resolvedRole === "normalized_expression_matrix" && !row.querySelector(".normalized-scale")?.value) return false;
         const groups = [...row.querySelectorAll("[data-sample]")].map((select) => select.value);
         return groups.filter((value) => value === "control").length >= 2
@@ -3521,8 +3543,8 @@ INDEX_HTML = """<!doctype html>
           const normalizedScale = row.querySelector(".normalized-scale");
           const geneValid = Boolean((gene?.value || "").trim());
           const biologicalValid = Boolean(biological?.checked);
-          const matrixTypeValid = row.dataset.role !== "unknown_matrix" || Boolean(matrixType?.value);
-          const resolvedRole = row.dataset.role === "unknown_matrix" ? matrixType?.value : row.dataset.role;
+          const matrixTypeValid = !matrixType || Boolean(matrixType.value);
+          const resolvedRole = matrixType ? matrixType.value : row.dataset.role;
           const scaleValid = resolvedRole !== "normalized_expression_matrix" || Boolean(normalizedScale?.value);
           const groups = [...row.querySelectorAll("[data-sample]")].map((select) => select.value);
           const groupsValid = groups.filter((value) => value === "control").length >= 2
@@ -3604,7 +3626,7 @@ INDEX_HTML = """<!doctype html>
             if (select.value === "control") common.control_samples.push(select.dataset.sample);
             if (select.value === "treatment") common.treatment_samples.push(select.dataset.sample);
           });
-          if (row.dataset.role === "unknown_matrix") common.matrix_type = row.querySelector(".matrix-type")?.value || "";
+          if (row.querySelector(".matrix-type")) common.matrix_type = row.querySelector(".matrix-type").value || "";
         }
         return common;
       });
@@ -4358,15 +4380,23 @@ INDEX_HTML = """<!doctype html>
         if (bulkRow) applySampleBulk(bulkRow, bulk.dataset.group || "");
         return;
       }
-      const button = event.target.closest(".clone-author-candidate");
+      const button = event.target.closest(".clone-candidate");
       if (!button) return;
       const row = button.closest(".candidate-row");
       if (!row) return;
       const state = activeDiscoveryState();
       capturePreparedDraft();
       const key = `${row.dataset.candidateId}::clone::${++state.cloneCounter}`;
+      const source = state.draft[row.dataset.activationKey || row.dataset.candidateId] || {};
+      // A second contrast from a matrix keeps the control arm and starts the
+      // treatment arm and the attestation over: it is a new comparison.
+      const matrix = row.dataset.mode === "fallback"
+        ? { direction: false, biologicalReplicates: false,
+            samples: Object.fromEntries(Object.entries(source.samples || {}).map(([sample, role]) => [sample, role === "treatment" ? "" : role])) }
+        : {};
       state.draft[key] = {
-        ...(state.draft[row.dataset.activationKey || row.dataset.candidateId] || {}),
+        ...source,
+        ...matrix,
         enabled: true,
         candidateId: row.dataset.candidateId,
         clone: true,
@@ -5383,6 +5413,13 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
 
     def _discovery_create_publication_search(self, payload: dict[str, Any]) -> dict[str, Any]:
         query = str(payload.get("query") or "").strip()
+        if query and not re.search(r"[A-Za-z0-9]", query):
+            # An emoji or a word in another script used to be refused as "too
+            # short": the length was not the problem, the script was.
+            raise ValueError(
+                "query has no English term: DEGORA searches PubMed and GEO, which index English text. "
+                "Use an English keyword (for example 'hypoxia', 'placenta', 'TGF-beta')."
+            )
         if len(query) < 2:
             raise ValueError("query must be at least 2 characters")
         if len(query) > 200:
