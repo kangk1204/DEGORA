@@ -543,14 +543,19 @@ make smoke
 
 ### 0.4.33
 
-The score contract is unchanged: `degora_gene_scores.csv`, `slice_harmonized.csv`
-and `slice_consensus.csv` are byte-identical to 0.4.32 for the same inputs, and
-the `genes`, `gene_evidence` and `studies` tables of the database are unchanged.
-What moved is the `source_direction_conflict_rule` text in the database metadata
-and the four validation gaps below. This release answers two independent audits
-of 0.4.32: an external installation and long-run validation, and a
-multi-keyword / multi-study / multi-parameter sweep of about 660 `degora run`
-invocations across 20 topics.
+The score and rank calculations are unchanged. For the same inputs, all
+previously published gene-score values keep their meanings and column
+positions. Audit metadata can differ where 0.4.33 corrects declared
+rank-universe reporting, validation or conflict annotations, as described
+below. The output schema also expands append-only with three primary-lane audit
+statistics: `quality_stouffer_z`, `quality_weighted_lfc` and
+`quality_rank_product`. They are added after the existing quality components in
+`degora_gene_scores.csv`, the SQLite `genes` table and the workbook, so a reader
+can verify the direction, effect and rank evidence used by the primary
+quality-weighted lane without changing any score or rank. The release answers
+two independent audits of 0.4.32: an external installation and long-run
+validation, and a multi-keyword / multi-study / multi-parameter sweep of about
+660 `degora run` invocations across 20 topics.
 
 **A group size the browser refuses is refused from a workbook too.** The 10,000
 biological-replicate cap lived only in the discovery review panel. From a
