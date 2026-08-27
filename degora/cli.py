@@ -1047,13 +1047,17 @@ def main(argv: list[str] | None = None) -> int:
                     raise
                 selected = _select_publication_records(records, args.select)
                 selected = resolve_publication_records(selected, args.species)
-                # max(1, ...) turned a zero or negative budget into one file per
-                # record, and floor division over the selection let the implied
-                # total exceed the requested cap (budget 1 over 2 records became
-                # 2). The budget is a total, so it is passed down as one and the
-                # per-record allowance is only its ceiling.
+                # The global budget and the per-record ceiling are separate
+                # contracts. A zero global budget means "inspect no files", but
+                # the backend's per-record ceiling must still stay in its valid
+                # 1..12 range. The backend receives both values and uses the
+                # global zero to skip direct and GEO candidate downloads.
                 selected_count = max(1, len(selected))
-                files_per_record = min(12, args.inspection_budget // selected_count)
+                files_per_record = (
+                    1
+                    if args.inspection_budget == 0
+                    else min(12, args.inspection_budget // selected_count)
+                )
                 if args.inspection_budget and files_per_record < 1:
                     # A budget smaller than the selection cannot give every record
                     # a file; say so rather than silently inspecting more than asked.

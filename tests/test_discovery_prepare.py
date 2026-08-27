@@ -93,6 +93,154 @@ def test_no_geo_author_deg_table_materializes_full_bundle(tmp_path: Path) -> Non
     assert audit["studies"][0]["files"][0]["inspection"]["local_path"] == candidate["inspection"]["local_path"]
 
 
+def test_zero_inspection_budget_skips_real_direct_downloads(tmp_path: Path) -> None:
+    transport = FakeTransport({"https://zenodo.org/files/deg.csv": _deg_table()})
+
+    result = prepare_publication_records(
+        [_record()],
+        "human",
+        query="hypoxia",
+        materialize_dir=tmp_path / "prepared",
+        max_files_per_record=1,
+        inspection_budget=0,
+        transport=transport,
+    )
+
+    assert transport.urls == []
+    assert result["returned_studies"] == 0
+    assert result["safety_and_review"]["inspection_budget"] == 0
+    assert result["safety_and_review"]["fetch_scope"] == "none"
+    assert "inspection budget is 0" in result["excluded_studies"][0]["reason"]
+    assert (tmp_path / "prepared" / "discovery_audit.json").is_file()
+
+
+def test_global_inspection_budget_caps_mixed_geo_and_direct_fetches(tmp_path: Path) -> None:
+    class BudgetGeoClient:
+        def __init__(self) -> None:
+            self.fetch_calls: list[str] = []
+
+        def accession_summaries(self, accessions, species):
+            return [
+                {
+                    "accession": accession,
+                    "taxon": "Homo sapiens",
+                    "title": accession,
+                    "gdstype": "Expression profiling by high throughput sequencing",
+                    "pubmedids": [],
+                }
+                for accession in accessions
+            ]
+
+        def publication_summaries(self, pmids):
+            return {}
+
+        def fetch_geo_soft(self, accession):
+            return "\n".join(
+                [
+                    f"^SERIES = {accession}",
+                    "!Series_sample_organism = Homo sapiens",
+                    f"!Series_supplementary_file = https://ftp.ncbi.nlm.nih.gov/{accession}_DESeq2.csv.gz",
+                ]
+            )
+
+        def fetch_candidate(self, url, *, full):
+            import gzip
+
+            self.fetch_calls.append(url)
+            return gzip.compress(_deg_table()), "full" if full else "header_prefix"
+
+    geo_client = BudgetGeoClient()
+    transport = FakeTransport({"https://zenodo.org/files/deg.csv": _deg_table()})
+    geo_record = _record(
+        canonical_id="pmid:geo",
+        source_unit_id="PMID:GEO",
+        pmid="geo",
+        geo_accessions=["GSE100001", "GSE100002"],
+        direct_file_candidates=[],
+    )
+
+    result = prepare_publication_records(
+        [geo_record, _record()],
+        "human",
+        query="hypoxia",
+        materialize_dir=tmp_path / "prepared",
+        max_files_per_record=1,
+        inspection_budget=2,
+        geo_client=geo_client,
+        transport=transport,
+    )
+
+    assert len(geo_client.fetch_calls) == 1
+    assert transport.urls == ["https://zenodo.org/files/deg.csv"]
+    assert result["inspection_budget"] == 2
+    assert result["inspections_used"] == 2
+    assert result["safety_and_review"]["inspections_used"] == 2
+
+
+def test_global_inspection_budget_caps_multiple_direct_records(tmp_path: Path) -> None:
+    transport = FakeTransport({"https://zenodo.org/files/deg.csv": _deg_table()})
+    second_record = _record(
+        canonical_id="pmid:2",
+        source_unit_id="PMID:2",
+        pmid="2",
+        title="Second publication",
+    )
+
+    result = prepare_publication_records(
+        [_record(), second_record],
+        "human",
+        query="hypoxia",
+        materialize_dir=tmp_path / "prepared",
+        max_files_per_record=1,
+        inspection_budget=1,
+        transport=transport,
+    )
+
+    assert transport.urls == ["https://zenodo.org/files/deg.csv"]
+    assert result["inspections_used"] == 1
+    assert result["returned_studies"] == 1
+    assert any("inspection budget was exhausted" in item["reason"] for item in result["excluded_studies"])
+
+
+def test_failed_direct_fetch_consumes_the_global_inspection_budget(tmp_path: Path) -> None:
+    failed_url = "https://zenodo.org/files/unavailable.csv"
+    untried_url = "https://zenodo.org/files/untried.csv"
+
+    class BudgetFailureTransport(FakeTransport):
+        def get_bytes(self, url: str, *, max_bytes: int) -> bytes:
+            self.urls.append(url)
+            raise DiscoveryUnavailableError("public source did not respond")
+
+    first_record = _record(
+        direct_file_candidates=[
+            {"url": failed_url, "name": "unavailable.csv", "role": "deg_table"},
+            {"url": untried_url, "name": "untried.csv", "role": "deg_table"},
+        ]
+    )
+    second_record = _record(
+        canonical_id="pmid:2",
+        source_unit_id="PMID:2",
+        pmid="2",
+        title="Second publication",
+    )
+    transport = BudgetFailureTransport({})
+
+    result = prepare_publication_records(
+        [first_record, second_record],
+        "human",
+        query="hypoxia",
+        materialize_dir=tmp_path / "prepared",
+        max_files_per_record=2,
+        inspection_budget=1,
+        transport=transport,
+    )
+
+    assert transport.urls == [failed_url]
+    assert result["inspections_used"] == 1
+    assert result["returned_studies"] == 0
+    assert any("inspection budget was exhausted" in item["reason"] for item in result["excluded_studies"])
+
+
 def test_prepare_publication_before_publish_runs_once_immediately_before_publish(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

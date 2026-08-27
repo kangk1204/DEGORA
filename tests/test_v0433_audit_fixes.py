@@ -418,8 +418,8 @@ def test_negative_inspection_budget_is_refused(tmp_path, capsys) -> None:
     assert "non-negative" in capsys.readouterr().err
 
 
-def test_zero_inspection_budget_reaches_the_backend_as_zero(tmp_path, monkeypatch) -> None:
-    """`0` used to be forced up to one file per record."""
+def test_zero_inspection_budget_keeps_a_valid_per_record_ceiling(tmp_path, monkeypatch) -> None:
+    """Global zero skips inspection without violating the backend's 1..12 ceiling."""
 
     captured = _capture_prepare(monkeypatch, tmp_path)
     assert (
@@ -440,7 +440,7 @@ def test_zero_inspection_budget_reaches_the_backend_as_zero(tmp_path, monkeypatc
         == 0
     )
     assert captured["inspection_budget"] == 0
-    assert captured["max_files_per_record"] == 0
+    assert captured["max_files_per_record"] == 1
 
 
 def test_a_budget_below_the_selection_count_is_refused(tmp_path, monkeypatch, capsys) -> None:

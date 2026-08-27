@@ -96,6 +96,15 @@ def prepare_publication_records(
         or not 1 <= max_files_per_record <= 12
     ):
         raise DiscoveryError("max_files_per_record must be a whole number from 1 to 12")
+    if (
+        inspection_budget is not None
+        and (
+            isinstance(inspection_budget, bool)
+            or not isinstance(inspection_budget, int)
+            or inspection_budget < 0
+        )
+    ):
+        raise DiscoveryError("inspection_budget must be a non-negative whole number")
 
     selected, initially_excluded = _select_unique_records(records, max_records=max_records)
     # Recomputed rather than carried: the flag is set on the search snapshot,
@@ -158,6 +167,7 @@ def _prepare_into_staging(
 ) -> dict[str, Any]:
     studies: list[dict[str, Any]] = []
     selected_accessions: list[str] = []
+    inspections_used = 0
     total_units = max(1, len(geo_records) + len(direct_records))
     if geo_records:
         # One publication can link dozens of series - a consortium publication linked
@@ -209,6 +219,11 @@ def _prepare_into_staging(
             geo_result = {"studies": [], "excluded_studies": []}
         else:
           try:
+              geo_budget = (
+                  max(1, len(accessions) * max_files_per_record)
+                  if inspection_budget is None
+                  else min(inspection_budget, max(0, len(geo_records) * max_files_per_record))
+              )
               geo_result = prepare_geo_studies(
                   accessions,
                   spec.key,
@@ -222,11 +237,7 @@ def _prepare_into_staging(
                   # Deriving it as len(accessions) * max_files_per_record turned a
                   # global cap into a per-record allowance, so the implied total
                   # exceeded what was asked for.
-                  inspection_budget=(
-                      inspection_budget
-                      if inspection_budget is not None
-                      else max(1, len(accessions) * max_files_per_record)
-                  ),
+                  inspection_budget=geo_budget,
                   max_files_per_study=max_files_per_record,
                   materialize_dir=staging,
                   client=geo_client,
@@ -238,6 +249,7 @@ def _prepare_into_staging(
               for geo_record in geo_records:
                   excluded.append(_excluded(geo_record, f"repository preparation failed: {exc}"))
           else:
+              inspections_used += int(geo_result.get("inspections_used") or 0)
               excluded.extend(geo_result.get("excluded_studies", []))
               studies.extend(_augment_geo_studies(geo_result.get("studies", []), record_by_accession))
 
@@ -246,27 +258,65 @@ def _prepare_into_staging(
         0.05 + 0.85 * geo_share,
         f"Inspecting {len(direct_records)} publication(s) with a directly linked file",
     )
-    for direct_index, record in enumerate(direct_records, start=1):
+    if inspection_budget is not None and inspections_used >= inspection_budget:
         report(
-            0.05 + 0.85 * ((len(geo_records) + direct_index - 1) / total_units),
-            f"Downloading and inspecting {direct_index} of {len(direct_records)}",
+            0.90,
+            f"Skipping {len(direct_records)} directly linked publication file(s): inspection budget is exhausted",
         )
-        try:
-            study = _prepare_direct_record(record, spec, staging, max_files_per_record, transport)
-        except DiscoveryUnsafeArchiveError:
-            raise
-        except (DiscoveryError, DiscoveryUnavailableError) as exc:
-            excluded.append(_excluded(record, f"preparation failed for this record: {exc}"))
-            continue
-        if study is None:
-            excluded.append(_excluded(record, "publication record has no public tabular or archive candidate"))
-        elif study["files"]:
-            studies.append(study)
-        else:
-            candidate_errors = list(study.get("candidate_errors") or [])
-            excluded.append(
-                _excluded(record, _exclusion_reason(candidate_errors), candidate_errors=candidate_errors)
+        excluded.extend(
+            _excluded(
+                record,
+                (
+                    "inspection budget is 0; no directly linked file was downloaded or inspected"
+                    if inspection_budget == 0
+                    else "inspection budget was exhausted by earlier repository-file inspections; "
+                    "no directly linked file was downloaded or inspected"
+                ),
             )
+            for record in direct_records
+        )
+    else:
+        for direct_index, record in enumerate(direct_records, start=1):
+            report(
+                0.05 + 0.85 * ((len(geo_records) + direct_index - 1) / total_units),
+                f"Downloading and inspecting {direct_index} of {len(direct_records)}",
+            )
+            remaining_budget = (
+                max_files_per_record
+                if inspection_budget is None
+                else min(max_files_per_record, inspection_budget - inspections_used)
+            )
+            if remaining_budget <= 0:
+                excluded.append(
+                    _excluded(
+                        record,
+                        "inspection budget was exhausted; no directly linked file was downloaded or inspected",
+                    )
+                )
+                continue
+            try:
+                study, direct_inspections = _prepare_direct_record(
+                    record,
+                    spec,
+                    staging,
+                    remaining_budget,
+                    transport,
+                )
+                inspections_used += direct_inspections
+            except DiscoveryUnsafeArchiveError:
+                raise
+            except (DiscoveryError, DiscoveryUnavailableError) as exc:
+                excluded.append(_excluded(record, f"preparation failed for this record: {exc}"))
+                continue
+            if study is None:
+                excluded.append(_excluded(record, "publication record has no public tabular or archive candidate"))
+            elif study["files"]:
+                studies.append(study)
+            else:
+                candidate_errors = list(study.get("candidate_errors") or [])
+                excluded.append(
+                    _excluded(record, _exclusion_reason(candidate_errors), candidate_errors=candidate_errors)
+                )
 
     result = {
         "query": str(query or "").strip(),
@@ -275,6 +325,8 @@ def _prepare_into_staging(
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "source": "Canonical federated publication records",
         "returned_studies": len(studies),
+        "inspection_budget": inspection_budget,
+        "inspections_used": inspections_used,
         "materialize_dir": str(staging),
         "studies": studies,
         "excluded_studies": excluded,
@@ -283,7 +335,9 @@ def _prepare_into_staging(
             "cross_species_pooling": False,
             "max_records": 20,
             "max_files_per_record": max_files_per_record,
-            "fetch_scope": "full",
+            "inspection_budget": inspection_budget,
+            "inspections_used": inspections_used,
+            "fetch_scope": "none" if inspection_budget == 0 else "full",
             "archive_policy": (
                 "ZIP members are path-normalized, symlinks are rejected, nested ZIP depth is capped at 2, "
                 "and only tabular members are materialized."
@@ -351,15 +405,17 @@ def _prepare_direct_record(
     staging: Path,
     max_files_per_record: int,
     transport: Any | None,
-) -> dict[str, Any] | None:
+) -> tuple[dict[str, Any] | None, int]:
     candidates = _candidate_records(record)[:max_files_per_record]
     if not candidates:
-        return None
+        return None, 0
     record_id = _record_id(record)
     study_dir = staging / "public_files" / _safe_name(record_id)
     files: list[dict[str, Any]] = []
     candidate_errors: list[dict[str, str]] = []
+    inspections_used = 0
     for index, candidate in enumerate(candidates, start=1):
+        inspections_used += 1
         downloaded_path = study_dir / f"source_{index:02d}_{_candidate_name(candidate)}"
         # One unreadable supplementary file must cost its own study at most.
         # DiscoveryError and DiscoveryUnavailableError are siblings, so both
@@ -430,7 +486,7 @@ def _prepare_direct_record(
             "upstream_matrix_count": 0,
             "preparation_status": _preparation_status(candidate_errors),
             "candidate_errors": candidate_errors,
-        }
+        }, inspections_used
     ready = sum(item.get("inspection", {}).get("status") == "ready_for_review" for item in files)
     upstream = sum(item.get("inspection", {}).get("status") == "upstream_matrix_ready_for_contrast" for item in files)
     status = (
@@ -448,7 +504,7 @@ def _prepare_direct_record(
         "upstream_matrix_count": upstream,
         "preparation_status": status,
         "candidate_errors": candidate_errors,
-    }
+    }, inspections_used
 
 
 def _materialize_archive_tables(

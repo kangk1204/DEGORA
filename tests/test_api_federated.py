@@ -147,6 +147,34 @@ def _create_search(base: str, species: str) -> dict:
     raise AssertionError("search job did not complete")
 
 
+def test_publication_search_rejects_invalid_page_before_queueing_job(tmp_path: Path) -> None:
+    cases = [
+        (0, "page must be between 1 and 500"),
+        (-3, "page must be between 1 and 500"),
+        (1_000_000_000, "page must be between 1 and 500"),
+        (1.5, "page must be an integer"),
+        ("two", "page must be an integer"),
+        (True, "page must be an integer"),
+        (False, "page must be an integer"),
+    ]
+    server, thread, base = _start_server(tmp_path)
+    try:
+        endpoint = f"{base}/api/discovery/searches"
+        for page, expected in cases:
+            with pytest.raises(urllib.error.HTTPError) as exc_info:
+                _request_json(
+                    endpoint,
+                    payload={"query": "hypoxia", "species": "human", "limit": 20, "page": page},
+                    action=True,
+                )
+            assert exc_info.value.code == 400
+            payload = json.loads(exc_info.value.read().decode())
+            assert payload == {"error": expected}
+        assert server.discovery_search_store.list_jobs() == []
+    finally:
+        _stop_server(server, thread)
+
+
 def test_federated_search_async_pagination_sort_restart_and_export(tmp_path: Path, monkeypatch) -> None:
     page_calls: list[dict] = []
     _install_federated_module(monkeypatch, calls=page_calls)
