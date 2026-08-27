@@ -134,6 +134,9 @@ scenario("two_studies", FIXTURE);
 const oneUsable = JSON.parse(JSON.stringify(FIXTURE));
 oneUsable.studies[1].files[0].inspection.status = "not_deg_table";
 scenario("one_usable", oneUsable);
+const oneUsableWithExcluded = JSON.parse(JSON.stringify(oneUsable));
+oneUsableWithExcluded.excluded_studies = [{ canonical_id: "GSE-EXCLUDED", reason: "mixed species" }];
+scenario("one_usable_with_excluded", oneUsableWithExcluded);
 // The completion card lives in the same renderer: a finished run must reach it.
 {
   const state = activeDiscoveryState();
@@ -357,6 +360,14 @@ def test_a_bundle_with_one_usable_study_explains_the_block(tmp_path) -> None:
     assert "<summary>1 study with no usable table" in html
     # The study with nothing to activate comes after the one that has a candidate.
     assert html.index("GSE343715") < html.index('<details class="unanalyzable-group">')
+
+
+@pytest.mark.skipif(not HAS_NODE, reason="node not available")
+def test_blocked_prepared_counts_include_excluded_studies_consistently(tmp_path) -> None:
+    out = _render_in_node(tmp_path)["one_usable_with_excluded"]
+    assert out["error"] == "", out["error"]
+    assert out["status"] == "3 prepared · 1 usable"
+    assert "1 of 3 prepared studies produced a usable candidate" in out["html"]
 
 
 @pytest.mark.skipif(not HAS_NODE, reason="node not available")

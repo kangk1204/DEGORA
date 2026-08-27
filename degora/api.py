@@ -1051,7 +1051,15 @@ INDEX_HTML = """<!doctype html>
         border-radius: 8px;
         background: #fff;
       }
-      .study-table td { display: block; padding: 0; border: 0; white-space: normal; }
+      .study-table td {
+        display: block;
+        padding: 0;
+        border: 0;
+        white-space: normal;
+        overflow: visible;
+        text-overflow: clip;
+        overflow-wrap: anywhere;
+      }
       .study-table td:nth-child(1) { grid-column: 1; grid-row: 1 / span 3; padding-top: 3px; }
       .study-table td:nth-child(2) { grid-column: 2 / 4; grid-row: 1; }
       .study-table td:nth-child(3),
@@ -3284,11 +3292,12 @@ INDEX_HTML = """<!doctype html>
       }).join("");
       const units = usableSourceUnits(state.prepared);
       const excludedCount = (state.prepared.excluded_studies || []).length;
+      const preparedCount = allStudies.length + excludedCount;
       const blocked = units < 2;
       const blockedNotice = blocked
         ? `<div class="prepared-blocked" role="status">`
           + `<div class="prepared-blocked-copy"><strong>This preparation cannot be analysed.</strong>`
-          + `<span>${units} of ${allStudies.length + excludedCount} prepared stud${allStudies.length + excludedCount === 1 ? "y" : "ies"} produced a usable candidate; `
+          + `<span>${units} of ${preparedCount} prepared stud${preparedCount === 1 ? "y" : "ies"} produced a usable candidate; `
           + `DEGORA needs two independent source units.</span>`
           + `<span class="prepared-blocked-next"><b>Next:</b> Go back to the results, add another study, and prepare again. `
           + `These review fields are switched off because preparing a new selection clears them.</span></div>`
@@ -3304,7 +3313,7 @@ INDEX_HTML = """<!doctype html>
         .querySelectorAll(".candidate-row input, .candidate-row select, .candidate-row button")
         .forEach((control) => { control.disabled = blocked; });
       $("preparedStatus").textContent = blocked
-        ? `${allStudies.length} prepared · ${units} usable`
+        ? `${preparedCount} prepared · ${units} usable`
         : `${allStudies.length} studies prepared`;
       $("analysisCompleteCard").hidden = !state.run;
       if (state.run) {

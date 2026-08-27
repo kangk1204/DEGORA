@@ -1265,6 +1265,17 @@ def test_mobile_dashboard_explains_horizontal_gene_columns_and_wraps_status() ->
     assert "Swipe the table sideways to see Top, Score, Units, Sign and LFC." in INDEX_HTML
     assert ".gene-scroll-hint {" in INDEX_HTML
     assert ".meta { flex-wrap: wrap; overflow-x: visible; row-gap: 4px; }" in INDEX_HTML
+    assert (
+        ".study-table td {\n"
+        "        display: block;\n"
+        "        padding: 0;\n"
+        "        border: 0;\n"
+        "        white-space: normal;\n"
+        "        overflow: visible;\n"
+        "        text-overflow: clip;\n"
+        "        overflow-wrap: anywhere;\n"
+        "      }"
+    ) in INDEX_HTML
     assert '<span class="prepared-blocked-next"><b>Next:</b>' in INDEX_HTML
 
 
