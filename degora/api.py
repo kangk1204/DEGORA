@@ -405,6 +405,8 @@ INDEX_HTML = """<!doctype html>
       line-height: 1.55;
     }
     .prepared-blocked strong { color: #6f2626; }
+    .prepared-blocked-copy { flex: 1 1 360px; display: grid; gap: 3px; }
+    .prepared-blocked-next { color: #6f2626; }
     .shared-submission {
       display: block;
       margin-top: 3px;
@@ -632,6 +634,7 @@ INDEX_HTML = """<!doctype html>
       min-height: 0;
       position: relative;
     }
+    .gene-scroll-hint { display: none; }
     .gene-table-scroll {
       height: 100%;
       overflow: auto;
@@ -1017,6 +1020,15 @@ INDEX_HTML = """<!doctype html>
       .section-head { align-items: flex-start; }
       .section-title-group { align-items: flex-start; flex-direction: column; gap: 5px; }
       .sample-groups { grid-template-columns: 1fr; }
+      .gene-scroll-hint {
+        display: block;
+        margin: 0;
+        padding: 7px 14px;
+        border-bottom: 1px solid var(--line);
+        background: #f7faf9;
+        color: var(--muted);
+        font-size: 11px;
+      }
       .mobile-study-tools {
         display: flex;
         align-items: end;
@@ -1052,6 +1064,7 @@ INDEX_HTML = """<!doctype html>
       .mobile-field-label { display: block; margin-bottom: 3px; color: var(--muted); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
     }
     @media (max-width: 420px) {
+      .meta { flex-wrap: wrap; overflow-x: visible; row-gap: 4px; }
       .policy-row { flex-wrap: wrap; overflow: visible; }
       .policy-chip { white-space: normal; }
     }
@@ -1163,6 +1176,7 @@ INDEX_HTML = """<!doctype html>
         </select>
         <button id="load" data-tip="Apply the filters above and reload the gene list.">Search</button>
       </div>
+      <p class="gene-scroll-hint">Swipe the table sideways to see Top, Score, Units, Sign and LFC.</p>
       <div class="gene-table-shell">
         <div class="gene-table-scroll" id="geneTableScroll">
           <table>
@@ -1714,9 +1728,13 @@ INDEX_HTML = """<!doctype html>
         keys.filter(Boolean).forEach((key) => { outcomes[String(key)] = outcome; });
       };
       (prepared.studies || []).forEach((study) => {
-        const usable = (study.files || []).filter(eligibleCandidate);
+        const files = study.files || [];
+        const usable = files.filter(eligibleCandidate);
+        const rejected = files.find(probeOnlyMatrixCandidate) || files[0] || null;
         const outcome = !usable.length
-          ? { label: "no usable table", ok: false, reason: "Preparation opened every linked file and none was a DEG table or expression matrix." }
+          ? { label: "no usable table", ok: false, reason: rejected
+            ? `Preparation found files, but none could be used. ${candidateRejection(rejected)}`
+            : "Preparation found no linked DEG table or expression matrix." }
           : usable.some(isAuthorReviewable)
           ? { label: "author DEG ready", ok: true, reason: "An author DEG table was resolved; confirm the contrast direction." }
           : { label: "needs group assignment", ok: true, reason: "Only an expression matrix was resolved; assign control and treatment samples." };
@@ -2601,6 +2619,12 @@ INDEX_HTML = """<!doctype html>
       return AUTHOR_REVIEWABLE_STATUSES.has(status);
     }
 
+    function probeOnlyMatrixCandidate(candidate) {
+      const inspection = candidate.inspection || {};
+      return inspection.status === "upstream_matrix_ready_for_contrast"
+        && String(inspection.gene_column || "").trim().toUpperCase() === "ID_REF";
+    }
+
     // "No usable table was resolved within the safety limits" names no file and
     // no limit, so a reader cannot tell a study that published only browser
     // tracks from one whose table was a megabyte over the cap. List what was
@@ -2608,6 +2632,10 @@ INDEX_HTML = """<!doctype html>
     function candidateRejection(candidate) {
       const inspection = candidate.inspection || {};
       const status = inspection.status || "";
+      if (probeOnlyMatrixCandidate(candidate)) {
+        return "ID_REF contains microarray probe identifiers, not gene identifiers. DEGORA cannot map probes "
+          + "to gene symbols in the browser; use a file with a detected gene-symbol or Ensembl column.";
+      }
       // A rejected file was never inspected, so its inspection note only says
       // it was skipped. What the reader needs is why it was never a candidate.
       if (candidate.tier === "reject" || candidate.role === "unsupported") {
@@ -2643,7 +2671,8 @@ INDEX_HTML = """<!doctype html>
 
     function eligibleCandidate(candidate) {
       const status = candidate.inspection?.status || "";
-      return isAuthorReviewable(candidate) || status === "upstream_matrix_ready_for_contrast";
+      return isAuthorReviewable(candidate)
+        || (status === "upstream_matrix_ready_for_contrast" && !probeOnlyMatrixCandidate(candidate));
     }
 
     function detectedAuthorValue(candidate, field) {
@@ -2782,7 +2811,7 @@ INDEX_HTML = """<!doctype html>
       return match ? `${match[1]} vs ${match[2]}` : "";
     }
 
-    const CONTROL_LABEL_RE = /(?<!anti[ -]?)(?<!non[ -]?)(?:^|[^a-z]|(?<=s[ih]))(control|ctrl|ctl|vehicle|veh|dmso|mock|untreated|unstim|wt|wild[ -]?type|sham|healthy|normal|normoxia|baseline|parental|scramble|scr|si[ -]?(ctrl|nc|control|scr)|sh[ -]?(ctrl|nc|control|scr)|nc|non[ -]?target(ing)?|empty vector|ev)(?=$|[^a-z])/i;
+    const CONTROL_LABEL_RE = /(?<!anti[ -]?)(?<!non[ -]?)(?:^|[^a-z]|(?<=s[ih]))(control|ctrl|ctl|vehicle|veh|dmso|mock|untreated|unstim|wt|wild[ -]?type|sham|healthy|normal|normox(?:ia|ic)|baseline|parental|scramble|scr|si[ -]?(ctrl|nc|control|scr)|sh[ -]?(ctrl|nc|control|scr)|nc|non[ -]?target(ing)?|empty vector|ev)(?=$|[^a-z])/i;
 
     // The submitter's characteristics ("treatment: A-485" / "treatment: CPI-637")
     // usually already split the samples into the two groups the reader is about
@@ -2791,46 +2820,93 @@ INDEX_HTML = """<!doctype html>
     // dropdown editable - the attestation below is still the reader's.
     function suggestSampleGroups(row) {
       const norm = (value) => String(value || "").trim().toLowerCase();
+      const titleGroupKey = (value) => {
+        const raw = norm(value);
+        let key = raw
+          .replace(/(?:^|[_. -]+)(?:biological[ _-]?)?rep(?:licate)?[ _-]*\\d+\\b/g, " ")
+          .replace(/(?:^|[_. -]+)sample[ _-]*\\d+\\b/g, " ")
+          .replace(/[_.-]+/g, " ")
+          .replace(/\\s+/g, " ")
+          .trim();
+        // Many submitters use only a terminal ordinal ("Control 1",
+        // "Control 2") for replicates. Strip that form, but keep ordinals
+        // after common biological axes so titles such as "day 1" and
+        // "dose 2" are not silently pooled as replicates.
+        if (/(?:^|[ _])\\d+$/.test(raw)
+            && !/\\b(?:day|week|month|hour|hr|dose|time|stage|phase|passage|visit|cycle)\\s+\\d+$/i.test(key)) {
+          key = key.replace(/\\s+\\d+$/, "").trim();
+        }
+        return key;
+      };
       const items = [...row.querySelectorAll(".sample-item")];
+      const blobKeys = new Set();
       const facts = items.map((item) => {
         // The characteristics live in their own span; the title tooltip also
         // carries the sample's own name, which would parse as a bogus key.
         const traitSpan = item.querySelector(".sample-traits");
         const traits = traitSpan ? String(traitSpan.textContent || "") : String(item.getAttribute("title") || "").split(" — ").slice(-1)[0];
         const pairs = {};
+        let blob = false;
         traits.split(" · ").forEach((piece) => {
           const at = piece.indexOf(":");
-          if (at > 0) pairs[norm(piece.slice(0, at))] = piece.slice(at + 1).trim();
+          if (at <= 0) return;
+          const value = piece.slice(at + 1).trim();
+          // Older series cram every field into one characteristics string
+          // ("Organism Part: kidney Gender: female Age: 55 Disease state:
+          // normal tissue", sometimes "Gender:female Age:55" with no spaces).
+          // Parsed as one key whose value swallows the rest, that produced
+          // condition-mixed control/treatment suggestions. Two or more
+          // embedded "Key:" tokens mark that unstructured form; only the
+          // glued piece is skipped, so a clean field beside it still counts.
+          const embedded = value.match(/\\s[A-Za-z][\\w ()%/+-]{0,30}:(?!\\/)/g) || [];
+          if (embedded.length >= 2) { blob = true; blobKeys.add(norm(piece.slice(0, at))); return; }
+          pairs[norm(piece.slice(0, at))] = value;
         });
         // A column GEO could not match has no label to read; it stays at Ignore.
         const labelled = !item.querySelector(".sample-label-missing");
         const title = labelled
           ? (item.querySelector(".sample-label")?.textContent || item.querySelector(".sample-id")?.textContent || "").trim()
           : "";
-        return { item, pairs, title, labelled };
+        return { item, pairs, title, labelled, blob };
       });
       const keys = new Set();
       facts.forEach((fact) => Object.keys(fact.pairs).forEach((key) => keys.add(key)));
       const preferred = ["treatment", "condition", "agent", "group", "genotype", "stimulation", "exposure", "disease state", "disease", "phenotype", "status"];
-      const ordered = [...keys].sort((a, b) => (preferred.indexOf(a) + 1 || 99) - (preferred.indexOf(b) + 1 || 99));
+      const unstructured = facts.some((fact) => fact.blob);
+      // When the glued piece IS a preferred key ("treatment: X, time: 24 h,
+      // dose: 10 nM"), dropping it per-sample would slide the split onto a
+      // less-preferred key and partition by the wrong variable. The most
+      // informative field being unreadable disqualifies every characteristic
+      // split; the titles remain, and the note says what was discarded. A
+      // glued junk key ("organism part") only silences itself: the blob
+      // sample lacks it, so the every-sample requirement below rejects it.
+      const preferredBlobKey = preferred.find((key) => blobKeys.has(key)) || "";
+      const ordered = preferredBlobKey
+        ? []
+        : [...keys].sort((a, b) => (preferred.indexOf(a) + 1 || 99) - (preferred.indexOf(b) + 1 || 99));
+      const labelledFacts = facts.filter((fact) => fact.labelled);
+      const knownFor = (key) => labelledFacts.filter((fact) => norm(fact.pairs[key]));
       const note = row.querySelector(".sample-suggest-note");
       const say = (text) => { if (note) note.textContent = text; };
       // A key that every sample carries and that takes three or more values is
       // a multi-arm design: no two-way split is honest, from this key or from
       // the titles, because "the others" would pool arms the reader never chose.
       const multiArm = ordered.map((key) => {
-        const values = facts.map((fact) => fact.pairs[key]);
+        const known = knownFor(key);
+        const values = known.map((fact) => fact.pairs[key]);
         const distinctNorm = [...new Set(values.map(norm).filter(Boolean))];
         // Shown in the first spelling seen, compared normalised.
         const distinct = distinctNorm.map((value) => values.find((raw) => norm(raw) === value));
-        return values.every(Boolean) && distinct.length >= 3 ? { key, distinct } : null;
+        return known.length === labelledFacts.length && distinct.length >= 3 ? { key, distinct } : null;
       }).find(Boolean);
       let best = null;
       ordered.forEach((key) => {
         if (best) return;
-        const values = facts.map((fact) => fact.pairs[key]);
+        const known = knownFor(key);
+        const values = known.map((fact) => fact.pairs[key]);
         const distinctNorm = [...new Set(values.map(norm).filter(Boolean))];
-        if (values.every(Boolean) && distinctNorm.length === 2) {
+        const armCounts = distinctNorm.map((value) => values.filter((raw) => norm(raw) === value).length);
+        if (known.length === labelledFacts.length && distinctNorm.length === 2 && armCounts.every((count) => count >= 2)) {
           // Display the first spelling seen for each value; compare normalised.
           const shown = distinctNorm.map((value) => values.find((raw) => norm(raw) === value));
           best = { key, values: shown };
@@ -2845,7 +2921,12 @@ INDEX_HTML = """<!doctype html>
           const controlValue = aControl ? a : b;
           const treatValue = aControl ? b : a;
           split = { basis: best.key, control: controlValue, treatment: treatValue,
-            assign: (fact) => (norm(fact.pairs[best.key]) === norm(controlValue) ? "control" : "treatment") };
+            assign: (fact) => {
+              if (!fact.labelled) return "";
+              const value = norm(fact.pairs[best.key]);
+              if (value === norm(controlValue)) return "control";
+              return value === norm(treatValue) ? "treatment" : "";
+            } };
         } else {
           say(`Two groups by ${best.key} (${a} / ${b}), but ${aControl ? "both read" : "neither reads"} as a control - set Control and Treatment by hand.`);
           return;
@@ -2854,17 +2935,34 @@ INDEX_HTML = """<!doctype html>
         say(`${multiArm.key} has ${multiArm.distinct.length} values (${multiArm.distinct.join(" / ")}): a contrast compares two. Set the one arm to compare against its control and leave the others at Ignore.`);
         return;
       } else {
-        // No characteristic splits them in two: fall back to the sample titles,
-        // and say that the other side may mix several conditions.
-        const controls = facts.filter((fact) => fact.labelled && CONTROL_LABEL_RE.test(fact.title));
-        const others = facts.filter((fact) => fact.labelled && !CONTROL_LABEL_RE.test(fact.title));
-        if (controls.length >= 2 && others.length >= 2) {
-          split = { basis: "sample titles", control: "titles that read as a control", treatment: "every other labelled sample (may mix several conditions)",
-            assign: (fact) => (!fact.labelled ? "" : CONTROL_LABEL_RE.test(fact.title) ? "control" : "treatment") };
+        // No characteristic splits them in two. Title fallback is permitted
+        // only when replicate suffixes collapse to exactly two repeated arms
+        // and exactly one reads as a control. Treating every non-control title
+        // as one arm pooled hypoxia, drug and knockout conditions together.
+        const byTitle = new Map();
+        facts.filter((fact) => fact.labelled).forEach((fact) => {
+          const key = titleGroupKey(fact.title);
+          if (!key) return;
+          if (!byTitle.has(key)) byTitle.set(key, []);
+          byTitle.get(key).push(fact);
+        });
+        const titleGroups = [...byTitle.entries()];
+        const controlGroups = titleGroups.filter(([key]) => CONTROL_LABEL_RE.test(key));
+        if (titleGroups.length === 2 && controlGroups.length === 1 && titleGroups.every(([, group]) => group.length >= 2)) {
+          const controlKey = controlGroups[0][0];
+          const treatmentKey = titleGroups.find(([key]) => key !== controlKey)[0];
+          split = { basis: "sample titles", control: controlKey, treatment: treatmentKey,
+            assign: (fact) => (!fact.labelled ? "" : titleGroupKey(fact.title) === controlKey ? "control" : "treatment") };
+        } else if (titleGroups.length >= 3) {
+          say((preferredBlobKey ? `The ${preferredBlobKey} characteristic is unstructured text here and was not used. ` : "")
+            + `Sample titles form ${titleGroups.length} groups, but a contrast compares two; choose Control, Treatment and Ignore by hand.`);
+          return;
         }
       }
       if (!split) {
-        say("No two-way split in the sample labels; assign the groups by hand.");
+        say(unstructured
+          ? "Some of these samples' GEO characteristics are one unstructured string, so those fields were not used, and the sample titles hold no two-way split either; assign the groups by hand."
+          : "No two-way split in the sample labels; assign the groups by hand.");
         return;
       }
       let nControl = 0, nTreatment = 0;
@@ -2880,7 +2978,8 @@ INDEX_HTML = """<!doctype html>
         new Set(facts.filter((fact) => split.assign(fact) === group).map((fact) => norm(fact.pairs[key]))).size > 1));
       const label = row.querySelector(".contrast-label");
       if (label && !label.value.trim() && split.basis !== "sample titles") label.value = `${split.treatment} vs ${split.control}`;
-      say(`Suggested from ${split.basis}: control = ${split.control} (${nControl}), treatment = ${split.treatment} (${nTreatment}).`
+      say((preferredBlobKey ? `The ${preferredBlobKey} characteristic is unstructured text here and was not used. ` : "")
+        + `Suggested from ${split.basis}: control = ${split.control} (${nControl}), treatment = ${split.treatment} (${nTreatment}).`
         + (varying.length ? ` Note: ${varying.join(", ")} still varies inside a group, so this pools those levels; set the ones you do not mean to Ignore.` : "")
         + " Check every row, then confirm below.");
       ["direction-confirmed", "biological-replicates-confirmed"].forEach((name) => {
@@ -2928,7 +3027,13 @@ INDEX_HTML = """<!doctype html>
     }
 
     function sampleFilterText(item) {
-      return String(item.textContent || "").toLowerCase();
+      // Only the sample's own name, label and characteristics. The embedded
+      // <select>'s option labels ("Ignore/Control/Treatment") used to be part
+      // of textContent, so the very terms a reader types ("control", "treat",
+      // "ignore") matched every row and a bulk press reassigned all samples.
+      const parts = [...item.querySelectorAll(".sample-id, .sample-label, .sample-traits")]
+        .map((node) => String(node.textContent || ""));
+      return parts.join(" ").toLowerCase();
     }
 
     function matchingSampleItems(row) {
@@ -3182,10 +3287,11 @@ INDEX_HTML = """<!doctype html>
       const blocked = units < 2;
       const blockedNotice = blocked
         ? `<div class="prepared-blocked" role="status">`
-          + `<strong>This preparation cannot be analysed.</strong> `
-          + `${units} of ${allStudies.length + excludedCount} prepared stud${allStudies.length + excludedCount === 1 ? "y" : "ies"} produced a usable candidate, `
-          + `and DEGORA needs two independent source units. The review fields below are switched off because preparing a new selection clears them — `
-          + `go back to the results, add another study, and prepare again.`
+          + `<div class="prepared-blocked-copy"><strong>This preparation cannot be analysed.</strong>`
+          + `<span>${units} of ${allStudies.length + excludedCount} prepared stud${allStudies.length + excludedCount === 1 ? "y" : "ies"} produced a usable candidate; `
+          + `DEGORA needs two independent source units.</span>`
+          + `<span class="prepared-blocked-next"><b>Next:</b> Go back to the results, add another study, and prepare again. `
+          + `These review fields are switched off because preparing a new selection clears them.</span></div>`
           + `<button class="action-secondary" type="button" data-back-to-results>Back to studies</button></div>`
         : "";
       $("preparedCandidates").innerHTML = blockedNotice + (html + excluded || `<div class="discovery-empty">No candidates were prepared.</div>`);
@@ -3394,6 +3500,17 @@ INDEX_HTML = """<!doctype html>
       const pending = unconfirmedSpeciesStudies(state);
       const line = $("speciesConfirmLine");
       const control = $("speciesConfirmed");
+      // The checkbox is one shared DOM element, but a tick is an attestation
+      // about one specific prepared bundle. Without this reset, a tick made
+      // for a Human bundle silently satisfied the attestation for the next
+      // bundle - and even for the Mouse workspace's bundle.
+      const bundleKey = `${activeSpecies}:${String(
+        (state.prepared && (state.prepared.bundle_id || state.prepared.generated_at)) || ""
+      )}`;
+      if (control.dataset.bundleKey !== bundleKey) {
+        control.checked = false;
+        control.dataset.bundleKey = bundleKey;
+      }
       if (!pending.length) {
         line.hidden = true;
         control.checked = false;
@@ -3429,6 +3546,14 @@ INDEX_HTML = """<!doctype html>
       const hasFallback = rows.some((row) => row.dataset.mode === "fallback");
       const textValue = (row, selector) => (row.querySelector(selector)?.value || "").trim();
       const boolValue = (row, selector) => Boolean(row.querySelector(selector)?.checked);
+      // The activation gate refuses gene_column=ID_REF (a probe identifier, not
+      // a gene column), and the browser offers no probe-to-symbol mapping. Left
+      // unchecked here, the panel said "review complete", enabled Run, and only
+      // the run itself told the reader their whole review was a dead end.
+      const probeGeneColumn = (row) => (
+        row.dataset.mode === "fallback"
+        && textValue(row, ".gene-column").toUpperCase() === "ID_REF"
+      );
       const authorMappingEdited = (row) => (
         textValue(row, ".sheet-name") !== (row.dataset.detectedSheetName || "")
         || textValue(row, ".gene-column") !== (row.dataset.detectedGeneColumn || "")
@@ -3469,6 +3594,7 @@ INDEX_HTML = """<!doctype html>
             && authorReviewComplete(row);
         }
         if (!(row.querySelector(".gene-column")?.value || "").trim()) return false;
+        if (probeGeneColumn(row)) return false;
         if (!row.querySelector(".biological-replicates-confirmed")?.checked) return false;
         const typeSelect = row.querySelector(".matrix-type");
         if (typeSelect && !typeSelect.value) return false;
@@ -3554,7 +3680,17 @@ INDEX_HTML = """<!doctype html>
           const biological = row.querySelector(".biological-replicates-confirmed");
           const matrixType = row.querySelector(".matrix-type");
           const normalizedScale = row.querySelector(".normalized-scale");
-          const geneValid = Boolean((gene?.value || "").trim());
+          const probeColumn = probeGeneColumn(row);
+          const geneValid = Boolean((gene?.value || "").trim()) && !probeColumn;
+          if (gene) {
+            if (probeColumn) {
+              gene.title = "ID_REF is a probe identifier, not a gene column, and DEGORA cannot map "
+                + "probes to gene symbols in the browser. Pick a gene-symbol column from this file, "
+                + "or untick the file and choose another study.";
+            } else {
+              gene.removeAttribute("title");
+            }
+          }
           const biologicalValid = Boolean(biological?.checked);
           const matrixTypeValid = !matrixType || Boolean(matrixType.value);
           const resolvedRole = matrixType ? matrixType.value : row.dataset.role;
@@ -3594,7 +3730,12 @@ INDEX_HTML = """<!doctype html>
           ? `One independent ${speciesLabel(activeSpecies)} study is selected; DEGORA needs two.${supply}`
           : `Select candidates from at least two independent ${speciesLabel(activeSpecies)} studies.${supply}`;
       } else if (!reviewComplete) {
-        $("analysisEligibility").textContent = hasFallback
+        const probeRows = rows.filter(probeGeneColumn);
+        $("analysisEligibility").textContent = probeRows.length
+          ? "A selected file's gene column is ID_REF - a probe identifier DEGORA cannot map to gene "
+            + "symbols in the browser. Pick a gene-symbol column for the flagged file, or untick it "
+            + "and choose another study."
+          : hasFallback
           ? "Complete each exact contrast and direction confirmation; fallback matrices also require scale, biological-replicate attestation, and 2 + 2 sample assignment."
           : "Enter exact contrasts, mappings, positive whole-number biological group sizes, and all required author-table confirmations.";
       } else {

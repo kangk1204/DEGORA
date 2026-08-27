@@ -184,6 +184,138 @@ console.log(JSON.stringify({ unedited, edited, scoped: isOpen() }));
 """
 
 
+PROBE_EPILOGUE = r"""
+function fallback(id, gene) {
+  return { candidate_id: id, name: `${id}.csv`, role: "normalized_expression_matrix", inspection: {
+    status: "upstream_matrix_ready_for_contrast", gene_column: gene,
+    sample_columns: ["c1", "c2", "t1", "t2"], sample_labels: {}, whole_number_share: 0.1 } };
+}
+function prepared(gene) {
+  return { bundle_id: `bundle-${gene}`, excluded_studies: [], studies: ["GSE1", "GSE2"].map((accession, index) => ({
+    accession, source_unit_id: accession, species_decision: "confirmed", files: [fallback(`m${index}`, gene)]
+  })) };
+}
+function renderProbe(gene) {
+  const state = activeDiscoveryState();
+  state.prepared = prepared(gene); state.bundleId = state.prepared.bundle_id; state.draft = {}; state.run = null; state.preparing = false;
+  let error = "";
+  try { renderPreparedState(); } catch (e) { error = String((e && e.stack) || e); }
+  const outcome = preparedOutcomes(state)[state.prepared.studies[0].accession];
+  return { error, status: byId.preparedStatus.textContent, html: byId.preparedCandidates.innerHTML,
+    usable: usableSourceUnits(state.prepared), eligible: eligibleCandidate(state.prepared.studies[0].files[0]),
+    reason: candidateRejection(state.prepared.studies[0].files[0]), outcomeReason: outcome.reason };
+}
+console.log(JSON.stringify({ probe: renderProbe("ID_REF"), symbol: renderProbe("Gene Symbol") }));
+"""
+
+
+GROUP_AND_FILTER_EPILOGUE = r"""
+capturePreparedDraft = () => {};
+updateAnalysisEligibility = () => {};
+updateSampleCounts = () => {};
+function sampleItem(id, title, traits) {
+  const select = { value: "", dataset: { sample: id } };
+  const nodes = { ".sample-id": { textContent: id }, ".sample-label": { textContent: title },
+    ".sample-traits": { textContent: traits }, "[data-sample]": select };
+  return { select, title: `${id} — ${title} — ${traits}`,
+    querySelector(selector) { return selector === ".sample-label-missing" ? null : (nodes[selector] || null); },
+    querySelectorAll(selector) { return selector === ".sample-id, .sample-label, .sample-traits"
+      ? [nodes[".sample-id"], nodes[".sample-label"], nodes[".sample-traits"]] : []; },
+    getAttribute(name) { return name === "title" ? this.title : null; },
+    classList: { hidden: false, toggle(_name, value) { this.hidden = value; } } };
+}
+function suggestionScenario(specs) {
+  const items = specs.map((item, index) => sampleItem(`GSM${index + 1}`, item[0], item[1]));
+  const note = { textContent: "" }, contrast = { value: "" }, direction = { checked: true }, biological = { checked: true };
+  const row = { querySelectorAll(selector) { return selector === ".sample-item" ? items : []; },
+    querySelector(selector) { return ({ ".sample-suggest-note": note, ".contrast-label": contrast,
+      ".direction-confirmed": direction, ".biological-replicates-confirmed": biological })[selector] || null; } };
+  suggestSampleGroups(row);
+  return { groups: items.map((item) => item.select.value), note: note.textContent, contrast: contrast.value };
+}
+const cleanTraits = "Organism Part: kidney · Gender: female · Age: 55 · Disease state: normal tissue";
+const blobTraits = "Organism Part: kidney Gender: female Age: 55 Disease state: normal tissue";
+const gse = suggestionScenario([
+  ["RPTEC_normoxic_rep1", cleanTraits], ["RPTEC_normoxic_rep2", blobTraits], ["RPTEC_normoxic_rep3", blobTraits],
+  ["RPTEC_hypoxic_rep1", cleanTraits], ["RPTEC_hypoxic_rep2", blobTraits], ["RPTEC_hypoxic_rep3", blobTraits]
+]);
+const preferredBlob = "treatment: unstructured time: 24 h dose: 10 nM · cell type: epithelial";
+const multi = suggestionScenario([
+  ["RPTEC_normoxic_rep1", preferredBlob], ["RPTEC_normoxic_rep2", preferredBlob],
+  ["RPTEC_hypoxic_rep1", preferredBlob], ["RPTEC_hypoxic_rep2", preferredBlob],
+  ["RPTEC_drug_rep1", preferredBlob], ["RPTEC_drug_rep2", preferredBlob]
+]);
+const plainOrdinal = suggestionScenario([
+  ["normoxic 1", ""], ["normoxic 2", ""], ["normoxic 3", ""],
+  ["hypoxic 1", ""], ["hypoxic 2", ""], ["hypoxic 3", ""]
+]);
+const protectedTime = suggestionScenario([
+  ["control day 1", ""], ["control day 2", ""],
+  ["hypoxic day 1", ""], ["hypoxic day 2", ""]
+]);
+const protectedDose = suggestionScenario([
+  ["control dose 1", ""], ["control dose 2", ""],
+  ["drug dose 1", ""], ["drug dose 2", ""]
+]);
+const filterItems = Array.from({ length: 6 }, (_unused, index) => sampleItem(`GSM${index}`, `hypoxic rep${index + 1}`, "kidney"));
+const field = { value: "control" }, count = { textContent: "" };
+const buttons = ["control", "treatment", ""].map((group) => ({ dataset: { group }, textContent: "", disabled: false }));
+const filterRow = { querySelector(selector) { return selector === ".sample-filter" ? field : selector === ".sample-bulk-count" ? count : null; },
+  querySelectorAll(selector) { return selector === ".sample-item" ? filterItems : selector === ".sample-bulk-apply" ? buttons : []; } };
+refreshSampleFilter(filterRow);
+console.log(JSON.stringify({ gse, multi, plainOrdinal, protectedTime, protectedDose, filter: { count: count.textContent,
+  hidden: filterItems.map((item) => item.classList.hidden), disabled: buttons.map((button) => button.disabled) } }));
+"""
+
+
+SPECIES_EPILOGUE = r"""
+activeSpecies = "human";
+const state = { prepared: { bundle_id: "A", studies: [{ species_decision: "unknown" }] } };
+updateSpeciesConfirmation(state);
+byId.speciesConfirmed.checked = true;
+const same = updateSpeciesConfirmation(state);
+state.prepared.bundle_id = "B";
+const changed = updateSpeciesConfirmation(state);
+byId.speciesConfirmed.checked = true;
+activeSpecies = "mouse";
+const speciesChanged = updateSpeciesConfirmation(state);
+console.log(JSON.stringify({ same, changed, afterBundle: byId.speciesConfirmed.checked,
+  speciesChanged, key: byId.speciesConfirmed.dataset.bundleKey }));
+"""
+
+
+PROBE_GATE_EPILOGUE = r"""
+function control(value = "", checked = false) {
+  const attrs = {};
+  return { value, checked, title: "", attrs, classList: { toggle() {} },
+    setAttribute(name, item) { attrs[name] = item; }, removeAttribute(name) { delete attrs[name]; }, closest() { return null; } };
+}
+function fallbackRow(unit, geneValue) {
+  const controls = { ".candidate-enable": control("", true), ".contrast-label": control("x vs c"),
+    ".direction-confirmed": control("", true), ".gene-column": control(geneValue),
+    ".biological-replicates-confirmed": control("", true), ".normalized-scale": control("log2"),
+    ".sample-groups": control() };
+  const samples = [control("control"), control("control"), control("treatment"), control("treatment")];
+  return { dataset: { mode: "fallback", role: "normalized_expression_matrix", sourceUnit: unit, accession: unit },
+    attrs: {}, setAttribute(name, value) { this.attrs[name] = value; }, removeAttribute(name) { delete this.attrs[name]; },
+    querySelector(selector) { return controls[selector] || null; },
+    querySelectorAll(selector) { return selector === "[data-sample]" ? samples : []; }, controls };
+}
+const probe = fallbackRow("U1", "ID_REF"), valid = fallbackRow("U2", "Gene Symbol");
+selectedCandidateRows = () => [probe, valid];
+byId.preparedCandidates.querySelectorAll = (selector) => selector === ".candidate-row" ? [probe, valid] : [];
+const state = activeDiscoveryState();
+state.prepared = { bundle_id: "gate", studies: [
+  { source_unit_id: "U1", species_decision: "confirmed", files: [{ inspection: { status: "upstream_matrix_ready_for_contrast", gene_column: "Gene Symbol" } }] },
+  { source_unit_id: "U2", species_decision: "confirmed", files: [{ inspection: { status: "upstream_matrix_ready_for_contrast", gene_column: "Gene Symbol" } }] }
+] };
+state.analyzing = false;
+updateAnalysisEligibility();
+console.log(JSON.stringify({ disabled: byId.runDiscoveryAnalysis.disabled, message: byId.analysisEligibility.textContent,
+  invalid: probe.controls[".gene-column"].attrs["aria-invalid"] || "", title: probe.controls[".gene-column"].title }));
+"""
+
+
 def _render_in_node(tmp_path: Path, epilogue: str = PREPARED_EPILOGUE) -> dict:
     harness = PRELUDE + _script() + "\nconst FIXTURE = " + FIXTURE.read_text(encoding="utf-8") + ";\n" + epilogue
     script = tmp_path / "page_harness.js"
@@ -276,3 +408,62 @@ def test_a_finished_run_reaches_the_completion_card(tmp_path) -> None:
     assert out["warningsHtml"].count("Ensembl IDs") == 1  # deduplicated
     assert "DEG-only table" in out["warningsHtml"]
     assert out["excelDisabled"] is False
+
+
+@pytest.mark.skipif(not HAS_NODE, reason="node not available")
+def test_probe_only_matrices_are_not_counted_as_usable_but_real_gene_columns_are(tmp_path) -> None:
+    out = _render_in_node(tmp_path, PROBE_EPILOGUE)
+    assert out["probe"]["error"] == "", out["probe"]["error"]
+    assert out["probe"]["status"] == "2 prepared · 0 usable"
+    assert out["probe"]["usable"] == 0 and out["probe"]["eligible"] is False
+    assert "ID_REF contains microarray probe identifiers" in out["probe"]["reason"]
+    assert "ID_REF contains microarray probe identifiers" in out["probe"]["outcomeReason"]
+    assert "0 of 2 prepared studies produced a usable candidate" in out["probe"]["html"]
+    assert out["symbol"]["error"] == "", out["symbol"]["error"]
+    assert out["symbol"]["status"] == "2 studies prepared"
+    assert out["symbol"]["usable"] == 2 and out["symbol"]["eligible"] is True
+
+
+@pytest.mark.skipif(not HAS_NODE, reason="node not available")
+def test_gse12792_title_fallback_is_exact_and_multi_arm_titles_are_refused(tmp_path) -> None:
+    out = _render_in_node(tmp_path, GROUP_AND_FILTER_EPILOGUE)
+    assert out["gse"]["groups"] == ["control"] * 3 + ["treatment"] * 3
+    assert "Suggested from sample titles" in out["gse"]["note"]
+    assert out["gse"]["contrast"] == ""
+    assert out["multi"]["groups"] == [""] * 6
+    assert "treatment characteristic is unstructured text here and was not used" in out["multi"]["note"]
+    assert "form 3 groups" in out["multi"]["note"]
+    assert out["multi"]["contrast"] == ""
+    assert out["plainOrdinal"]["groups"] == ["control"] * 3 + ["treatment"] * 3
+    assert "Suggested from sample titles" in out["plainOrdinal"]["note"]
+    assert out["protectedTime"]["groups"] == [""] * 4
+    assert "form 4 groups" in out["protectedTime"]["note"]
+    assert out["protectedDose"]["groups"] == [""] * 4
+    assert "form 4 groups" in out["protectedDose"]["note"]
+
+
+@pytest.mark.skipif(not HAS_NODE, reason="node not available")
+def test_sample_filter_ignores_control_option_text(tmp_path) -> None:
+    out = _render_in_node(tmp_path, GROUP_AND_FILTER_EPILOGUE)["filter"]
+    assert out["count"] == "0 of 6 match"
+    assert out["hidden"] == [True] * 6
+    assert out["disabled"] == [True] * 3
+
+
+@pytest.mark.skipif(not HAS_NODE, reason="node not available")
+def test_species_confirmation_is_scoped_to_one_bundle_and_species(tmp_path) -> None:
+    out = _render_in_node(tmp_path, SPECIES_EPILOGUE)
+    assert out["same"] is True
+    assert out["changed"] is False
+    assert out["speciesChanged"] is False
+    assert out["afterBundle"] is False
+    assert out["key"] == "mouse:B"
+
+
+@pytest.mark.skipif(not HAS_NODE, reason="node not available")
+def test_manual_id_ref_entry_is_rejected_at_review_before_run(tmp_path) -> None:
+    out = _render_in_node(tmp_path, PROBE_GATE_EPILOGUE)
+    assert out["disabled"] is True
+    assert "probe identifier DEGORA cannot map" in out["message"]
+    assert out["invalid"] == "true"
+    assert "Pick a gene-symbol column" in out["title"]

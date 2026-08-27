@@ -17,7 +17,7 @@ from .excel_export import DEFAULT_WORKBOOK_NAME, export_run_workbook
 from .formula_safety import formula_guard_metadata, neutralize_formula_text
 from .harmonize import _read_excel_any, _restore_unnamed_row_labels
 from .provenance import shell_command, write_source_sidecar
-from .reanalysis import derive_welch_deg
+from .reanalysis import derive_welch_deg, read_matrix_frame, sniff_delimited_separator
 from .score_db import write_score_database
 from .slice_runner import CATALOG_COLUMNS, run_slice, run_warning_messages, validate_catalog_inputs
 
@@ -375,8 +375,22 @@ def _read_author_frame(path: Path, *, sheet_name: str, header_row: int) -> pd.Da
     if suffixes.endswith((".xlsx", ".xls", ".xlsx.gz", ".xls.gz")):
         selected_sheet: str | int = sheet_name or 0
         return _read_excel_any(path, sheet_name=selected_sheet, header_row=header_row)
-    separator = "\t" if suffixes.endswith((".tsv", ".txt", ".tsv.gz", ".txt.gz")) else ","
-    return pd.read_csv(path, sep=separator, header=header)
+    # Delimiter, decoding and line numbering must all match what inspection
+    # saw: it sniffed the separator, decoded utf-8-sig with replacement, and
+    # counted blank lines when numbering header_row (pandas drops them by
+    # default, which shifted the header one row down on such files). Blank
+    # data lines come back as all-NaN rows and are dropped right here.
+    frame = pd.read_csv(
+        path,
+        sep=sniff_delimited_separator(path),
+        header=header,
+        encoding="utf-8-sig",
+        encoding_errors="replace",
+        skip_blank_lines=False,
+    )
+    # A contiguous index again, or the dropped blank rows leave gaps that
+    # _restore_unnamed_row_labels mistakes for R-style row labels.
+    return frame.dropna(how="all").reset_index(drop=True)
 
 
 def _author_filter(entry: dict[str, Any]) -> tuple[str, str]:
@@ -628,37 +642,59 @@ MATRIX_TYPES = ("count_matrix", "normalized_expression_matrix", ESTIMATED_COUNT_
 ESTIMATED_COUNT_FRACTIONAL_SHARE = 0.5
 
 
-def _selected_values(source_path: Path, sample_columns: list[str]) -> "pd.Series | None":
-    """Numeric values of the selected sample columns in the first COUNT_SAMPLE_ROWS rows."""
+def _selected_values(
+    source_path: Path,
+    sample_columns: list[str],
+    sheet_name: str | int | None = None,
+    header_row: int | None = None,
+) -> pd.Series:
+    """Numeric values of the selected sample columns in the first COUNT_SAMPLE_ROWS rows.
 
-    suffixes = "".join(Path(source_path).suffixes).lower()
+    ``sheet_name`` must be the sheet the derivation itself will read; checking
+    sheet 0 while the derivation reads the inspected sheet silently no-ops the
+    preflight on any multi-sheet workbook.
+    """
+
     try:
-        if suffixes.endswith((".xlsx", ".xls", ".xlsx.gz", ".xls.gz")):
-            frame = _read_excel_any(Path(source_path), 0, header_row=1).head(COUNT_SAMPLE_ROWS)
-        else:
-            separator = "\t" if suffixes.endswith((".tsv", ".txt", ".tsv.gz", ".txt.gz")) else ","
-            frame = pd.read_csv(source_path, sep=separator, nrows=COUNT_SAMPLE_ROWS)
-    except Exception:  # noqa: BLE001 - the derivation reports an unreadable file itself
-        return None
+        frame = read_matrix_frame(
+            source_path,
+            sheet_name=sheet_name,
+            header_row=header_row,
+            nrows=COUNT_SAMPLE_ROWS,
+        )
+    except Exception as exc:
+        raise DiscoveryError(
+            "matrix preflight could not reopen the table at the inspected sheet/header: "
+            f"{type(exc).__name__}: {exc}"
+        ) from exc
     # Deduplicated: a sample named in both groups is reported by the disjointness
     # check in its own words, not by pandas refusing to stack repeated columns.
-    columns = [name for name in dict.fromkeys(sample_columns) if name in frame.columns]
-    if not columns:
-        return None
+    requested = list(dict.fromkeys(sample_columns))
+    missing = [name for name in requested if name not in frame.columns]
+    if missing:
+        raise DiscoveryError(
+            "matrix preflight could not find the inspected sample column(s): " + ", ".join(map(str, missing))
+        )
+    columns = [name for name in requested if name in frame.columns]
     values = pd.to_numeric(frame[columns].stack(), errors="coerce").dropna()
-    return None if values.empty else values
+    if values.empty:
+        raise DiscoveryError("matrix preflight found no numeric values in the selected sample columns")
+    return values
 
 
-def _whole_number_share(values: "pd.Series") -> float:
+def _whole_number_share(values: pd.Series) -> float:
     return float(((values - values.round()).abs() < 1e-9).mean())
 
 
-def _require_whole_number_counts(source_path: Path, sample_columns: list[str]) -> None:
+def _require_whole_number_counts(
+    source_path: Path,
+    sample_columns: list[str],
+    sheet_name: str | int | None = None,
+    header_row: int | None = None,
+) -> None:
     """Refuse matrix_type=count_matrix when the selected columns are not whole numbers."""
 
-    values = _selected_values(source_path, sample_columns)
-    if values is None:
-        return
+    values = _selected_values(source_path, sample_columns, sheet_name=sheet_name, header_row=header_row)
     whole = _whole_number_share(values)
     if whole < COUNT_WHOLE_NUMBER_SHARE:
         raise DiscoveryError(
@@ -670,7 +706,12 @@ def _require_whole_number_counts(source_path: Path, sample_columns: list[str]) -
         )
 
 
-def _require_estimated_counts(source_path: Path, sample_columns: list[str]) -> float | None:
+def _require_estimated_counts(
+    source_path: Path,
+    sample_columns: list[str],
+    sheet_name: str | int | None = None,
+    header_row: int | None = None,
+) -> float:
     """Refuse matrix_type=estimated_count_matrix over values that cannot be counts at all.
 
     Estimated counts are fractional, so the whole-number share says nothing;
@@ -678,9 +719,7 @@ def _require_estimated_counts(source_path: Path, sample_columns: list[str]) -> f
     the row's notes.
     """
 
-    values = _selected_values(source_path, sample_columns)
-    if values is None:
-        return None
+    values = _selected_values(source_path, sample_columns, sheet_name=sheet_name, header_row=header_row)
     lowest = float(values.min())
     if lowest < 0:
         raise DiscoveryError(
@@ -760,26 +799,16 @@ def _check_fallback_selection_consistency(entries: list[dict[str, Any]], prepare
 LOG2_EXPRESSION_CEILING = 40.0
 
 
-def _require_plausible_scale(source_path: Path, sample_columns: list[str], normalized_scale: str) -> None:
+def _require_plausible_scale(
+    source_path: Path,
+    sample_columns: list[str],
+    normalized_scale: str,
+    sheet_name: str | int | None = None,
+    header_row: int | None = None,
+) -> None:
     """Refuse a normalized matrix whose values contradict the declared scale."""
 
-    suffixes = "".join(Path(source_path).suffixes).lower()
-    try:
-        if suffixes.endswith((".xlsx", ".xls", ".xlsx.gz", ".xls.gz")):
-            frame = _read_excel_any(Path(source_path), 0, header_row=1).head(COUNT_SAMPLE_ROWS)
-        else:
-            separator = "\t" if suffixes.endswith((".tsv", ".txt", ".tsv.gz", ".txt.gz")) else ","
-            frame = pd.read_csv(source_path, sep=separator, nrows=COUNT_SAMPLE_ROWS)
-    except Exception:  # noqa: BLE001 - the derivation reports an unreadable file itself
-        return
-    # Deduplicated: a sample named in both groups is reported by the disjointness
-    # check in its own words, not by pandas refusing to stack repeated columns.
-    columns = [name for name in dict.fromkeys(sample_columns) if name in frame.columns]
-    if not columns:
-        return
-    values = pd.to_numeric(frame[columns].stack(), errors="coerce").dropna()
-    if values.empty:
-        return
+    values = _selected_values(source_path, sample_columns, sheet_name=sheet_name, header_row=header_row)
     if normalized_scale == "log2" and float(values.quantile(0.99)) > LOG2_EXPRESSION_CEILING:
         raise DiscoveryError(
             f"normalized_scale=log2, but the selected columns reach {float(values.max()):,.0f} in the first "
@@ -842,23 +871,47 @@ def _fallback_row(
         # A file the repository labels as counts whose values are fractional:
         # the reader may say what it is instead of being refused with no way on.
         role = ESTIMATED_COUNT_MATRIX
+    # Every preflight must read the same sheet the derivation reads below.
+    inspected_sheet = inspection.get("sheet_name") or None
+    try:
+        inspected_header = int(inspection.get("header_row") or 1)
+    except (TypeError, ValueError) as exc:
+        raise DiscoveryError("prepared fallback candidate has an invalid header_row") from exc
+    if not 1 <= inspected_header <= 100:
+        raise DiscoveryError("prepared fallback candidate header_row must be between 1 and 100")
     estimated_share: float | None = None
     if role == ESTIMATED_COUNT_MATRIX:
         # Salmon, RSEM and kallisto write fractional counts by design; the
         # whole-number test would refuse them all. They take the count path
         # (library-size normalised, log2), as tximport hands them to DESeq2.
-        estimated_share = _require_estimated_counts(source_path, control_samples + treatment_samples)
+        estimated_share = _require_estimated_counts(
+            source_path,
+            control_samples + treatment_samples,
+            sheet_name=inspected_sheet,
+            header_row=inspected_header,
+        )
     elif role == "count_matrix":
         # A fractional matrix (FPKM, TPM, a log scale) selected as raw counts
         # would be handed to a count model as if it were counts. The values say
         # which it is before any test is run.
-        _require_whole_number_counts(source_path, control_samples + treatment_samples)
+        _require_whole_number_counts(
+            source_path,
+            control_samples + treatment_samples,
+            sheet_name=inspected_sheet,
+            header_row=inspected_header,
+        )
     normalized_scale = ""
     if role == "normalized_expression_matrix":
         normalized_scale = _text(entry.get("normalized_scale"), field="normalized_scale", required=True, maximum=16).strip().lower()
         if normalized_scale not in {"log2", "linear"}:
             raise DiscoveryError("normalized_scale must be log2 or linear for a normalized expression matrix")
-        _require_plausible_scale(source_path, control_samples + treatment_samples, normalized_scale)
+        _require_plausible_scale(
+            source_path,
+            control_samples + treatment_samples,
+            normalized_scale,
+            sheet_name=inspected_sheet,
+            header_row=inspected_header,
+        )
     gene_column = _text(entry.get("gene_column") or inspection.get("gene_column"), field="gene_column", required=True)
     if gene_column in allowed_samples or gene_column in requested:
         # Expression values are not identifiers; the run used to end in a
@@ -880,7 +933,8 @@ def _fallback_row(
             control_samples=control_samples,
             treatment_samples=treatment_samples,
             normalized_scale=normalized_scale or None,
-            sheet_name=inspection.get("sheet_name") or None,
+            sheet_name=inspected_sheet,
+            header_row=inspected_header,
             command=replay_command,
             metadata={
                 "accession": study.get("accession", ""),

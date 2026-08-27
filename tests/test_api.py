@@ -1257,6 +1257,17 @@ def test_dashboard_stops_a_review_that_can_never_be_analysed() -> None:
     assert "Not analysable: " in html
 
 
+def test_mobile_dashboard_explains_horizontal_gene_columns_and_wraps_status() -> None:
+    """Narrow screens must not look as if Score/LFC or species state vanished."""
+
+    from degora.api import INDEX_HTML
+
+    assert "Swipe the table sideways to see Top, Score, Units, Sign and LFC." in INDEX_HTML
+    assert ".gene-scroll-hint {" in INDEX_HTML
+    assert ".meta { flex-wrap: wrap; overflow-x: visible; row-gap: 4px; }" in INDEX_HTML
+    assert '<span class="prepared-blocked-next"><b>Next:</b>' in INDEX_HTML
+
+
 def test_a_browser_page_holds_ten_publications() -> None:
     """The page size is stated in four places and they have to agree.
 

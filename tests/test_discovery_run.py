@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gzip
 import hashlib
 import json
 import sqlite3
@@ -1242,3 +1243,204 @@ def test_a_sample_column_is_refused_as_the_gene_column_up_front(tmp_path: Path) 
             spec=normalize_species("human"), bundle_root=bundle, derived_dir=tmp_path / "derived",
             sequence=1, replay_command="degora",
         )
+
+
+def _matrix_candidate_for_path(
+    path: Path,
+    *,
+    sheet_name: str = "",
+    header_row: int = 1,
+    gene_column: str = "gene",
+) -> tuple[dict, dict, Path]:
+    candidate = {
+        "candidate_id": "matrix1",
+        "name": path.name,
+        "role": "normalized_expression_matrix",
+        "inspection": {
+            "status": "upstream_matrix_ready_for_contrast",
+            "fetch_scope": "full",
+            "local_path": str(path),
+            "full_file_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+            "sample_columns": ["c1", "c2", "t1", "t2"],
+            "gene_column": gene_column,
+            "sheet_name": sheet_name,
+            "header_row": header_row,
+        },
+    }
+    study = {"accession": "GSE100004", "title": "reader coordinates", "files": [candidate]}
+    return study, candidate, path.parent
+
+
+def test_workbook_preflight_and_derivation_share_the_inspected_sheet_and_header(tmp_path: Path) -> None:
+    """A non-first sheet/header used to no-op preflight and then fail derivation."""
+
+    from degora.discovery import normalize_species
+    from degora.discovery_run import DiscoveryError, _fallback_row
+
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    path = bundle / "GSE100004_matrix.xlsx"
+    real = pd.DataFrame(
+        {
+            "gene": [f"REAL{i}" for i in range(40)],
+            "c1": [100.0 + i for i in range(40)],
+            "c2": [110.0 + i for i in range(40)],
+            "t1": [500.0 + i for i in range(40)],
+            "t2": [520.0 + i for i in range(40)],
+        }
+    )
+    with pd.ExcelWriter(path) as writer:
+        pd.DataFrame({"gene": ["DECOY"], "c1": [1.0], "c2": [1.0], "t1": [2.0], "t2": [2.0]}).to_excel(
+            writer, sheet_name="decoy", index=False
+        )
+        real.to_excel(writer, sheet_name="matrix", index=False, startrow=2)
+    study, candidate, bundle = _matrix_candidate_for_path(path, sheet_name="matrix", header_row=3)
+
+    with pytest.raises(DiscoveryError, match="normalized_scale=log2"):
+        _fallback_row(
+            study=study,
+            candidate=candidate,
+            entry=_fallback_entry(contrast_label="t vs c", normalized_scale="log2"),
+            spec=normalize_species("human"),
+            bundle_root=bundle,
+            derived_dir=tmp_path / "derived",
+            sequence=1,
+            replay_command="degora",
+        )
+
+    row, summary = _fallback_row(
+        study=study,
+        candidate=candidate,
+        entry=_fallback_entry(contrast_label="t vs c", normalized_scale="linear"),
+        spec=normalize_species("human"),
+        bundle_root=bundle,
+        derived_dir=tmp_path / "derived",
+        sequence=2,
+        replay_command="degora",
+    )
+    derived = pd.read_csv(row["source_path"])
+    assert set(derived["gene_symbol"]) == set(real["gene"])
+    assert summary["sheet_name"] == "matrix"
+    assert summary["header_row"] == 3
+
+
+def test_matrix_preflight_fails_closed_when_inspected_columns_cannot_be_reopened(tmp_path: Path) -> None:
+    from degora.discovery import normalize_species
+    from degora.discovery_run import DiscoveryError, _fallback_row
+
+    study, candidate, bundle = _matrix_candidate(
+        tmp_path, {"c1": [1.0] * 30, "c2": [1.1] * 30, "t1": [2.0] * 30, "renamed_t2": [2.1] * 30}
+    )
+    candidate["inspection"]["sample_columns"] = ["c1", "c2", "t1", "t2"]
+    with pytest.raises(DiscoveryError, match=r"preflight could not find.*t2"):
+        _fallback_row(
+            study=study,
+            candidate=candidate,
+            entry=_fallback_entry(contrast_label="t vs c"),
+            spec=normalize_species("human"),
+            bundle_root=bundle,
+            derived_dir=tmp_path / "derived",
+            sequence=1,
+            replay_command="degora",
+        )
+
+
+def test_matrix_preflight_fails_closed_when_selected_values_are_not_numeric(tmp_path: Path) -> None:
+    from degora.discovery import normalize_species
+    from degora.discovery_run import DiscoveryError, _fallback_row
+
+    study, candidate, bundle = _matrix_candidate(
+        tmp_path, {name: ["not-a-number"] * 30 for name in ("c1", "c2", "t1", "t2")}
+    )
+    with pytest.raises(DiscoveryError, match="preflight found no numeric values"):
+        _fallback_row(
+            study=study,
+            candidate=candidate,
+            entry=_fallback_entry(contrast_label="t vs c"),
+            spec=normalize_species("human"),
+            bundle_root=bundle,
+            derived_dir=tmp_path / "derived",
+            sequence=1,
+            replay_command="degora",
+        )
+
+
+def test_bom_semicolon_matrix_with_leading_blank_lines_is_read_identically(tmp_path: Path) -> None:
+    from degora.discovery import normalize_species
+    from degora.discovery_run import _fallback_row
+
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    path = bundle / "GSE100004_matrix.csv"
+    rows = ["gene;c1;c2;t1;t2"] + [f"G{i};{i + 1}.1;{i + 1}.2;{i + 5}.1;{i + 5}.2" for i in range(40)]
+    path.write_text("\ufeff\n\n" + "\n".join(rows) + "\n", encoding="utf-8")
+    study, candidate, bundle = _matrix_candidate_for_path(path)
+    row, summary = _fallback_row(
+        study=study,
+        candidate=candidate,
+        entry=_fallback_entry(contrast_label="t vs c", normalized_scale="linear"),
+        spec=normalize_species("human"),
+        bundle_root=bundle,
+        derived_dir=tmp_path / "derived",
+        sequence=1,
+        replay_command="degora",
+    )
+    assert summary["n_gene_rows"] == 40
+    assert set(pd.read_csv(row["source_path"])["gene_symbol"]) == {f"G{i}" for i in range(40)}
+
+
+def test_geo_series_matrix_preamble_is_excluded_by_preflight_and_derivation(tmp_path: Path) -> None:
+    from degora.discovery import normalize_species
+    from degora.discovery_run import _fallback_row
+
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    path = bundle / "GSE100004_series_matrix.txt.gz"
+    table = ['"gene"\t"c1"\t"c2"\t"t1"\t"t2"']
+    table.extend(f'"G{i}"\t{i + 1}.1\t{i + 1}.2\t{i + 5}.1\t{i + 5}.2' for i in range(40))
+    payload = (
+        '!Series_title\t"metadata with tabs"\n\n!series_matrix_table_begin\n'
+        + "\n".join(table)
+        + "\n!series_matrix_table_end\n"
+    )
+    with gzip.open(path, "wt", encoding="utf-8") as handle:
+        handle.write(payload)
+    study, candidate, bundle = _matrix_candidate_for_path(path)
+    row, summary = _fallback_row(
+        study=study,
+        candidate=candidate,
+        entry=_fallback_entry(contrast_label="t vs c", normalized_scale="linear"),
+        spec=normalize_species("human"),
+        bundle_root=bundle,
+        derived_dir=tmp_path / "derived",
+        sequence=1,
+        replay_command="degora",
+    )
+    assert summary["n_input_rows"] == 40
+    assert set(pd.read_csv(row["source_path"])["gene_symbol"]) == {f"G{i}" for i in range(40)}
+
+
+def test_author_table_keeps_header_alignment_with_blank_lines_and_sniffed_separator(tmp_path: Path) -> None:
+    """Inspection counted blank lines and sniffed semicolons; activation must do both too."""
+
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    prepared = _prepared_bundle(bundle)
+    first = prepared["studies"][0]["files"][0]
+    path = Path(first["inspection"]["local_path"])
+    path.write_text(
+        "\n\n"
+        "gene;log2FoldChange;pvalue;padj\n"
+        "TP53;2.1;0.001;0.003\n"
+        "CDKN1A;1.3;0.01;0.02\n"
+        "VEGFA;-1.1;0.03;0.04\n",
+        encoding="utf-8",
+    )
+    first["inspection"]["header_row"] = 3
+    first["inspection"]["full_file_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+
+    result = run_discovery_analysis(prepared, _selections(), tmp_path / "analysis", species="human")
+    catalog = pd.read_csv(result["catalog_path"])
+    materialized = pd.read_csv(catalog.loc[catalog["study_id"].str.contains("GSE100001"), "source_path"].iloc[0])
+    assert materialized["gene_symbol"].tolist() == ["TP53", "CDKN1A", "VEGFA"]
+    assert "row_name" not in materialized.columns
