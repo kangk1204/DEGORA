@@ -52,7 +52,8 @@ def test_the_renderer_counts_the_study_list_it_built() -> None:
     renderer = body[start:end]
     assert "const allStudies = state.prepared.studies || [];" in renderer
     assert "${studies.length" not in renderer
-    assert "`${allStudies.length} studies prepared`" in renderer
+    assert "const preparedCount = allStudies.length + excludedCount;" in renderer
+    assert "`${preparedCount} studies prepared`" in renderer
 
 
 PRELUDE = r"""
@@ -131,6 +132,9 @@ function scenario(name, prepared) {
   };
 }
 scenario("two_studies", FIXTURE);
+const twoUsableWithExcluded = JSON.parse(JSON.stringify(FIXTURE));
+twoUsableWithExcluded.excluded_studies = [{ canonical_id: "GSE-EXCLUDED", reason: "mixed species" }];
+scenario("two_usable_with_excluded", twoUsableWithExcluded);
 const oneUsable = JSON.parse(JSON.stringify(FIXTURE));
 oneUsable.studies[1].files[0].inspection.status = "not_deg_table";
 scenario("one_usable", oneUsable);
@@ -348,6 +352,14 @@ def test_the_prepared_card_renders_a_real_bundle_without_throwing(tmp_path) -> N
     assert 'data-when="lfc" hidden' in html
     assert "prepared-blocked" not in html
     assert "unanalyzable-group" not in html
+
+
+@pytest.mark.skipif(not HAS_NODE, reason="node not available")
+def test_successful_prepared_counts_include_excluded_studies_consistently(tmp_path) -> None:
+    out = _render_in_node(tmp_path)["two_usable_with_excluded"]
+    assert out["error"] == "", out["error"]
+    assert out["status"] == "3 studies prepared"
+    assert "GSE-EXCLUDED" in out["html"]
 
 
 @pytest.mark.skipif(not HAS_NODE, reason="node not available")

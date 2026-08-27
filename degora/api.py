@@ -3314,7 +3314,7 @@ INDEX_HTML = """<!doctype html>
         .forEach((control) => { control.disabled = blocked; });
       $("preparedStatus").textContent = blocked
         ? `${preparedCount} prepared · ${units} usable`
-        : `${allStudies.length} studies prepared`;
+        : `${preparedCount} studies prepared`;
       $("analysisCompleteCard").hidden = !state.run;
       if (state.run) {
         $("analysisCompleteTitle").textContent = `${speciesLabel(activeSpecies)} DEGORA analysis complete`;
