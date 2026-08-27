@@ -177,6 +177,23 @@ COLUMN_DEFINITIONS: dict[str, tuple[str, str, str]] = {
     "quality_weighted_top_percent": ("Top-percent position for the primary quality-weighted rank.", "0-100, lower is better", "blank means not ranked"),
     "quality_weighted_consensus_direction": ("Consensus direction under quality-weighted source evidence.", "up, down, mixed, or similar text", "blank means unavailable"),
     "quality_weighted_sign_concordance": ("Quality-weighted fraction of evidence agreeing with consensus direction.", "0-1, higher is more concordant", "blank means unavailable"),
+    "quality_stouffer_z": (
+        "Source-quality-weighted Stouffer z. quality_weighted_consensus_direction is its sign, "
+        "so this is the number that explains an up/down call in the primary lane.",
+        "z units",
+        "may disagree in sign with the unweighted stouffer_z for genes with almost no signal",
+    ),
+    "quality_weighted_lfc": (
+        "Source-quality-weighted mean log2 fold change across independent source units.",
+        "log2 fold change",
+        "the weighted counterpart of weighted_lfc",
+    ),
+    "quality_rank_product": (
+        "Source-quality-weighted rank product across source units, before it is turned into "
+        "quality_rank_score_component.",
+        "0-1",
+        "the weighted counterpart of rank_product",
+    ),
     "source_quality_support_score": ("Support contribution after source-quality weighting.", "0-1 or score units", "blank means unavailable"),
     "source_quality_weight_sum": ("Total source-quality weight contributing to the gene.", "non-negative number", "blank means unavailable"),
     "stouffer_z": ("Fixed-effect Stouffer combined z statistic.", "signed z score", "blank means unavailable"),

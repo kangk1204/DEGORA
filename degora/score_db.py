@@ -182,6 +182,13 @@ _SOURCE_QUALITY_WEIGHT_COLUMNS = (
 
 # The five components of the primary quality-weighted lane, in SCORE_WEIGHTS order.
 QUALITY_COMPONENT_COLUMNS = tuple(f"quality_{column}" for column in SCORE_WEIGHTS)
+# The statistics the primary quality-weighted lane is computed from. The
+# unweighted lane exports all three of its equivalents (stouffer_z, weighted_lfc,
+# rank_product), so a reader can recompute degora_score from published output.
+# The primary lane exported none of them: quality_weighted_consensus_direction is
+# the sign of quality_stouffer_z, and a reader who saw a positive stouffer_z next
+# to a "down" call had nothing in any output that could explain it.
+QUALITY_STATISTIC_COLUMNS = ("quality_stouffer_z", "quality_weighted_lfc", "quality_rank_product")
 
 
 def _portable_cli_path(path: Path, base_dir: Path) -> str:
@@ -1248,12 +1255,12 @@ def _quality_weighted_consensus(
     return grouped[
         [
             "gene_symbol",
-            "quality_stouffer_z",
             "quality_weighted_degora_score",
             "quality_weighted_consensus_direction",
             "quality_weighted_sign_concordance",
             "source_quality_support_score",
             "source_quality_weight_sum",
+            *QUALITY_STATISTIC_COLUMNS,
             *QUALITY_COMPONENT_COLUMNS,
         ]
     ]
@@ -1916,7 +1923,7 @@ def degora_score_table(
             "quality_weighted_sign_concordance",
             "source_quality_support_score",
             "source_quality_weight_sum",
-            "quality_stouffer_z",
+            *QUALITY_STATISTIC_COLUMNS,
             *QUALITY_COMPONENT_COLUMNS,
         ]:
             scores[column] = "" if column == "quality_weighted_consensus_direction" else 0.0
@@ -1932,7 +1939,7 @@ def degora_score_table(
             "quality_weighted_sign_concordance",
             "source_quality_support_score",
             "source_quality_weight_sum",
-            "quality_stouffer_z",
+            *QUALITY_STATISTIC_COLUMNS,
             *QUALITY_COMPONENT_COLUMNS,
         ]:
             scores[column] = pd.to_numeric(scores[column], errors="coerce").fillna(0.0)
@@ -2186,7 +2193,11 @@ def degora_score_table(
     # GENE_SCORE_COLUMNS (support_score, direction_score, …) belong to the
     # unweighted degora_score; an ablation or weight sweep built on those would be
     # describing a different ranking from the primary one.
-    output_columns = [*GENE_SCORE_COLUMNS, *(c for c in QUALITY_COMPONENT_COLUMNS if c in scores.columns)]
+    output_columns = [
+        *GENE_SCORE_COLUMNS,
+        *(c for c in QUALITY_COMPONENT_COLUMNS if c in scores.columns),
+        *(c for c in QUALITY_STATISTIC_COLUMNS if c in scores.columns),
+    ]
     return scores[output_columns], evidence, metadata
 
 
