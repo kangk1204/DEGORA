@@ -571,6 +571,32 @@ make smoke
 <!--
 ## Release notes
 
+### 0.4.37
+
+The scoring and aggregation contract remains v1.3:
+`SCORE_VERSION` is still `degora_score_v1_3_source_unit_mean`. This release does
+not change eligibility, score components, weights, aggregation, or primary-rank
+semantics.
+
+**Source-independence and direction checks are more informative without becoming
+outcome filters.** DEGORA now emits bounded, advisory-only warnings when two
+declared source units have highly overlapping genes and nearly identical log2 fold
+changes and signed z values, or when two contrasts inside one source unit show a
+strongly reversed effect pattern. The checks never change weights, scores, or ranks;
+when a configured pair bound would be exceeded, DEGORA reports that the advisory was
+skipped and directs the user to manual provenance review.
+
+**Small auxiliary random-effects Stouffer probabilities remain nonzero in exported
+tables.** The previous 12-decimal-place formatting converted finite tail
+probabilities below `5e-13` to exactly zero. DEGORA now preserves the raw finite
+floating-point values in CSV, SQLite, and workbook outputs. These screening fields
+remain auxiliary and do not enter any score or rank.
+
+**Short auto-classified result tables request explicit scope review.** When fewer
+than 3,000 rows are automatically classified as `full_results`, the assessment now
+states that a truncated supplementary table cannot be excluded and asks the user to
+confirm `table_scope`. The effective scope and all scores remain unchanged.
+
 ### 0.4.36
 
 The scoring and aggregation contract is unchanged at v1.3:

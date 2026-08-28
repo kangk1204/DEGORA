@@ -669,11 +669,23 @@ def assess_table_scope(frame: pd.DataFrame, mapping: TableMapping, declared_scop
     if (n_rows >= 10_000 and n_gt_005 >= 100 and max_value >= 0.5) or (
         n_gt_005 >= max(100, int(0.1 * n_rows)) and max_value >= 0.2
     ):
+        reason = "table contains many non-significant rows and high p/FDR values"
+        if n_rows < 3_000:
+            # A short supplementary excerpt can contain many non-significant
+            # values yet still omit most of the tested transcriptome. Keep the
+            # established effective scope (and therefore every score/rank)
+            # stable, but make the inference explicitly advisory so the catalog
+            # author is prompted to confirm it rather than treating row count as
+            # proof of completeness.
+            reason += (
+                f"; only {n_rows:,} rows are present, so a truncated supplementary table cannot "
+                "be ruled out - confirm table_scope explicitly"
+            )
         return {
             **stats,
             "effective_scope": FULL_RESULTS_SCOPE,
             "assessment": "full_results_likely",
-            "reason": "table contains many non-significant rows and high p/FDR values",
+            "reason": reason,
         }
     if fraction_sig >= 0.98 and max_value <= 0.05:
         return {

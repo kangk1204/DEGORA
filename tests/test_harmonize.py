@@ -495,6 +495,9 @@ def test_scope_assessment_detects_full_result_tables() -> None:
 
     assert scope["effective_scope"] == "full_results"
     assert scope["assessment"] == "full_results_likely"
+    assert "only 200 rows" in scope["reason"]
+    assert "truncated supplementary table cannot be ruled out" in scope["reason"]
+    assert "confirm table_scope explicitly" in scope["reason"]
 
 
 def test_apply_gene_type_filter_keeps_requested_biotype() -> None:

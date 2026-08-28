@@ -11,8 +11,8 @@ import degora
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_v0436_keeps_the_v13_scoring_and_aggregation_contract() -> None:
-    assert degora.__version__ == "0.4.36"
+def test_v0437_keeps_the_v13_scoring_and_aggregation_contract() -> None:
+    assert degora.__version__ == "0.4.37"
     assert degora.SCORE_VERSION == "degora_score_v1_3_source_unit_mean"
 
 

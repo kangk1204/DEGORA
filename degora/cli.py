@@ -650,6 +650,8 @@ def _run_pipeline(
     _print_run_warnings(
         {
             "warnings": [
+                *summary.get("near_duplicate_source_unit_warnings", []),
+                *summary.get("within_source_direction_warnings", []),
                 *summary.get("direction_conflict_warnings", []),
                 *summary.get("significance_warnings", []),
             ]

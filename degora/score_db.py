@@ -331,7 +331,8 @@ RANDOM_EFFECTS_STOUFFER_RULE = (
     "heterogeneity_i2 * (k_source_units - 1)). The divisor is a bounded ad-hoc shrinkage "
     "based on the descriptive heterogeneity index; "
     "re_stouffer_p/padj are screening/triage fields, not calibrated formal random-effects "
-    "inference or heterogeneity-corrected significance"
+    "inference or heterogeneity-corrected significance; finite tail probabilities are emitted "
+    "without decimal-place rounding so small nonzero values are not printed as zero"
 )
 EFFECT_META_RULE = (
     "parallel effect-size reporting lane only: DerSimonian-Laird random-effects "
@@ -581,6 +582,39 @@ DIRECTION_CONFLICT_RULE = (
     "small tables of unrelated noise are therefore not flagged, and neither is a well-formed unit "
     "whose only conflicting comparison is the one against a reversed partner. It is an advisory "
     "review flag for a possibly reversed contrast direction and changes no weight or rank"
+)
+
+# These diagnostics deliberately sit outside every score component.  Their job
+# is to surface two provenance mistakes that exact-path/hash checks cannot prove:
+# a source table exported twice with harmless numeric reformatting, and two
+# contrasts inside one declared source unit that appear to use opposite sign
+# conventions.  Conservative thresholds keep the messages advisory; neither
+# diagnostic changes source weights, eligibility, scores, or ranks.
+NEAR_DUPLICATE_MIN_SHARED_GENES = 100
+NEAR_DUPLICATE_MIN_SMALLER_COVERAGE = 0.90
+NEAR_DUPLICATE_MIN_NEAR_IDENTICAL_FRACTION = 0.90
+NEAR_DUPLICATE_LFC_ATOL = 1e-3
+NEAR_DUPLICATE_SIGNED_Z_ATOL = 2e-2
+NEAR_DUPLICATE_MAX_SOURCE_PAIRS = 500
+NEAR_DUPLICATE_SOURCE_RULE = (
+    f"advisory only: two declared source units are named when they share at least "
+    f"{NEAR_DUPLICATE_MIN_SHARED_GENES} genes covering at least "
+    f"{NEAR_DUPLICATE_MIN_SMALLER_COVERAGE:.0%} of the smaller source, and at least "
+    f"{NEAR_DUPLICATE_MIN_NEAR_IDENTICAL_FRACTION:.0%} of both log2FC and signed-z values "
+    f"are numerically near-identical; at most {NEAR_DUPLICATE_MAX_SOURCE_PAIRS} source pairs "
+    "are checked per run, and the check changes no weight or rank"
+)
+WITHIN_SOURCE_DIRECTION_SPEARMAN = -0.80
+WITHIN_SOURCE_DIRECTION_MAX_SIGN_AGREEMENT = 0.10
+WITHIN_SOURCE_DIRECTION_MIN_SHARED_GENES = 20
+WITHIN_SOURCE_DIRECTION_MAX_CONTRAST_PAIRS = 1_000
+WITHIN_SOURCE_DIRECTION_RULE = (
+    f"advisory only: two contrasts inside one source unit are named when at least "
+    f"{WITHIN_SOURCE_DIRECTION_MIN_SHARED_GENES} genes overlap, log2FC Spearman is at most "
+    f"{WITHIN_SOURCE_DIRECTION_SPEARMAN:g}, and same-sign agreement is at most "
+    f"{WITHIN_SOURCE_DIRECTION_MAX_SIGN_AGREEMENT:.0%}; at most "
+    f"{WITHIN_SOURCE_DIRECTION_MAX_CONTRAST_PAIRS} within-source contrast pairs are checked per run, "
+    "and the check changes no value or rank"
 )
 
 
@@ -1297,6 +1331,163 @@ def _source_quality_diagnostics_from_evidence(
     return diagnostics
 
 
+def near_duplicate_source_unit_warnings(evidence: pd.DataFrame) -> list[str]:
+    """Return advisory warnings for almost identical declared source units.
+
+    Exact path and byte-hash checks run earlier in the pipeline.  This second
+    check operates on harmonized values so a table that was merely re-saved or
+    rounded cannot silently masquerade as independent replication.  Because two
+    genuinely independent experiments can still agree unusually closely, the
+    result is never used as a score or eligibility gate.
+    """
+
+    required = {"source_unit_id", "gene_symbol", "lfc", "signed_z"}
+    if evidence.empty or not required.issubset(evidence.columns):
+        return []
+    frame = evidence[["source_unit_id", "gene_symbol", "lfc", "signed_z"]].copy()
+    frame["source_unit_id"] = _string_column(frame, "source_unit_id").str.strip()
+    frame["gene_symbol"] = _string_column(frame, "gene_symbol").str.upper().str.strip()
+    frame["lfc"] = _as_numeric(frame, "lfc")
+    frame["signed_z"] = _as_numeric(frame, "signed_z")
+    frame = frame.loc[frame["source_unit_id"].ne("") & frame["gene_symbol"].ne("")].copy()
+    frame = frame.dropna(subset=["lfc", "signed_z"])
+    if frame.empty:
+        return []
+    frame = frame.groupby(["source_unit_id", "gene_symbol"], as_index=False)[["lfc", "signed_z"]].mean()
+    source_frames = {
+        str(source_unit): group.set_index("gene_symbol")[["lfc", "signed_z"]].copy()
+        for source_unit, group in frame.groupby("source_unit_id", sort=True)
+    }
+    source_units = sorted(source_frames)
+    n_pairs = len(source_units) * (len(source_units) - 1) // 2
+    if n_pairs > NEAR_DUPLICATE_MAX_SOURCE_PAIRS:
+        return [
+            f"near-duplicate source-unit advisory was skipped: {len(source_units):,} source units "
+            f"would require {n_pairs:,} pair checks, above the bounded limit of "
+            f"{NEAR_DUPLICATE_MAX_SOURCE_PAIRS:,}. Review source-unit provenance manually; weights "
+            "and ranks are unchanged."
+        ]
+    warnings: list[str] = []
+    for index, source_a in enumerate(source_units):
+        left = source_frames[source_a]
+        for source_b in source_units[index + 1 :]:
+            right = source_frames[source_b]
+            shared = left.index.intersection(right.index, sort=False)
+            n_overlap = int(len(shared))
+            smaller_n = min(int(len(left)), int(len(right)))
+            if smaller_n <= 0 or n_overlap < NEAR_DUPLICATE_MIN_SHARED_GENES:
+                continue
+            smaller_coverage = n_overlap / smaller_n
+            if smaller_coverage < NEAR_DUPLICATE_MIN_SMALLER_COVERAGE:
+                continue
+            left_overlap = left.loc[shared]
+            right_overlap = right.loc[shared]
+            lfc_close = np.isclose(
+                left_overlap["lfc"].to_numpy(dtype=float),
+                right_overlap["lfc"].to_numpy(dtype=float),
+                rtol=1e-3,
+                atol=NEAR_DUPLICATE_LFC_ATOL,
+            )
+            signed_z_close = np.isclose(
+                left_overlap["signed_z"].to_numpy(dtype=float),
+                right_overlap["signed_z"].to_numpy(dtype=float),
+                rtol=1e-3,
+                atol=NEAR_DUPLICATE_SIGNED_Z_ATOL,
+            )
+            lfc_fraction = float(lfc_close.mean())
+            signed_z_fraction = float(signed_z_close.mean())
+            if (
+                lfc_fraction < NEAR_DUPLICATE_MIN_NEAR_IDENTICAL_FRACTION
+                or signed_z_fraction < NEAR_DUPLICATE_MIN_NEAR_IDENTICAL_FRACTION
+            ):
+                continue
+            warnings.append(
+                f"source units {source_a!r} and {source_b!r} may be duplicate exports: "
+                f"{n_overlap:,} shared genes cover {smaller_coverage:.1%} of the smaller source, "
+                f"with {lfc_fraction:.1%} near-identical log2FC and {signed_z_fraction:.1%} "
+                "near-identical signed-z values. Verify that they are independent publications or "
+                "datasets before interpreting replication; weights and ranks are unchanged."
+            )
+    return warnings
+
+
+def within_source_direction_warnings(harmonized: pd.DataFrame) -> list[str]:
+    """Return advisory warnings for strongly reversed contrasts in one source unit."""
+
+    required = {"study_id", "gene_symbol", "lfc"}
+    if harmonized.empty or not required.issubset(harmonized.columns):
+        return []
+    frame = harmonized.copy()
+    frame["source_unit_id"] = _source_unit_series(frame)
+    frame["study_id"] = _string_column(frame, "study_id").str.strip()
+    frame["gene_symbol"] = _string_column(frame, "gene_symbol").str.upper().str.strip()
+    frame["lfc"] = _as_numeric(frame, "lfc")
+    frame = frame.loc[
+        frame["source_unit_id"].ne("")
+        & frame["study_id"].ne("")
+        & frame["gene_symbol"].ne("")
+    ].dropna(subset=["lfc"])
+    if frame.empty:
+        return []
+    frame = frame.groupby(["source_unit_id", "study_id", "gene_symbol"], as_index=False)["lfc"].mean()
+    source_groups = list(frame.groupby("source_unit_id", sort=True))
+    n_pairs = sum(
+        int(source_frame["study_id"].nunique())
+        * (int(source_frame["study_id"].nunique()) - 1)
+        // 2
+        for _, source_frame in source_groups
+    )
+    if n_pairs > WITHIN_SOURCE_DIRECTION_MAX_CONTRAST_PAIRS:
+        return [
+            f"within-source direction advisory was skipped: the declared source units would require "
+            f"{n_pairs:,} contrast-pair checks, above the bounded limit of "
+            f"{WITHIN_SOURCE_DIRECTION_MAX_CONTRAST_PAIRS:,}. Review contrast directions manually; "
+            "values and ranks are unchanged."
+        ]
+    warnings: list[str] = []
+    for source_unit, source_frame in source_groups:
+        contrast_frames = {
+            str(study_id): group.set_index("gene_symbol")[["lfc"]].copy()
+            for study_id, group in source_frame.groupby("study_id", sort=True)
+        }
+        contrasts = sorted(contrast_frames)
+        for index, contrast_a in enumerate(contrasts):
+            left = contrast_frames[contrast_a]
+            for contrast_b in contrasts[index + 1 :]:
+                right = contrast_frames[contrast_b]
+                shared = left.index.intersection(right.index, sort=False)
+                if len(shared) < WITHIN_SOURCE_DIRECTION_MIN_SHARED_GENES:
+                    continue
+                lfc_a = left.loc[shared, "lfc"].to_numpy(dtype=float)
+                lfc_b = right.loc[shared, "lfc"].to_numpy(dtype=float)
+                finite = np.isfinite(lfc_a) & np.isfinite(lfc_b)
+                lfc_a = lfc_a[finite]
+                lfc_b = lfc_b[finite]
+                if len(lfc_a) < WITHIN_SOURCE_DIRECTION_MIN_SHARED_GENES:
+                    continue
+                if np.unique(lfc_a).size < 2 or np.unique(lfc_b).size < 2:
+                    continue
+                spearman = float(pd.Series(lfc_a).corr(pd.Series(lfc_b), method="spearman"))
+                directional = (lfc_a != 0.0) & (lfc_b != 0.0)
+                if not directional.any():
+                    continue
+                same_sign = float((np.sign(lfc_a[directional]) == np.sign(lfc_b[directional])).mean())
+                if (
+                    not np.isfinite(spearman)
+                    or spearman > WITHIN_SOURCE_DIRECTION_SPEARMAN
+                    or same_sign > WITHIN_SOURCE_DIRECTION_MAX_SIGN_AGREEMENT
+                ):
+                    continue
+                warnings.append(
+                    f"contrasts {contrast_a!r} and {contrast_b!r} inside source unit "
+                    f"{str(source_unit)!r} have strongly reversed effect patterns across "
+                    f"{len(lfc_a):,} shared genes (log2FC Spearman {spearman:.2f}; "
+                    f"same-sign agreement {same_sign:.1%}). Verify that both effects use the declared "
+                    "treatment-minus-control direction; values and ranks are unchanged."
+                )
+    return warnings
+
+
 def _attach_source_quality_diagnostics(evidence: pd.DataFrame, diagnostics: pd.DataFrame) -> pd.DataFrame:
     if evidence.empty or diagnostics.empty:
         return evidence
@@ -1980,6 +2171,18 @@ def degora_score_table(
 
     score_harmonized, n_nonfinite_lfc_capped = _score_ready_harmonized(harmonized)
     evidence = study_gene_evidence(score_harmonized)
+    # Component/weight ablations repeatedly score the same harmonized evidence.
+    # These provenance advisories are invariant to every ablation and are not a
+    # score input, so compute them only for the canonical run rather than paying
+    # the source/contrast pair cost once per variant.
+    if ablation.is_default:
+        advisory_diagnostics_status = "computed"
+        source_similarity_warnings = near_duplicate_source_unit_warnings(evidence)
+        within_source_warnings = within_source_direction_warnings(score_harmonized)
+    else:
+        advisory_diagnostics_status = "not_computed_for_nondefault_ablation"
+        source_similarity_warnings = []
+        within_source_warnings = []
     source_quality_diagnostics = _source_quality_diagnostics_from_evidence(evidence)
     evidence = _attach_source_quality_diagnostics(evidence, source_quality_diagnostics)
     if ablation.disable_source_quality_weighting:
@@ -2036,6 +2239,11 @@ def degora_score_table(
                 "source_coherence_guardrail": "gold-panel-free source-source LFC Spearman check; low-quality sources with median pairwise Spearman < 0.05 receive source_coherence_weight=0.50 in the secondary score only",
                 "source_reliability_shrinkage": "secondary-score weight shrunk toward neutral 0.65 using source gene coverage and pairwise-comparison evidence; not a calibrated probability",
             },
+            "near_duplicate_source_unit_rule": NEAR_DUPLICATE_SOURCE_RULE,
+            "near_duplicate_source_unit_warnings": source_similarity_warnings,
+            "within_source_direction_rule": WITHIN_SOURCE_DIRECTION_RULE,
+            "within_source_direction_warnings": within_source_warnings,
+            "advisory_diagnostics_status": advisory_diagnostics_status,
             "direction_confidence_rule": "Beta(1,1)-shrunk source-unit count concordance against the reported consensus signed-z direction: (1 + concordant source units) / (2 + observed source units). When the consensus z is exactly 0 the direction is a tie and every source unit is credited one half rather than zero, so the index is 0.5 rather than the 0.25 the formula alone would give, and direction_concordant_source_units carries that half-credit and is not a whole number. Quality-weighted direction confidence uses reliability-weighted pseudo-counts against the quality-weighted consensus direction and is not a calibrated posterior probability",
             "random_effects_stouffer_rule": RANDOM_EFFECTS_STOUFFER_RULE,
             "stouffer_inference_warning": _stouffer_inference_warning(evidence),
@@ -2290,8 +2498,11 @@ def degora_score_table(
     for column in ["re_stouffer_z", "re_stouffer_p", "re_stouffer_padj", "re_stouffer_shrinkage_factor", "rra_rho"]:
         scores[column] = pd.to_numeric(scores[column], errors="coerce")
     scores["re_stouffer_z"] = scores["re_stouffer_z"].fillna(0.0).round(6)
-    scores["re_stouffer_p"] = scores["re_stouffer_p"].fillna(1.0).round(12)
-    scores["re_stouffer_padj"] = scores["re_stouffer_padj"].fillna(1.0).round(12)
+    # Decimal-place rounding collapsed every finite probability below 5e-13 to
+    # exactly zero in CSV/SQLite output. Preserve scipy/BH's raw float tail; the
+    # values are auxiliary and do not participate in any score or rank.
+    scores["re_stouffer_p"] = scores["re_stouffer_p"].fillna(1.0)
+    scores["re_stouffer_padj"] = scores["re_stouffer_padj"].fillna(1.0)
     scores["re_stouffer_shrinkage_factor"] = scores["re_stouffer_shrinkage_factor"].fillna(1.0).round(6)
     scores["rra_rho"] = scores["rra_rho"].fillna(1.0).round(12)
     scores["rra_neglog10_rho"] = pd.to_numeric(scores["rra_neglog10_rho"], errors="coerce").fillna(0.0).round(6)
@@ -2334,6 +2545,11 @@ def degora_score_table(
             "source_coherence_guardrail": "gold-panel-free source-source LFC Spearman check; low-quality sources with median pairwise Spearman < 0.05 receive source_coherence_weight=0.50 in the secondary score only",
             "source_reliability_shrinkage": "secondary-score weight shrunk toward neutral 0.65 using source gene coverage and pairwise-comparison evidence; not a calibrated probability",
         },
+        "near_duplicate_source_unit_rule": NEAR_DUPLICATE_SOURCE_RULE,
+        "near_duplicate_source_unit_warnings": source_similarity_warnings,
+        "within_source_direction_rule": WITHIN_SOURCE_DIRECTION_RULE,
+        "within_source_direction_warnings": within_source_warnings,
+        "advisory_diagnostics_status": advisory_diagnostics_status,
         "min_studies": min_studies,
         "n_gene_scores": int(len(scores)),
         "n_source_unit_gene_evidence_rows": int(len(evidence)),
@@ -2715,6 +2931,12 @@ def _write_score_database_locked(
         "primary_rank_column": metadata.get("primary_rank_column", PRIMARY_RANK_COLUMN),
         "primary_score_column": metadata.get("primary_score_column", PRIMARY_SCORE_COLUMN),
         "top_genes": gene_scores.head(20)["gene_symbol"].tolist(),
+        "near_duplicate_source_unit_warnings": list(
+            metadata.get("near_duplicate_source_unit_warnings", [])
+        ),
+        "within_source_direction_warnings": list(
+            metadata.get("within_source_direction_warnings", [])
+        ),
         "significance_warnings": _corpus_significance_warnings(gene_scores),
         "direction_conflict_warnings": direction_conflict_warnings(metadata.get("source_quality_diagnostics", [])),
     }

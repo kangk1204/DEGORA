@@ -603,6 +603,238 @@ def test_rra_exact_null_uses_positive_zero_neglog10() -> None:
     assert not np.signbit(value)
 
 
+def test_rra_exact_ties_use_gene_symbol_as_a_deterministic_secondary_key() -> None:
+    evidence = pd.DataFrame(
+        {
+            "gene_symbol": ["ZZZ", "AAA", "ZZZ", "AAA"],
+            "source_unit_id": ["S1", "S1", "S2", "S2"],
+            "normalized_rank": [0.2, 0.2, 0.4, 0.4],
+        }
+    )
+
+    first = score_db._rra_beta_layer(evidence, total_source_units=2, min_studies=2)
+    shuffled = score_db._rra_beta_layer(
+        evidence.sample(frac=1.0, random_state=17), total_source_units=2, min_studies=2
+    )
+
+    assert first["gene_symbol"].tolist() == ["AAA", "ZZZ"]
+    assert first["rra_rank"].tolist() == [1, 2]
+    pd.testing.assert_frame_equal(first, shuffled)
+
+
+def test_random_effects_stouffer_preserves_small_finite_tail_probabilities(tmp_path: Path) -> None:
+    harmonized = _harmonized()
+    harmonized.loc[harmonized["gene_symbol"].eq("VEGFA"), "signed_z"] = 6.0
+
+    scores, _, metadata = degora_score_table(harmonized, min_studies=2)
+    row = scores.loc[scores["gene_symbol"].eq("VEGFA")].iloc[0]
+
+    assert 0.0 < row["re_stouffer_p"] < 5e-13
+    assert 0.0 < row["re_stouffer_padj"] < 5e-13
+    assert "without decimal-place rounding" in metadata["random_effects_stouffer_rule"]
+
+    harmonized_path = tmp_path / "harmonized.csv"
+    harmonized.to_csv(harmonized_path, index=False)
+    summary = write_score_database(harmonized_path, tmp_path / "scores", min_studies=2)
+    exported = pd.read_csv(summary["score_csv"])
+    exported_row = exported.loc[exported["gene_symbol"].eq("VEGFA")].iloc[0]
+    assert 0.0 < exported_row["re_stouffer_p"] < 5e-13
+    assert 0.0 < exported_row["re_stouffer_padj"] < 5e-13
+    with sqlite3.connect(summary["db_path"]) as connection:
+        stored_p, stored_padj = connection.execute(
+            "SELECT re_stouffer_p, re_stouffer_padj FROM genes WHERE gene_symbol = 'VEGFA'"
+        ).fetchone()
+    assert 0.0 < stored_p < 5e-13
+    assert 0.0 < stored_padj < 5e-13
+
+
+def test_near_duplicate_source_units_are_advisory_and_do_not_mutate_evidence() -> None:
+    genes = [f"G{i:03d}" for i in range(120)]
+    base_lfc = np.linspace(-3.0, 3.0, len(genes))
+    base_z = np.linspace(-6.0, 6.0, len(genes))
+    evidence = pd.DataFrame(
+        {
+            "source_unit_id": ["SOURCE_A"] * len(genes) + ["SOURCE_B"] * len(genes),
+            "gene_symbol": genes + genes,
+            "lfc": np.concatenate([base_lfc, base_lfc + 5e-4]),
+            "signed_z": np.concatenate([base_z, base_z + 5e-3]),
+        }
+    )
+    before = evidence.copy(deep=True)
+
+    warnings = score_db.near_duplicate_source_unit_warnings(evidence)
+
+    assert len(warnings) == 1
+    assert "may be duplicate exports" in warnings[0]
+    assert "weights and ranks are unchanged" in warnings[0]
+    pd.testing.assert_frame_equal(evidence, before)
+
+
+def test_near_duplicate_warning_requires_both_lfc_and_signed_z_similarity() -> None:
+    genes = [f"G{i:03d}" for i in range(120)]
+    base = np.linspace(-3.0, 3.0, len(genes))
+    evidence = pd.DataFrame(
+        {
+            "source_unit_id": ["SOURCE_A"] * len(genes) + ["SOURCE_B"] * len(genes),
+            "gene_symbol": genes + genes,
+            "lfc": np.concatenate([base, base + 5e-4]),
+            "signed_z": np.concatenate([base, base + 0.5]),
+        }
+    )
+
+    assert score_db.near_duplicate_source_unit_warnings(evidence) == []
+
+
+def test_near_duplicate_advisory_has_a_bounded_source_pair_limit() -> None:
+    source_units = [f"S{i:02d}" for i in range(33)]  # 528 pairs > the 500-pair limit.
+    evidence = pd.DataFrame(
+        {
+            "source_unit_id": source_units,
+            "gene_symbol": ["GENE"] * len(source_units),
+            "lfc": [1.0] * len(source_units),
+            "signed_z": [2.0] * len(source_units),
+        }
+    )
+
+    warnings = score_db.near_duplicate_source_unit_warnings(evidence)
+
+    assert len(warnings) == 1
+    assert "advisory was skipped" in warnings[0]
+    assert "528 pair checks" in warnings[0]
+    assert "bounded limit of 500" in warnings[0]
+
+
+def test_reversed_contrasts_inside_one_source_unit_emit_advisory_warning() -> None:
+    genes = [f"G{i:03d}" for i in range(30)]
+    effect = np.linspace(-2.0, 2.0, len(genes))
+    harmonized = pd.DataFrame(
+        {
+            "source_unit_id": ["PAPER_A"] * (2 * len(genes)),
+            "study_id": ["TREAT_VS_CTRL"] * len(genes) + ["CTRL_VS_TREAT"] * len(genes),
+            "gene_symbol": genes + genes,
+            "lfc": np.concatenate([effect, -effect]),
+        }
+    )
+    before = harmonized.copy(deep=True)
+
+    warnings = score_db.within_source_direction_warnings(harmonized)
+
+    assert len(warnings) == 1
+    assert "strongly reversed effect patterns" in warnings[0]
+    assert "values and ranks are unchanged" in warnings[0]
+    pd.testing.assert_frame_equal(harmonized, before)
+
+
+def test_within_source_direction_advisory_has_a_bounded_pair_limit() -> None:
+    contrasts = [f"C{i:02d}" for i in range(46)]  # 1,035 pairs > the 1,000-pair limit.
+    harmonized = pd.DataFrame(
+        {
+            "source_unit_id": ["PAPER_A"] * len(contrasts),
+            "study_id": contrasts,
+            "gene_symbol": ["GENE"] * len(contrasts),
+            "lfc": np.linspace(-1.0, 1.0, len(contrasts)),
+        }
+    )
+
+    warnings = score_db.within_source_direction_warnings(harmonized)
+
+    assert len(warnings) == 1
+    assert "advisory was skipped" in warnings[0]
+    assert "1,035 contrast-pair checks" in warnings[0]
+    assert "bounded limit of 1,000" in warnings[0]
+
+
+def test_advisory_diagnostics_cannot_change_any_score_or_evidence_column(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    baseline_scores, baseline_evidence, baseline_metadata = degora_score_table(
+        _harmonized(), min_studies=2
+    )
+    monkeypatch.setattr(
+        score_db,
+        "near_duplicate_source_unit_warnings",
+        lambda _evidence: ["forced near-duplicate advisory"],
+    )
+    monkeypatch.setattr(
+        score_db,
+        "within_source_direction_warnings",
+        lambda _harmonized: ["forced direction advisory"],
+    )
+
+    warned_scores, warned_evidence, warned_metadata = degora_score_table(
+        _harmonized(), min_studies=2
+    )
+
+    pd.testing.assert_frame_equal(warned_scores, baseline_scores)
+    pd.testing.assert_frame_equal(warned_evidence, baseline_evidence)
+    assert warned_metadata["near_duplicate_source_unit_warnings"] == [
+        "forced near-duplicate advisory"
+    ]
+    assert warned_metadata["within_source_direction_warnings"] == [
+        "forced direction advisory"
+    ]
+    for key in ("near_duplicate_source_unit_warnings", "within_source_direction_warnings"):
+        baseline_metadata.pop(key)
+        warned_metadata.pop(key)
+    assert warned_metadata == baseline_metadata
+
+
+def test_nondefault_ablation_does_not_repeat_invariant_pair_diagnostics(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def should_not_run(_frame: pd.DataFrame) -> list[str]:
+        raise AssertionError("pair diagnostic repeated inside an ablation")
+
+    monkeypatch.setattr(score_db, "near_duplicate_source_unit_warnings", should_not_run)
+    monkeypatch.setattr(score_db, "within_source_direction_warnings", should_not_run)
+
+    scores, evidence, metadata = degora_score_table(
+        _harmonized(),
+        min_studies=2,
+        ablation=score_db.ScoreAblation(
+            name="without_effect",
+            component_weights={
+                name: weight for name, weight in score_db.SCORE_WEIGHTS.items() if name != "effect_score"
+            },
+        ),
+        include_loo_stability=False,
+    )
+
+    assert not scores.empty
+    assert not evidence.empty
+    assert metadata["advisory_diagnostics_status"] == "not_computed_for_nondefault_ablation"
+    assert metadata["near_duplicate_source_unit_warnings"] == []
+    assert metadata["within_source_direction_warnings"] == []
+
+
+def test_advisory_warnings_reach_the_persisted_run_summary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    harmonized_path = tmp_path / "harmonized.csv"
+    _harmonized().to_csv(harmonized_path, index=False)
+    monkeypatch.setattr(
+        score_db,
+        "near_duplicate_source_unit_warnings",
+        lambda _evidence: ["near duplicate sentinel"],
+    )
+    monkeypatch.setattr(
+        score_db,
+        "within_source_direction_warnings",
+        lambda _harmonized: ["direction sentinel"],
+    )
+
+    summary = write_score_database(harmonized_path, tmp_path / "scores", min_studies=2)
+
+    assert summary["near_duplicate_source_unit_warnings"] == ["near duplicate sentinel"]
+    assert summary["within_source_direction_warnings"] == ["direction sentinel"]
+    persisted = json.loads(
+        (tmp_path / "scores" / "degora_score_db_summary.json").read_text(encoding="utf-8")
+    )
+    assert persisted["near_duplicate_source_unit_warnings"] == ["near duplicate sentinel"]
+    assert persisted["within_source_direction_warnings"] == ["direction sentinel"]
+
+
 def test_deg_only_tables_emit_explicit_noninferential_pvalue_warning() -> None:
     harmonized = _harmonized().assign(table_scope="deg_only")
 
