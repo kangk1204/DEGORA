@@ -47,7 +47,7 @@ from .harmonize import (
     validate_table_mapping_roles,
 )
 from .metrics import recall_at_k
-from .provenance import output_directory_lock, portable_path, shell_command, write_source_sidecar
+from .provenance import artifact_output_lock, portable_path, shell_command, write_source_sidecar
 
 
 CATALOG_COLUMNS = [
@@ -2323,8 +2323,30 @@ def run_slice(catalog_path: Path, output_dir: Path, harmonized_dir: Path, min_st
             problems=[f"Got min_studies={min_studies!r}."],
             fixes=["Use 1 to score single-source genes, or 2+ to require independent replication."],
         ) from exc
-    # min_studies validation is disk-free. Create both directories before taking the
-    # output lock so path errors remain actionable; later path or catalog failures may
+    # Preserve the public, actionable configuration error before the generic
+    # lock helper tries to create the output directory.  The check is repeated
+    # under the lock below so a path change between preflight and acquisition
+    # still fails closed.
+    for label, directory in (("output", output_dir), ("harmonized", harmonized_dir)):
+        if directory.exists() and not directory.is_dir():
+            raise DegoraConfigError(
+                f"the {label} path is a file, not a folder",
+                context=f"{label} directory: {directory}",
+                problems=["A file already exists at this path, so no folder can be created there."],
+                fixes=["Point the output at a folder (for example outputs/results/degora-run), or move the file out of the way."],
+            )
+    with artifact_output_lock(output_dir):
+        return _run_slice_transaction(catalog_path, output_dir, harmonized_dir, min_studies)
+
+
+def _run_slice_transaction(
+    catalog_path: Path,
+    output_dir: Path,
+    harmonized_dir: Path,
+    min_studies: int,
+) -> dict[str, Any]:
+    # min_studies validation remains disk-free. Create both directories only after
+    # the complete publication scope is locked; later path or catalog failures may
     # leave an empty directory because atomicity applies to published artifacts, not
     # to the directory's existence.
     for label, directory in (("output", output_dir), ("harmonized", harmonized_dir)):
@@ -2352,8 +2374,7 @@ def run_slice(catalog_path: Path, output_dir: Path, harmonized_dir: Path, min_st
                 ],
             ) from exc
 
-    with output_directory_lock(output_dir):
-        return _run_slice_locked(catalog_path, output_dir, harmonized_dir, min_studies)
+    return _run_slice_locked(catalog_path, output_dir, harmonized_dir, min_studies)
 
 
 def _run_slice_locked(catalog_path: Path, output_dir: Path, harmonized_dir: Path, min_studies: int) -> dict[str, Any]:

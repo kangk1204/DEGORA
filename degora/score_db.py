@@ -10,10 +10,11 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Literal, Mapping, cast, overload
 
 import numpy as np
 import pandas as pd
+from numpy.typing import NDArray
 from scipy.stats import beta, norm
 from scipy.stats import t as t_dist
 
@@ -21,12 +22,13 @@ from . import SCORE_VERSION, runtime_version_info
 from .aggregate import (
     SOURCE_UNIT_COLLAPSE_RULE,
     STOUFFER_WEIGHT_RULE,
-    collapse_gene_source_units,
+    _collapse_preselected_source_unit_rows,
+    _source_unit_series as _aggregate_source_unit_series,
     slice_consensus,
     source_unit_rows_for_aggregation,
     validate_min_studies,
+    validate_normalized_rank,
 )
-from .aggregate import _source_unit_series as _aggregate_source_unit_series
 from .formula_safety import (
     formula_guard_metadata,
     neutralize_formula_text,
@@ -34,11 +36,13 @@ from .formula_safety import (
 )
 from .provenance import (
     apply_default_file_mode,
+    artifact_output_lock,
     artifact_provenance_path,
     artifact_source_path,
     is_external_path_reference,
     output_directory_lock,
     portable_path,
+    publication_target_lock_path,
     publish_staged_artifacts,
     sanitize_metadata,
     shell_command,
@@ -62,7 +66,6 @@ PRIMARY_TOP_PERCENT_COLUMN = "quality_weighted_top_percent"
 PRIMARY_DIRECTION_COLUMN = "quality_weighted_consensus_direction"
 PRIMARY_CONCORDANCE_COLUMN = "quality_weighted_sign_concordance"
 PRIMARY_SETTING_ID = "quality_weighted_primary"
-UNWEIGHTED_SETTING_ID = "v1_2_source_unit_mean"
 PRIMARY_RANK_DESCRIPTION = (
     "quality_weighted_degora_rank is the primary browser and API rank. "
     "degora_rank and degora_score are retained as unweighted/reference outputs."
@@ -73,6 +76,41 @@ PRIORITY_SCORE_WEIGHTS = {
     "rank_score_component": 0.30,
     "effect_score": 0.15,
 }
+
+
+def _json_safe_value(value: Any) -> Any:
+    """Recursively replace non-finite numeric values with JSON null.
+
+    Python's default encoder emits bare NaN/Infinity tokens, which are not valid
+    RFC 8259 JSON. Score diagnostics legitimately have undefined pairwise metrics
+    for a one-source corpus; those values are represented as ``None`` instead.
+    """
+
+    if isinstance(value, Mapping):
+        return {str(key): _json_safe_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe_value(item) for item in value]
+    if isinstance(value, np.generic):
+        return _json_safe_value(value.item())
+    if value is pd.NA or value is pd.NaT:
+        return None
+    if isinstance(value, float) and not np.isfinite(value):
+        return None
+    return value
+
+
+def _strict_json_dumps(value: Any, **kwargs: Any) -> str:
+    """Serialize score output as standards-compliant JSON, failing closed."""
+
+    return json.dumps(_json_safe_value(value), allow_nan=False, **kwargs)
+
+
+def _diagnostic_records(diagnostics: pd.DataFrame) -> list[dict[str, Any]]:
+    records = diagnostics.to_dict(orient="records")
+    return cast(list[dict[str, Any]], _json_safe_value(records))
+
+
+_AUTO_ABLATION_NAME = "\0auto"
 
 
 @dataclass(frozen=True)
@@ -99,51 +137,62 @@ class ScoreAblation:
     ``ScoreAblation()`` and ``None`` are interchangeable.
     """
 
-    name: str = "full"
+    name: str = _AUTO_ABLATION_NAME
     component_weights: Mapping[str, float] | None = None
     disable_source_quality_weighting: bool = False
     disable_sample_size_weighting: bool = False
     notes: str = ""
 
     def __post_init__(self) -> None:
-        if self.component_weights is None:
-            return
-        weights = dict(self.component_weights)
-        unknown = sorted(set(weights).difference(SCORE_WEIGHTS), key=str)
-        if unknown:
+        explicit_name = self.name != _AUTO_ABLATION_NAME
+        if explicit_name and (not isinstance(self.name, str) or not self.name.strip()):
+            raise ValueError("ablation name must be a non-blank string")
+        object.__setattr__(self, "name", self.name.strip() if explicit_name else "full")
+        if self.component_weights is not None:
+            weights = dict(self.component_weights)
+            unknown = sorted(set(weights).difference(SCORE_WEIGHTS), key=str)
+            if unknown:
+                raise ValueError(
+                    f"ablation {self.name!r} names unknown score components {unknown}; "
+                    f"valid components are {sorted(SCORE_WEIGHTS)}"
+                )
+            if not weights:
+                raise ValueError(f"ablation {self.name!r} must keep at least one score component")
+            invalid: list[str] = []
+            normalized: dict[str, float] = {}
+            for component, raw_weight in weights.items():
+                if isinstance(raw_weight, (bool, np.bool_)):
+                    invalid.append(f"{component}={raw_weight!r}")
+                    continue
+                try:
+                    weight = float(raw_weight)
+                except (TypeError, ValueError):
+                    invalid.append(f"{component}={raw_weight!r}")
+                    continue
+                if not np.isfinite(weight) or weight <= 0:
+                    invalid.append(f"{component}={raw_weight!r}")
+                    continue
+                normalized[component] = weight
+            if invalid:
+                raise ValueError(
+                    f"ablation {self.name!r} weights must be finite positive numbers; invalid: "
+                    + ", ".join(invalid)
+                )
+            total = float(sum(normalized.values()))
+            if not np.isfinite(total) or total <= 0:
+                raise ValueError(f"ablation {self.name!r} has non-positive total weight {total!r}")
+            # A frozen dataclass does not freeze a caller-owned dict. Snapshot the
+            # mapping so post-construction mutation cannot bypass the validation above
+            # and silently redefine an already-recorded ablation.
+            object.__setattr__(self, "component_weights", MappingProxyType(normalized))
+        if explicit_name and self.name == "full" and not self.is_default:
             raise ValueError(
-                f"ablation {self.name!r} names unknown score components {unknown}; "
-                f"valid components are {sorted(SCORE_WEIGHTS)}"
+                "ablation name 'full' is reserved for the canonical default score configuration"
             )
-        if not weights:
-            raise ValueError(f"ablation {self.name!r} must keep at least one score component")
-        invalid: list[str] = []
-        normalized: dict[str, float] = {}
-        for component, raw_weight in weights.items():
-            if isinstance(raw_weight, (bool, np.bool_)):
-                invalid.append(f"{component}={raw_weight!r}")
-                continue
-            try:
-                weight = float(raw_weight)
-            except (TypeError, ValueError):
-                invalid.append(f"{component}={raw_weight!r}")
-                continue
-            if not np.isfinite(weight) or weight <= 0:
-                invalid.append(f"{component}={raw_weight!r}")
-                continue
-            normalized[component] = weight
-        if invalid:
-            raise ValueError(
-                f"ablation {self.name!r} weights must be finite positive numbers; invalid: "
-                + ", ".join(invalid)
-            )
-        total = float(sum(normalized.values()))
-        if not np.isfinite(total) or total <= 0:
-            raise ValueError(f"ablation {self.name!r} has non-positive total weight {total!r}")
-        # A frozen dataclass does not freeze a caller-owned dict. Snapshot the
-        # mapping so post-construction mutation cannot bypass the validation above
-        # and silently redefine an already-recorded ablation.
-        object.__setattr__(self, "component_weights", MappingProxyType(normalized))
+        if not explicit_name and not self.is_default:
+            # Preserve the long-standing convenience of ScoreAblation(weights=...)
+            # without mislabeling that custom configuration as canonical `full`.
+            object.__setattr__(self, "name", "custom")
 
     @property
     def weights(self) -> dict[str, float]:
@@ -237,13 +286,21 @@ RELIABILITY_SCORE_WEIGHTS = {
 SCORE_FORMULA = (
     "100 * weighted_geometric_mean(support_score, direction_score, "
     "evidence_score, rank_score_component, effect_score); support is "
-    "log-scaled by independent source units, direction is sign concordance, "
+    "log-scaled by independent source units relative to the complete corpus "
+    "(log1p(gene source units) / log1p(total source units), including 1.0 for "
+    "a gene supported by the only source in a one-source corpus), direction is sign concordance, "
     "evidence is Stouffer-z strength, rank is one minus the 0-1 rank product "
     "(its complement, so higher is stronger), and "
     "effect is absolute weighted log2FC strength. The score is a transparent "
     "ranking aid, not a calibrated posterior probability. Consensus evidence "
     "is combined after aggregating related contrasts within each independent "
     "source unit without max-|z| representative selection."
+)
+SUPPORT_NORMALIZATION_RULE = (
+    "support_score = log1p(gene source-unit count) / log1p(total corpus source-unit count), "
+    "with a zero-source corpus left unscored; source_quality_support_score uses the same ratio "
+    "over summed source-reliability weights. Therefore a gene supported by the only source in "
+    "a one-source corpus has 1.0 in both support lanes."
 )
 QUALITY_WEIGHTED_SCORE_FORMULA = (
     "Fixed source-quality-weighted ranking: same component "
@@ -555,6 +612,84 @@ def _score_ready_harmonized(harmonized: pd.DataFrame, *, lfc_cap: float = 10.0) 
     return frame, int(nonfinite.sum())
 
 
+def _validate_active_evidence_contract(harmonized: pd.DataFrame) -> None:
+    """Reject rows that cannot satisfy the harmonized evidence contract.
+
+    A finite signed z and normalized rank make a row eligible for the consensus
+    lanes.  The evidence lane also needs the originating p-value and effect.  If
+    either is missing, silently letting consensus count the source creates false
+    replication and metadata that contradict the score. An inactive neutral audit
+    row may omit the unscored counterpart field, but a present malformed effect or
+    p-value is never treated as missing merely because the row will be dropped.
+    Infinite effects remain the one documented exception:
+    ``_score_ready_harmonized`` caps and reports them before either lane runs.
+    """
+
+    required = {"signed_z", "normalized_rank", "lfc", "pvalue"}
+    if not required.issubset(harmonized.columns) or harmonized.empty:
+        return
+    raw_signed_z = harmonized["signed_z"]
+    raw_lfc = harmonized["lfc"]
+    raw_pvalue = harmonized["pvalue"]
+    signed_z = pd.to_numeric(raw_signed_z, errors="coerce")
+    normalized_rank = pd.to_numeric(harmonized["normalized_rank"], errors="coerce")
+    lfc = pd.to_numeric(raw_lfc, errors="coerce")
+    pvalue = pd.to_numeric(raw_pvalue, errors="coerce")
+    signed_finite = np.isfinite(signed_z.to_numpy(dtype=float))
+    rank_finite = np.isfinite(normalized_rank.to_numpy(dtype=float))
+
+    mismatched_score_pair = signed_finite ^ rank_finite
+    active = signed_finite & rank_finite
+    signed_bool = np.fromiter(
+        (isinstance(value, (bool, np.bool_)) for value in raw_signed_z.to_numpy(dtype=object)),
+        dtype=bool,
+        count=len(harmonized),
+    )
+    lfc_bool = np.fromiter(
+        (isinstance(value, (bool, np.bool_)) for value in raw_lfc.to_numpy(dtype=object)),
+        dtype=bool,
+        count=len(harmonized),
+    )
+    pvalue_bool = np.fromiter(
+        (isinstance(value, (bool, np.bool_)) for value in raw_pvalue.to_numpy(dtype=object)),
+        dtype=bool,
+        count=len(harmonized),
+    )
+    pvalue_values = pvalue.to_numpy(dtype=float)
+    lfc_missing = raw_lfc.isna().to_numpy(dtype=bool)
+    pvalue_missing = raw_pvalue.isna().to_numpy(dtype=bool)
+    # Missing evidence is permitted only for an inactive neutral audit row.
+    # A present-but-malformed value is never equivalent to missing and must fail
+    # even if the other field proves that the row is neutral.
+    malformed_present_evidence = (
+        (~lfc_missing & (lfc.isna().to_numpy(dtype=bool) | lfc_bool))
+        | (
+            ~pvalue_missing
+            & (
+                ~np.isfinite(pvalue_values)
+                | (pvalue_values < 0.0)
+                | (pvalue_values > 1.0)
+                | pvalue_bool
+            )
+        )
+    )
+    incomplete_active_evidence = active & (lfc_missing | pvalue_missing)
+    invalid = (
+        mismatched_score_pair
+        | (active & signed_bool)
+        | malformed_present_evidence
+        | incomplete_active_evidence
+    )
+    if invalid.any():
+        raise ValueError(
+            "scoring evidence contract failed: active rows require a finite, non-boolean "
+            "signed_z/normalized_rank pair and non-missing lfc/pvalue; every present lfc "
+            "must be numeric and non-boolean, and every present pvalue must be a "
+            "non-boolean finite value in [0, 1]; "
+            f"inconsistent value(s) in {int(invalid.sum())} row(s)"
+        )
+
+
 def _as_numeric(frame: pd.DataFrame, column: str, default: float = np.nan) -> pd.Series:
     if column not in frame.columns:
         return pd.Series(default, index=frame.index, dtype=float)
@@ -595,7 +730,7 @@ def _map_unique(values: pd.Series, func: Callable[[Any], Any]) -> pd.Series:
     if values.empty:
         return values
     codes, uniques = pd.factorize(values, use_na_sentinel=False)
-    mapped = np.empty(len(uniques), dtype=object)
+    mapped: NDArray[np.object_] = np.empty(len(uniques), dtype=object)
     for index, unique_value in enumerate(uniques):
         mapped[index] = func(unique_value)
     return pd.Series(mapped[codes], index=values.index)
@@ -837,13 +972,13 @@ def study_gene_evidence(harmonized: pd.DataFrame) -> pd.DataFrame:
     frame["signed_z"] = _as_numeric(frame, "signed_z")
     frame["pvalue"] = _as_numeric(frame, "pvalue")
     frame["padj"] = _as_numeric(frame, "padj")
-    frame["normalized_rank"] = _as_numeric(frame, "normalized_rank")
+    frame["normalized_rank"] = validate_normalized_rank(
+        frame,
+        context="study-gene evidence scoring",
+    )
     frame["n_ctrl"] = _as_numeric(frame, "n_ctrl")
     frame["n_treat"] = _as_numeric(frame, "n_treat")
     frame["n_genes_in_study"] = _as_numeric(frame, "n_genes_in_study")
-    frame = frame.dropna(subset=["gene_symbol", "study_id", "lfc", "signed_z", "pvalue", "normalized_rank"])
-    frame = frame.loc[frame["gene_symbol"].ne("") & frame["study_id"].ne("")].copy()
-
     # Per-contrast source weights are derived downstream by
     # aggregate.source_unit_rows_for_aggregation, which applies the documented
     # MAX_SOURCE_SAMPLE_WEIGHT cap. Deriving them a second time here would leave an
@@ -869,8 +1004,16 @@ def study_gene_evidence(harmonized: pd.DataFrame) -> pd.DataFrame:
         if column not in frame.columns:
             frame[column] = fallback
 
+    # Select early/late/peak rows before dropping unusable score values. Otherwise
+    # an unusable documented early time point is removed and a later point silently
+    # takes its place. Metadata and collapsed scores both derive from this one exact
+    # selected frame.
     selected_frame = source_unit_rows_for_aggregation(frame)
-    collapsed = collapse_gene_source_units(frame)
+    pvalue = pd.to_numeric(selected_frame["pvalue"], errors="coerce")
+    lfc = pd.to_numeric(selected_frame["lfc"], errors="coerce")
+    eligible = np.isfinite(pvalue.to_numpy(dtype=float)) & np.isfinite(lfc.to_numpy(dtype=float))
+    selected_frame = selected_frame.loc[eligible].copy()
+    collapsed = _collapse_preselected_source_unit_rows(selected_frame)
     meta = _metadata_for_study_gene_units(selected_frame)
     out = collapsed.merge(meta.drop(columns=["n_genes_in_study"], errors="ignore"), on=["gene_symbol", "source_unit_id"], how="left")
     out["aggregate_pvalue"] = 2.0 * norm.sf(np.abs(pd.to_numeric(out["signed_z"], errors="coerce")))
@@ -896,12 +1039,11 @@ def _component_strength_from_lfc(values: pd.Series) -> pd.Series:
 
 
 def _weighted_geometric_score_with_weights(frame: pd.DataFrame, weights: dict[str, float]) -> pd.Series:
-    eps = 1e-6
     total_weight = float(sum(weights.values()))
     missing = [column for column in weights if column not in frame.columns]
     if missing:
         raise ValueError(f"missing required score component column(s): {', '.join(missing)}")
-    score_log = np.zeros(len(frame), dtype=float)
+    score: NDArray[np.float64] = np.ones(len(frame), dtype=float)
     for column, weight in weights.items():
         component = pd.to_numeric(frame[column], errors="coerce")
         bad = ~np.isfinite(component.to_numpy(dtype=float))
@@ -910,9 +1052,17 @@ def _weighted_geometric_score_with_weights(frame: pd.DataFrame, weights: dict[st
                 f"non-finite score component {column!r} in {int(bad.sum())} row(s); "
                 "required score components must be finite before aggregation"
             )
-        component = component.clip(eps, 1.0)
-        score_log += float(weight) * np.log(component.to_numpy(dtype=float))
-    return pd.Series(100.0 * np.exp(score_log / total_weight), index=frame.index)
+        outside = component.lt(0.0) | component.gt(1.0)
+        if outside.any():
+            raise ValueError(
+                f"score component {column!r} must satisfy 0 <= component <= 1; "
+                f"out-of-range value(s) in {int(outside.sum())} row(s)"
+            )
+        # Components are constructed on [0, 1]. Preserve an evaluated zero as
+        # actual negative evidence: in a geometric mean it is absorbing. The old
+        # 1e-6 floor made a documented zero produce a positive score.
+        score *= np.power(component.to_numpy(dtype=float), float(weight) / total_weight)
+    return pd.Series(100.0 * score, index=frame.index)
 
 
 def _weighted_geometric_score(frame: pd.DataFrame) -> pd.Series:
@@ -993,6 +1143,22 @@ def _stouffer_inference_warning(evidence: pd.DataFrame) -> str:
         "Stouffer and random-effects-Stouffer p-value fields are descriptive screening outputs; "
         "their calibration depends on the completeness and selection process of every input table."
     )
+
+
+@overload
+def _source_quality_diagnostics_from_evidence(
+    evidence: pd.DataFrame,
+    *,
+    return_pairwise: Literal[False] = False,
+) -> pd.DataFrame: ...
+
+
+@overload
+def _source_quality_diagnostics_from_evidence(
+    evidence: pd.DataFrame,
+    *,
+    return_pairwise: Literal[True],
+) -> tuple[pd.DataFrame, pd.DataFrame]: ...
 
 
 def _source_quality_diagnostics_from_evidence(
@@ -1155,6 +1321,10 @@ def _quality_weighted_consensus(
         return pd.DataFrame()
 
     frame = evidence.copy()
+    frame["normalized_rank"] = validate_normalized_rank(
+        frame,
+        context="quality-weighted consensus",
+    )
     if "source_reliability_weight" not in frame.columns:
         frame["source_reliability_weight"] = frame.get("source_recommended_weight", 0.65)
     for column in [
@@ -1177,8 +1347,7 @@ def _quality_weighted_consensus(
     frame["_w2"] = frame["_effective_weight"] ** 2
     frame["_wlfc"] = frame["_effective_weight"] * frame["lfc"].fillna(0.0)
     frame["_w_lfc_denominator"] = np.where(frame["lfc"].notna(), frame["_effective_weight"], 0.0)
-    eps = np.finfo(float).tiny
-    frame["_log_rank"] = np.log(frame["normalized_rank"].clip(lower=eps, upper=1.0))
+    frame["_log_rank"] = np.log(frame["normalized_rank"])
     frame["_weighted_log_rank"] = frame["_effective_weight"] * frame["_log_rank"]
 
     grouped = frame.groupby("gene_symbol", as_index=False).agg(
@@ -1373,7 +1542,10 @@ def _rra_beta_layer(evidence: pd.DataFrame, *, total_source_units: int, min_stud
     if evidence.empty or total_source_units <= 0:
         return pd.DataFrame(columns=columns)
     frame = evidence.copy()
-    frame["normalized_rank"] = pd.to_numeric(frame["normalized_rank"], errors="coerce").clip(0.0, 1.0)
+    frame["normalized_rank"] = validate_normalized_rank(
+        frame,
+        context="RRA consensus",
+    )
     frame = frame.dropna(subset=["gene_symbol", "source_unit_id", "normalized_rank"])
     if frame.empty:
         return pd.DataFrame(columns=columns)
@@ -1538,6 +1710,10 @@ def _priority_components_from_evidence(
     if evidence.empty:
         return pd.DataFrame()
     frame = evidence.copy()
+    frame["normalized_rank"] = validate_normalized_rank(
+        frame,
+        context="priority consensus",
+    )
     for column in ["signed_z", "lfc", "normalized_rank", "weight"]:
         if column in frame.columns:
             frame[column] = pd.to_numeric(frame[column], errors="coerce")
@@ -1548,8 +1724,7 @@ def _priority_components_from_evidence(
     frame["_w2"] = frame["weight"] ** 2
     frame["_wlfc"] = frame["weight"] * frame["lfc"].fillna(0.0)
     frame["_w_lfc_denominator"] = np.where(frame["lfc"].notna(), frame["weight"], 0.0)
-    eps = np.finfo(float).tiny
-    frame["_log_rank"] = np.log(frame["normalized_rank"].clip(lower=eps, upper=1.0))
+    frame["_log_rank"] = np.log(frame["normalized_rank"])
     grouped = frame.groupby("gene_symbol", as_index=False).agg(
         n_source_units=("source_unit_id", "nunique"),
         sum_wz=("_wz", "sum"),
@@ -1686,7 +1861,7 @@ def _leave_one_source_out_stability(
         penalty_folds = len(source_units) - eligible_folds
         available = eligible_folds > 0
         if available:
-            eligibility = np.asarray(eligible_records[gene], dtype=bool)
+            eligibility: NDArray[np.bool_] = np.asarray(eligible_records[gene], dtype=bool)
             evaluable_values = values[eligibility]
             median = float(np.median(evaluable_values))
             q75, q25 = np.percentile(evaluable_values, [75, 25])
@@ -1798,6 +1973,10 @@ def degora_score_table(
 
     min_studies = validate_min_studies(min_studies)
     ablation = ablation or ScoreAblation()
+    # Validate at the public Python/standalone scoring boundary before any row
+    # filtering or temporal selection can hide malformed ranks.
+    validate_normalized_rank(harmonized, context="DEGORA score table")
+    _validate_active_evidence_contract(harmonized)
 
     score_harmonized, n_nonfinite_lfc_capped = _score_ready_harmonized(harmonized)
     evidence = study_gene_evidence(score_harmonized)
@@ -1823,6 +2002,7 @@ def degora_score_table(
         metadata = {
             "score_version": SCORE_VERSION,
             "score_formula": SCORE_FORMULA,
+            "support_normalization_rule": SUPPORT_NORMALIZATION_RULE,
             "score_weights": ablation.weights,
             "score_ablation": ablation.to_dict(),
             "primary_rank_column": PRIMARY_RANK_COLUMN,
@@ -1863,7 +2043,7 @@ def degora_score_table(
             "effect_meta_rule": EFFECT_META_RULE,
             "effect_meta_small_k_warning": "For effect_meta_k = 2 the HKSJ t critical value is 12.71, so the interval is wide enough to be uninformative in practice: it will usually span zero whatever the pooled estimate is. For k = 3 it is 4.30. Read these intervals as descriptive only, and do not read an interval covering zero at small k as evidence of no effect.",
             "loo_stability_rule": LOO_STABILITY_RULE,
-            "source_quality_diagnostics": source_quality_diagnostics.to_dict(orient="records"),
+            "source_quality_diagnostics": _diagnostic_records(source_quality_diagnostics),
         }
         return pd.DataFrame(columns=GENE_SCORE_COLUMNS), evidence, metadata
 
@@ -1894,7 +2074,7 @@ def degora_score_table(
         source_units=("source_unit_id", lambda values: ";".join(sorted(set(map(str, values))))),
     )
     total_source_units = int(evidence["source_unit_id"].nunique()) if not evidence.empty else 0
-    denominator = np.log1p(total_source_units) if total_source_units > 1 else 1.0
+    denominator = np.log1p(total_source_units) if total_source_units > 0 else 1.0
     total_source_quality_weight = (
         float(source_quality_diagnostics["source_reliability_weight"].sum())
         if not source_quality_diagnostics.empty
@@ -2131,6 +2311,7 @@ def degora_score_table(
     metadata = {
         "score_version": SCORE_VERSION,
         "score_formula": SCORE_FORMULA,
+        "support_normalization_rule": SUPPORT_NORMALIZATION_RULE,
         "score_weights": ablation.weights,
         "score_ablation": ablation.to_dict(),
         "primary_rank_column": PRIMARY_RANK_COLUMN,
@@ -2185,7 +2366,7 @@ def degora_score_table(
             "D": "lower-ranked or weakly supported",
         },
         "score_warning": "DEGORA score is for transparent prioritization and browsing, not a calibrated probability or a validation metric.",
-        "source_quality_diagnostics": source_quality_diagnostics.to_dict(orient="records"),
+        "source_quality_diagnostics": _diagnostic_records(source_quality_diagnostics),
     }
     # The five quality_* components are appended rather than folded into
     # GENE_SCORE_COLUMNS so the established column order is untouched and existing
@@ -2288,7 +2469,15 @@ def _write_sqlite(
                 gene_scores.to_sql("genes", connection, index=False)
                 evidence.to_sql("gene_evidence", connection, index=False)
                 studies.to_sql("studies", connection, index=False)
-                meta_rows = [{"key": key, "value": json.dumps(value, sort_keys=True) if not isinstance(value, str) else value} for key, value in metadata.items()]
+                meta_rows = [
+                    {
+                        "key": key,
+                        "value": _strict_json_dumps(value, sort_keys=True)
+                        if not isinstance(value, str)
+                        else value,
+                    }
+                    for key, value in metadata.items()
+                ]
                 pd.DataFrame(meta_rows).to_sql("meta", connection, index=False)
                 connection.execute("CREATE UNIQUE INDEX idx_genes_symbol ON genes(gene_symbol)")
                 connection.execute("CREATE INDEX idx_genes_rank ON genes(degora_rank)")
@@ -2413,16 +2602,25 @@ def write_score_database(
 ) -> dict[str, Any]:
     """Build score CSV, metadata JSON, and SQLite DB from a harmonized table."""
 
-    with output_directory_lock(output_dir):
-        return _write_score_database_locked(
-            harmonized_path,
-            output_dir,
-            catalog_path=catalog_path,
-            db_path=db_path,
-            min_studies=min_studies,
-            command=command,
-            extra_metadata=extra_metadata,
-        )
+    resolved_output = Path(output_dir).resolve()
+    resolved_db = (Path(db_path) if db_path is not None else resolved_output / "degora_scores.db").resolve()
+    # The database may intentionally live outside output_dir. Every writer must
+    # claim its target identity even for the default location, so a second run
+    # that names the same file through --db cannot publish a different database
+    # beside this run's CSV/metadata generation. Artifact-output locking always
+    # precedes the database target lock, matching the outer CLI and discovery
+    # pipeline order; the contexts remain same-thread re-entrant.
+    with artifact_output_lock(resolved_output):
+        with output_directory_lock(publication_target_lock_path(resolved_db)):
+            return _write_score_database_locked(
+                harmonized_path,
+                resolved_output,
+                catalog_path=catalog_path,
+                db_path=resolved_db,
+                min_studies=min_studies,
+                command=command,
+                extra_metadata=extra_metadata,
+            )
 
 
 def _write_score_database_locked(
@@ -2534,19 +2732,22 @@ def _write_score_database_locked(
         staged_summary_path = staging / summary_path.name
 
         neutralize_formula_text(gene_scores).to_csv(staged_score_csv, index=False)
-        staged_metadata_json.write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        staged_metadata_json.write_text(
+            _strict_json_dumps(metadata, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
         diagnostics = pd.DataFrame.from_records(
             metadata.get("source_quality_diagnostics", []),
             columns=SOURCE_QUALITY_DIAGNOSTIC_COLUMNS,
         )
         neutralize_formula_text(diagnostics).to_csv(staged_diagnostics_tsv, sep="\t", index=False)
         staged_diagnostics_json.write_text(
-            json.dumps(diagnostics.to_dict(orient="records"), indent=2, sort_keys=True) + "\n",
+            _strict_json_dumps(diagnostics.to_dict(orient="records"), indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
         _write_sqlite(staged_db_path, gene_scores, evidence, studies, metadata)
         staged_summary_path.write_text(
-            json.dumps(stored_summary, indent=2, sort_keys=True) + "\n",
+            _strict_json_dumps(stored_summary, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
 
@@ -2606,7 +2807,7 @@ def main(argv: list[str] | None = None) -> int:
         db_path=args.db,
         min_studies=args.min_studies,
     )
-    print(json.dumps(summary, indent=2, sort_keys=True))
+    print(_strict_json_dumps(summary, indent=2, sort_keys=True))
     return 0
 
 

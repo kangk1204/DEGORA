@@ -1225,7 +1225,7 @@ def harmonize_frame(frame: pd.DataFrame, mapping: TableMapping, study_meta: dict
     # survive the finite-value guard, add a full weight to the denominator, and
     # inflate source support. Route both through NaN so aggregation/scoring drop
     # the neutral row while the harmonized audit table still records it.
-    neutral_evidence = (lfc_sign == 0.0) | out["pvalue"].ge(1.0).to_numpy(dtype=bool)
+    neutral_evidence = (lfc_sign == 0.0) | out["pvalue"].eq(1.0).to_numpy(dtype=bool)
     out["signed_z"] = np.where(
         neutral_evidence,
         np.nan,

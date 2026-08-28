@@ -270,7 +270,7 @@ def test_sample_scoped_identifiers_stay_refused(column: str) -> None:
     assert classify_header([column, "logFC", "P.Value"])["mapping"]["gene_column"] == ""
 
 
-def test_a_hand_edited_bundle_species_does_not_end_in_a_traceback() -> None:
+def test_a_hand_edited_bundle_species_does_not_end_in_a_traceback(tmp_path: Path) -> None:
     """`species` as a bare string raised AttributeError on reader-correctable input."""
 
     from degora.discovery_run import DiscoveryError, run_discovery_analysis
@@ -278,7 +278,7 @@ def test_a_hand_edited_bundle_species_does_not_end_in_a_traceback() -> None:
     for payload in ({"species": "human"}, {"species": None}, {"species": []}, {}):
         with pytest.raises(DiscoveryError):
             run_discovery_analysis(
-                payload, [], "/tmp/degora-unused", species="human", min_studies=2, force=True
+                payload, [], tmp_path / "degora-unused", species="human", min_studies=2, force=True
             )
 
 

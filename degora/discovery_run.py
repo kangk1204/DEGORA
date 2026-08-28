@@ -12,11 +12,20 @@ from typing import Any, Callable, Iterable
 
 import pandas as pd
 
-from .discovery import DISCOVERY_BUNDLE_ARTIFACT_TYPE, DiscoveryError, normalize_species
+from .discovery import (
+    DISCOVERY_BUNDLE_ARTIFACT_TYPE,
+    DiscoveryError,
+    normalize_species,
+)
 from .excel_export import DEFAULT_WORKBOOK_NAME, export_run_workbook
 from .formula_safety import formula_guard_metadata, neutralize_formula_text
 from .harmonize import _read_excel_any, _restore_unnamed_row_labels
-from .provenance import shell_command, write_source_sidecar
+from .provenance import (
+    output_directory_lock,
+    publication_target_lock_path,
+    shell_command,
+    write_source_sidecar,
+)
 from .reanalysis import derive_welch_deg, read_matrix_frame, sniff_delimited_separator
 from .score_db import write_score_database
 from .slice_runner import CATALOG_COLUMNS, run_slice, run_warning_messages, validate_catalog_inputs
@@ -1042,6 +1051,7 @@ def mark_unfinished_discovery_runs(discovery_root: str | Path) -> list[Path]:
                             ),
                         },
                         indent=2,
+                        allow_nan=False,
                     )
                     + "\n",
                     encoding="utf-8",
@@ -1167,7 +1177,10 @@ def _execute_discovery_analysis(
     if force:
         replay_args.append("--force")
     replay_command = shell_command(replay_args)
-    prepared_path.write_text(json.dumps(prepared, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    prepared_path.write_text(
+        json.dumps(prepared, indent=2, sort_keys=True, allow_nan=False) + "\n",
+        encoding="utf-8",
+    )
 
     rows: list[dict[str, Any]] = []
     author_derivations: list[dict[str, Any]] = []
@@ -1268,6 +1281,7 @@ def _execute_discovery_analysis(
             },
             indent=2,
             sort_keys=True,
+            allow_nan=False,
         )
         + "\n",
         encoding="utf-8",
@@ -1335,6 +1349,7 @@ def _execute_discovery_analysis(
             },
             indent=2,
             sort_keys=True,
+            allow_nan=False,
         )
         + "\n",
         encoding="utf-8",
@@ -1390,12 +1405,49 @@ def run_discovery_analysis(
     extra_metadata: dict[str, str] | None = None,
     progress: Callable[[float, str], None] | None = None,
     excel: bool = True,
+    before_publish: Callable[[], None] | None = None,
+) -> dict[str, Any]:
+    """Run analysis under a lock whose inode survives output replacement."""
+
+    output = Path(output_dir).resolve()
+    # A forced run renames ``output`` to a backup before constructing the new
+    # generation.  Its target-scoped sibling lock remains in place through that
+    # gap without serializing independent API run IDs in the same parent.
+    with output_directory_lock(publication_target_lock_path(output)):
+        return _run_discovery_analysis_locked(
+            prepared,
+            selections,
+            output,
+            species=species,
+            min_studies=min_studies,
+            force=force,
+            extra_metadata=extra_metadata,
+            progress=progress,
+            excel=excel,
+            before_publish=before_publish,
+        )
+
+
+def _run_discovery_analysis_locked(
+    prepared: dict[str, Any],
+    selections: Iterable[dict[str, Any]],
+    output_dir: str | Path,
+    *,
+    species: str,
+    min_studies: int = 2,
+    force: bool = False,
+    extra_metadata: dict[str, str] | None = None,
+    progress: Callable[[float, str], None] | None = None,
+    excel: bool = True,
+    before_publish: Callable[[], None] | None = None,
 ) -> dict[str, Any]:
     """Run a species-specific activation with rollback on every failed attempt.
 
     ``progress`` receives (fraction, message) at each stage; a job's callback may
-    raise there to stop the run, and the output folder is rolled back like any
-    other failure, so a stopped run leaves nothing behind.
+    raise there to stop the run.  ``before_publish`` is the cancellation commit
+    barrier: it runs after every artifact has been written successfully but before
+    the output transaction is committed.  An exception from either callback rolls
+    the complete staged run back, so a stopped run leaves nothing behind.
     """
     if isinstance(prepared, dict) and prepared.get("artifact_type") == DISCOVERY_BUNDLE_ARTIFACT_TYPE and "studies" not in prepared:
         # The hidden .degora-discovery-bundle.json is the preparation folder's
@@ -1422,6 +1474,12 @@ def run_discovery_analysis(
             progress=progress,
             excel=excel,
         )
+    except BaseException:
+        _rollback_output_transaction(output, existed_empty=existed_empty, backup=backup)
+        raise
+    try:
+        if before_publish is not None:
+            before_publish()
     except BaseException:
         _rollback_output_transaction(output, existed_empty=existed_empty, backup=backup)
         raise

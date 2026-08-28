@@ -6,7 +6,7 @@ The software can also search public Human or Mouse records, help you inspect ava
 
 ## Requirements
 
-- Python 3.10 or newer; automated release tests cover Python 3.10-3.13, and Python 3.12 is recommended
+- Python 3.10 or newer; automated release tests cover Python 3.10-3.14, and Python 3.12 is recommended
 - Ubuntu or macOS; Windows 11 users can run the same Linux workflow in WSL2 Ubuntu
 - Internet access only when using public-data search or download features
 - Git, unless you use the ZIP download option below
@@ -43,7 +43,7 @@ python3 --version
 ```
 
 The reported version must be 3.10 or newer. Automated release tests cover
-Python 3.10-3.13; later versions permitted by the package metadata may not yet
+Python 3.10-3.14; later versions permitted by the package metadata may not yet
 have release-matrix coverage. A virtual environment keeps the
 Python version used to create it, so an environment created with Python 3.9
 must be removed or renamed and recreated with a supported interpreter.
@@ -181,7 +181,21 @@ degora run degora-demo/degora_demo_config.xlsx
 degora serve degora-demo/results/degora_scores.db
 ```
 
-The last command starts a local server and prints a browser address, normally `http://127.0.0.1:8765`. Press `Ctrl+C` in the terminal to stop it.
+The last command starts a local server and prints a browser address, normally
+`http://127.0.0.1:8765#token=...`. The fragment is a fresh per-run capability:
+the browser sends it in the `X-DEGORA-Token` header, while the fragment itself
+never appears in HTTP request lines. With `--open-browser`, DEGORA gives the
+desktop launcher only a temporary local HTML file, not the authenticated URL.
+That file is restricted to its owner, redirects the browser to the fragment URL,
+and is erased within 60 seconds (or immediately when the server stops). On WSL,
+its Linux path is first translated to a Windows-readable file URI/path. DEGORA
+therefore supplies only that token-free bootstrap location as its initial
+launcher argument; the authenticated URL is followed as an in-page redirect.
+Native Windows Python cannot prove owner-only ACLs from POSIX mode bits, so
+automatic authenticated opening fails closed there and leaves the printed URL
+for manual opening (the supported Windows workflow is WSL2).
+`--no-token` is an explicit loopback-only opt-out and is not recommended on a
+shared host. Press `Ctrl+C` in the terminal to stop the server.
 
 `degora demo degora-demo` writes exactly these starter files:
 
@@ -347,6 +361,12 @@ number of source units (two source units with `min_studies=2`), where its weight
 cannot change the order at all. `without_sample_size_weighting` removes the
 per-source-unit sample-size weight; contrasts inside one source unit are still
 combined with their sqrt(n) weights, as documented for the collapse rule.
+Names supplied with `--weights` must be non-blank and unique; `full` is reserved
+for the canonical default score. Every score component is validated on `[0, 1]`,
+and zero is an absorbing value in the documented geometric mean rather than an
+undisclosed positive floor. Support is normalized as
+`log1p(gene source units) / log1p(all corpus source units)`, so both support
+lanes equal `1.0` when a one-source exploratory corpus supports the gene.
 
 ## Search public Human or Mouse records
 
@@ -370,7 +390,11 @@ The search collects at most 1,000 exact, unique records before sorting and displ
 
 Supplementary tables are inspected as CSV, TSV, TXT and Excel, including gzipped and legacy `.xls` workbooks - the shapes repositories actually serve.
 
-Search exports include JSON, CSV, and Excel snapshots with identifiers, title, authors, journal, year, species evidence, source-unit information, readiness, and provider diagnostics.
+Search exports include JSON, CSV, and Excel snapshots with identifiers, title,
+authors, journal, year, species evidence, source-unit information, readiness,
+and provider diagnostics. They are published as one rollback-safe generation
+with `publication_search.manifest.json`; its SHA-256 entries let a reader reject
+a missing, tampered, or mixed-generation set.
 
 Before running an analysis, any selected record that was matched by the species filter rather than a per-record organism check has to be confirmed as that species, and the answer is recorded in the run's metadata rather than assumed.
 
@@ -439,9 +463,14 @@ an intentionally different replication floor is required. `--min-studies 1`
 scores genes from a single source unit: the run warns that such a ranking shows
 no replication and is exploratory prioritisation, not replicated evidence.
 
-Every `POST` to `/api/discovery/...` must carry the header `X-DEGORA-Action: 1`
-(the page adds it; a `curl` call without it is refused with a message naming
-the header). It is a cross-site request forgery guard for the local server.
+Every API request except the initial HTML page requires the per-run
+`X-DEGORA-Token`; the page reads it from the printed URL fragment and adds it
+automatically. Every `POST` to `/api/discovery/...` must also carry
+`X-DEGORA-Action: 1` (the page adds it; a `curl` call without it is refused with
+a message naming the header). The token protects other local accounts and
+processes; the action header is the separate cross-site request forgery guard.
+At most 64 queued or running discovery jobs are admitted by default, and an
+overload receives HTTP 429. `--max-pending-jobs N` changes that bounded limit.
 
 The review panel asks each prepared table only for the confirmations that actually apply to it, and keeps the settings most tables never touch behind a collapsed **Advanced settings** panel that opens by itself if any of them is already set. Where a linked series reports how many samples it holds, that total is shown beside the group-size boxes and the two numbers you enter are checked against it; the split between groups is never guessed, because a results table has one row per gene and the number feeds the source weight directly. A table whose columns were recognised and left alone is asked one thing; a table whose effect column does not say it is log2, or whose adjusted p-value is standing in for a raw one, is asked about that as well. Contrast direction is the exception: it is asked for every table, because reversing it inverts every up/down call while leaving results that look entirely reasonable.
 
@@ -541,6 +570,62 @@ make smoke
 
 <!--
 ## Release notes
+
+### 0.4.34
+
+This release intentionally advances `SCORE_VERSION` to
+`degora_score_v1_3_source_unit_mean`. It corrects two boundary cases in the
+published formula: a zero component is now truly absorbing in the weighted
+geometric mean, and support in a one-source exploratory corpus is normalized to
+`1.0` in both scoring lanes. Existing workbooks pinned to the previous score
+version fail closed and should be regenerated or explicitly reviewed before
+changing their requested version.
+
+**Temporal selection and rank inputs now fail closed.** `early`, `late`, and
+`peak_mean` are selected from the raw source-unit rows before score eligibility
+is applied, and the same selected frame feeds both audit metadata and scoring.
+`peak_mean` is applied exactly once. Every scoring entry point rejects a
+non-finite `normalized_rank` or one outside `0 < rank <= 1`; the sole exception
+is a retained, verifiably neutral audit row (`lfc = 0` or `pvalue = 1`) whose
+`signed_z` and rank are both genuinely missing and which is removed before
+scoring. A negative rank can no longer become overwhelming evidence after a
+logarithm.
+
+**Score outputs are reproducible and standards-compliant.** Undefined
+one-source diagnostics are JSON `null`, and every metadata/provenance writer
+uses strict JSON rather than Python's non-standard bare `NaN`/`Infinity`.
+Ablation names are non-blank and unique, `full` is reserved for the canonical
+configuration, and score components outside `[0, 1]` are refused.
+
+**Concurrent and cancelled work cannot publish a mixed result.** Output locks
+are re-entrant only for their owning thread and retain one stable lock inode
+across runs. Analysis cancellation is linearized at a pre-publication barrier,
+so a cancelled job rolls its complete staged run back. Search and workbook
+artifact sets publish with rollback plus a last-member generation manifest
+whose SHA-256 entries detect missing, tampered, or mixed files.
+
+**The local service is capability-protected by default.** Loopback serving now
+generates a per-run token and places it only in the browser URL fragment. For
+`--open-browser`, Python writes an owner-only bootstrap HTML file, passes only
+that nonsecret file URL to the desktop launcher, and erases the file within 60
+seconds or on shutdown. WSL paths are explicitly converted to Windows-readable
+UNC/file locations. DEGORA supplies only the token-free bootstrap location as
+its initial process argument; the browser follows the authenticated URL from
+inside that page. Native Windows auto-open fails closed because POSIX mode bits
+cannot establish an owner-only Windows ACL; WSL2 remains the supported path.
+Durable discovery admission is bounded at 64 active jobs by
+default and reports HTTP 429 when full. Credential-bearing query, fragment, and
+userinfo parts of persisted URLs are recursively redacted while safe accession
+and ID parameters remain intact.
+
+**The source release is independently testable.** The sdist now contains both
+quickstart entry points, `requirements.txt`, repository metadata, every shipped
+test, and its JSON fixtures. CI runs the full suite on Ubuntu Python 3.10-3.14
+and macOS, installs Node 24 explicitly, exercises the true dependency floors,
+installs and tests the clean sdist, and gates requirements parity, Ruff, strict
+incremental mypy, pip-audit, 85% combined branch coverage, check-manifest,
+build, and twine. Release tags must match package metadata, be annotated, and
+carry a cryptographic signature GitHub verifies.
 
 ### 0.4.33
 

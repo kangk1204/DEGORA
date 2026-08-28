@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "degora"
-version = "0.4.33"
+version = "0.4.34"
 description = "Excel-first integration of published heterogeneous DEG tables"
 readme = "README.md"
 license = "MIT"
@@ -24,8 +24,15 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
   "pytest>=9.0.3,<10",
+  "pytest-cov>=7,<8",
   "build>=1,<2",
+  "check-manifest>=0.50,<1",
   "pip-audit>=2.7,<3",
+  "mypy>=1.15,<2",
+  "ruff>=0.9,<1",
+  "twine>=6,<7",
+  "packaging>=23,<27",
+  "tomli>=2.0.1,<3; python_version < '3.11'",
   "xlrd>=2.0.1,<3",
 ]
 
@@ -40,4 +47,29 @@ packages = ["degora"]
 # fixture whose values are deliberately identical; it is not a DEGORA defect.
 filterwarnings = [
     "ignore:Precision loss occurred in moment calculation:RuntimeWarning",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["degora"]
+
+[tool.coverage.report]
+fail_under = 85
+show_missing = true
+skip_covered = true
+
+# Incremental strict gate.  Every listed module is fully checked.  Imports are
+# followed silently and untyped third-party libraries are treated as Any so
+# errors in the listed modules still fail without making the rest of the package
+# part of this gate.  The remaining modules stay visible as tracked type debt.
+[tool.mypy]
+strict = true
+follow_imports = "silent"
+ignore_missing_imports = true
+files = [
+  "degora/__init__.py",
+  "degora/identifiers.py",
+  "degora/ablation.py",
+  "degora/aggregate.py",
+  "degora/score_db.py",
 ]

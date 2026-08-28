@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import errno
+import html
 import inspect
 import ipaddress
 import json
@@ -13,13 +14,17 @@ import secrets
 import shutil
 import socket
 import sqlite3
+import stat
+import subprocess
 import sys
+import tempfile
 import threading
 import time
+import webbrowser
 from contextlib import closing
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any, Callable
 from urllib.parse import parse_qs, parse_qsl, quote, unquote, urlencode, urlparse, urlsplit, urlunsplit
 
@@ -34,6 +39,8 @@ from .score_db import (
     PRIMARY_TOP_PERCENT_COLUMN,
 )
 TOKEN_REDACTION = "[redacted]"
+DEFAULT_DISCOVERY_MAX_PENDING_JOBS = 64
+BROWSER_BOOTSTRAP_LIFETIME_SECONDS = 60.0
 _TOKEN_ARG_RE = re.compile(r"(?i)(--api-token(?:=|\s+))('[^']*'|\"[^\"]*\"|[^\s]+)")
 _TOKEN_QUERY_KEY_RE = r"(?:t|%74)(?:o|%6f)(?:k|%6b)(?:e|%65)(?:n|%6e)"
 _TOKEN_QUERY_RE = re.compile(rf"(?i)(^|[?&#;\s])({_TOKEN_QUERY_KEY_RE})=[^&#;\s]*")
@@ -60,6 +67,199 @@ def strip_token_query_param(url: str) -> str:
         doseq=True,
     )
     return urlunsplit((parts.scheme, parts.netloc, parts.path, query, parts.fragment))
+
+
+def _running_under_wsl() -> bool:
+    """Return whether this Linux process is hosted by Windows Subsystem for Linux."""
+
+    if os.environ.get("WSL_DISTRO_NAME") or os.environ.get("WSL_INTEROP"):
+        return True
+    try:
+        kernel_release = Path("/proc/sys/kernel/osrelease").read_text(encoding="utf-8")
+    except OSError:
+        return False
+    return "microsoft" in kernel_release.lower()
+
+
+def _open_nonsecret_bootstrap_path(bootstrap: Path) -> bool:
+    """Give a desktop opener a token-free path it can actually read."""
+
+    if not _running_under_wsl():
+        return webbrowser.open(bootstrap.as_uri())
+
+    # A Windows browser cannot consume WSL's literal file:///tmp/... URI. Use
+    # Microsoft's supported path translator to produce a UNC/Windows path. The
+    # translation and launch argv contain only the random bootstrap path; the
+    # token remains inside the mode-0600 file.
+    wslpath = shutil.which("wslpath")
+    if wslpath is None:
+        raise RuntimeError("WSL browser launch needs wslpath, but it is unavailable")
+    converted = subprocess.run(
+        [wslpath, "-w", str(bootstrap)],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=5,
+    ).stdout.strip()
+    if not converted or "\x00" in converted:
+        raise RuntimeError("wslpath returned an invalid Windows bootstrap path")
+
+    wslview = shutil.which("wslview")
+    if wslview is not None:
+        # wslview is a Windows-default-application bridge. A Windows file URI
+        # avoids depending on whether a particular wslview version translates
+        # an already-converted UNC path a second time.
+        windows_path = PureWindowsPath(converted)
+        normalized = windows_path.as_posix()
+        if not windows_path.is_absolute() or not normalized.startswith("//"):
+            raise RuntimeError("wslpath did not return an absolute UNC bootstrap path")
+        authority_and_path = normalized[2:]
+        authority, separator, uri_path = authority_and_path.partition("/")
+        if not authority or not separator or not uri_path:
+            raise RuntimeError("wslpath returned an incomplete UNC bootstrap path")
+        # PurePath.as_uri() is deprecated in Python 3.14 and will disappear in
+        # 3.19. Construct the narrow UNC form explicitly, percent-encoding every
+        # character that could otherwise alter the URI's authority or path.
+        launch_target = (
+            f"file://{quote(authority, safe='.-_~')}/"
+            f"{quote(uri_path, safe='/@:-._~')}"
+        )
+        launcher = wslview
+    else:
+        explorer = shutil.which("explorer.exe")
+        if explorer is None:
+            raise RuntimeError("WSL browser launch needs wslview or explorer.exe, but neither is available")
+        launch_target = converted
+        launcher = explorer
+
+    subprocess.Popen(  # noqa: S603 - fixed executable plus an owner-created, nonsecret path
+        [launcher, launch_target],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        close_fds=True,
+    )
+    return True
+
+
+def _require_owner_only_mode(path: Path, expected_mode: int) -> None:
+    """Fail before launch if a bootstrap path is accessible beyond its owner."""
+
+    metadata = path.stat()
+    actual_mode = stat.S_IMODE(metadata.st_mode)
+    if actual_mode != expected_mode:
+        raise PermissionError(
+            f"refusing browser bootstrap with mode {actual_mode:04o}; expected owner-only {expected_mode:04o}"
+        )
+    if hasattr(os, "geteuid") and metadata.st_uid != os.geteuid():
+        raise PermissionError("refusing browser bootstrap not owned by the current user")
+
+
+def _open_browser_with_private_bootstrap(target_url: str) -> Callable[[], None]:
+    """Open a token-bearing URL without putting that token in launcher argv.
+
+    ``webbrowser`` implementations commonly pass their argument to a desktop
+    launcher such as ``xdg-open`` or ``wslview``. Passing the authenticated URL
+    directly would therefore expose its fragment token through process listings.
+    Instead, the launcher receives only a ``file:`` URL for an owner-only,
+    short-lived HTML redirect. The browser consumes the fragment internally.
+
+    The returned cleanup is idempotent. ``serve`` invokes it on shutdown and a
+    daemon timer independently bounds the bootstrap lifetime for a long-running
+    server.
+    """
+
+    if os.name == "nt":
+        # chmod/stat mode bits do not prove that a native Windows DACL excludes
+        # other local accounts. Native PowerShell is outside the supported
+        # workflow, so fail closed and let serve() print the authenticated URL
+        # for manual opening rather than writing a falsely owner-only secret.
+        raise PermissionError(
+            "automatic authenticated browser launch is unavailable on native Windows because "
+            "owner-only ACLs cannot be guaranteed; open the printed secure URL manually or use WSL2"
+        )
+
+    # Keep WSL material on its Linux filesystem: chmod on a user-selected DrvFS
+    # TMPDIR may be emulated without actually narrowing the Windows ACL.
+    bootstrap_root = "/tmp" if _running_under_wsl() else None
+    directory = Path(tempfile.mkdtemp(prefix="degora-browser-", dir=bootstrap_root))
+    bootstrap = directory / "open-dashboard.html"
+    cleanup_lock = threading.Lock()
+    cleaned = False
+
+    def cleanup() -> None:
+        nonlocal cleaned
+        with cleanup_lock:
+            if cleaned:
+                return
+            cleaned = True
+            # Remove the secret from disk even if an unusual platform refuses
+            # to unlink a file that a browser still has open.
+            try:
+                flags = os.O_WRONLY | os.O_TRUNC
+                if hasattr(os, "O_NOFOLLOW"):
+                    flags |= os.O_NOFOLLOW
+                descriptor = os.open(bootstrap, flags)
+            except OSError:
+                pass
+            else:
+                os.close(descriptor)
+            try:
+                bootstrap.unlink(missing_ok=True)
+            except OSError:
+                pass
+            try:
+                directory.rmdir()
+            except OSError:
+                pass
+
+    try:
+        os.chmod(directory, 0o700)
+        _require_owner_only_mode(directory, 0o700)
+        escaped_url = html.escape(target_url, quote=True)
+        document = (
+            "<!doctype html>\n"
+            '<html lang="en"><head><meta charset="utf-8">\n'
+            '<meta name="referrer" content="no-referrer">\n'
+            f'<meta http-equiv="refresh" content="0;url={escaped_url}">\n'
+            "<title>Opening DEGORA</title></head>\n"
+            f'<body><p>Opening DEGORA…</p><p><a rel="noreferrer" href="{escaped_url}">Continue</a></p>'
+            "</body></html>\n"
+        ).encode()
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        descriptor = os.open(bootstrap, flags, 0o600)
+        try:
+            os.chmod(bootstrap, 0o600)
+            _require_owner_only_mode(bootstrap, 0o600)
+            with os.fdopen(descriptor, "wb", closefd=False) as stream:
+                stream.write(document)
+                stream.flush()
+                os.fsync(stream.fileno())
+        finally:
+            os.close(descriptor)
+
+        launched = _open_nonsecret_bootstrap_path(bootstrap)
+        if launched is False:
+            raise RuntimeError("the desktop browser launcher declined the request")
+    except BaseException:  # noqa: BLE001 - erase the capability even during interpreter cancellation
+        cleanup()
+        raise
+
+    try:
+        timer = threading.Timer(BROWSER_BOOTSTRAP_LIFETIME_SECONDS, cleanup)
+        timer.daemon = True
+        timer.start()
+    except BaseException:  # noqa: BLE001 - a timer failure must not strand the capability
+        cleanup()
+        raise
+
+    def cleanup_now() -> None:
+        timer.cancel()
+        cleanup()
+
+    return cleanup_now
 
 
 INDEX_HTML = """<!doctype html>
@@ -5104,7 +5304,11 @@ def _accepts_keyword(func: Any, name: str) -> bool:
     parameters = signature.parameters
     if any(parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in parameters.values()):
         return True
-    return name in parameters
+    parameter = parameters.get(name)
+    return parameter is not None and parameter.kind in {
+        inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        inspect.Parameter.KEYWORD_ONLY,
+    }
 
 
 def _accepts_progress_callback(func: Any) -> bool:
@@ -5114,13 +5318,7 @@ def _accepts_progress_callback(func: Any) -> bool:
     so an unconditional ``progress=`` would raise ``TypeError`` against them.
     """
 
-    try:
-        parameters = inspect.signature(func).parameters
-    except (TypeError, ValueError):  # pragma: no cover - builtins and C callables.
-        return False
-    if "progress" in parameters:
-        return True
-    return any(parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in parameters.values())
+    return _accepts_keyword(func, "progress")
 
 
 def _call_with_optional_progress(func: Any, *args: Any, progress: Any = None, **kwargs: Any) -> Any:
@@ -5428,7 +5626,10 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
         except PermissionError as exc:
             self._send_json({"error": str(exc)}, status=HTTPStatus.FORBIDDEN)
         except ValueError as exc:
-            self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+            if exc.__class__.__name__ == "DiscoveryQueueFullError":
+                self._send_json({"error": str(exc)}, status=HTTPStatus.TOO_MANY_REQUESTS)
+            else:
+                self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
         except RuntimeError as exc:
             if exc.__class__.__name__ == "DiscoveryUnavailableError":
                 self._send_json({"error": str(exc)}, status=HTTPStatus.SERVICE_UNAVAILABLE)
@@ -5492,7 +5693,10 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
         except PermissionError as exc:
             self._send_json({"error": str(exc)}, status=HTTPStatus.FORBIDDEN)
         except ValueError as exc:
-            self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+            if exc.__class__.__name__ == "DiscoveryQueueFullError":
+                self._send_json({"error": str(exc)}, status=HTTPStatus.TOO_MANY_REQUESTS)
+            else:
+                self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
         except RuntimeError as exc:
             if exc.__class__.__name__ == "DiscoveryUnavailableError":
                 self._send_json({"error": str(exc)}, status=HTTPStatus.SERVICE_UNAVAILABLE)
@@ -5791,11 +5995,24 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
             progress(1.0, "Publication snapshot persisted.")
             return {"search_id": search_id}
 
-        job = manager.submit(
-            "publication_search",
-            {"search_id": search_id, "query": query, "species": species, "limit": limit},
-            worker,
-        )
+        try:
+            job = manager.submit(
+                "publication_search",
+                {"search_id": search_id, "query": query, "species": species, "limit": limit},
+                worker,
+            )
+        except ValueError as exc:
+            if exc.__class__.__name__ == "DiscoveryQueueFullError":
+                rejected = dict(search_payload)
+                rejected.update(
+                    {
+                        "status": "failed",
+                        "error": str(exc),
+                        "updated_at": time.time(),
+                    }
+                )
+                store.save_search(search_id, rejected)
+            raise
         return {"job_id": job["job_id"], "search_id": search_id, "status": "queued"}
 
     @staticmethod
@@ -6019,8 +6236,7 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
             )
             if commit_calls != 1:
                 raise RuntimeError("the preparation returned without reaching its commit barrier")
-            self._remember_discovery_bundle(result)
-            return result
+            return self._remember_discovery_bundle(result)
 
         job = manager.submit("publication_prepare", {"species": request.get("species")}, worker)
         return {"job_id": job["job_id"], "status": "queued"}
@@ -6114,18 +6330,22 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
             raise
         result["bundle_id"] = bundle_id
         if remember_result:
-            self._remember_discovery_bundle(result)
+            result = self._remember_discovery_bundle(result)
         return result
 
-    def _remember_discovery_bundle(self, result: dict[str, Any]) -> None:
-        bundle_id = str(result.get("bundle_id") or "")
+    def _remember_discovery_bundle(self, result: dict[str, Any]) -> dict[str, Any]:
+        from .discovery_store import sanitize_discovery_payload
+
+        safe_result = sanitize_discovery_payload(result)
+        bundle_id = str(safe_result.get("bundle_id") or "")
         if not re.fullmatch(r"[a-f0-9]{16}", bundle_id):
             raise ValueError("prepared discovery result has an invalid bundle_id")
         with self.server.discovery_lock:
-            self.server.remember_discovery(self.server.discovery_bundles, bundle_id, result)
+            self.server.remember_discovery(self.server.discovery_bundles, bundle_id, safe_result)
         save_artifact = getattr(self.server.discovery_search_store, "save_artifact", None)
         if callable(save_artifact):
-            save_artifact("bundle", bundle_id, result)
+            save_artifact("bundle", bundle_id, safe_result)
+        return safe_result
 
     def _discovery_analyze_job(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Run an analysis as a job so the browser polls it instead of waiting on one request."""
@@ -6140,9 +6360,26 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
 
         def worker(_job_id: str, _payload: dict[str, Any], progress: Any) -> dict[str, Any]:
             progress(0.02, "Starting the analysis.")
+            commit_calls = 0
+
+            def before_publish() -> None:
+                nonlocal commit_calls
+                if commit_calls:
+                    raise RuntimeError("the analysis attempted to publish more than once")
+                _commit_discovery_job(manager, _job_id)
+                commit_calls += 1
+
             # Every stage of the run reports through the job, and the job's
-            # callback is where a Stop is noticed and the run rolled back.
-            result = self._discovery_analyze(request, progress=lambda fraction, message: progress(fraction, message))
+            # callback is where a Stop is noticed.  The final callback linearizes
+            # cancellation against publication while the run transaction can
+            # still delete all staged output.
+            result = self._discovery_analyze(
+                request,
+                progress=lambda fraction, message: progress(fraction, message),
+                before_publish=before_publish,
+            )
+            if commit_calls != 1:
+                raise RuntimeError("the analysis returned without reaching its commit barrier")
             progress(0.98, "Storing the run.")
             return result
 
@@ -6150,7 +6387,10 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
         return {"job_id": job["job_id"], "status": "queued"}
 
     def _discovery_analyze(
-        self, payload: dict[str, Any], progress: Callable[[float, str], None] | None = None
+        self,
+        payload: dict[str, Any],
+        progress: Callable[[float, str], None] | None = None,
+        before_publish: Callable[[], None] | None = None,
     ) -> dict[str, Any]:
         from .discovery import normalize_species
         from .discovery_run import run_discovery_analysis
@@ -6202,8 +6442,11 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
             # Passed only when there is one: test doubles and older runners do
             # not take the keyword, and a direct call has nobody to report to.
             **({"progress": progress} if progress is not None else {}),
+            **({"before_publish": before_publish} if before_publish is not None else {}),
         )
-        record = {"run_id": run_id, "bundle_id": bundle_id, **result}
+        from .discovery_store import sanitize_discovery_payload
+
+        record = sanitize_discovery_payload({"run_id": run_id, "bundle_id": bundle_id, **result})
         with self.server.discovery_lock:
             self.server.remember_discovery(self.server.discovery_runs, run_id, record)
         save_artifact = getattr(self.server.discovery_search_store, "save_artifact", None)
@@ -6432,7 +6675,14 @@ class DegoraHttpServer(ThreadingHTTPServer):
         quiet: bool = False,
         access_token: str | None = None,
         discovery_root: str | Path | None = None,
+        max_pending_jobs: int = DEFAULT_DISCOVERY_MAX_PENDING_JOBS,
     ) -> None:
+        if (
+            isinstance(max_pending_jobs, bool)
+            or not isinstance(max_pending_jobs, int)
+            or max_pending_jobs < 1
+        ):
+            raise ValueError("max_pending_jobs must be a positive integer")
         # ::1 is in LOOPBACK_HOSTS, so it has to bind as IPv6 rather than fail
         # inside socket.getaddrinfo with an address-family traceback.
         try:
@@ -6464,6 +6714,7 @@ class DegoraHttpServer(ThreadingHTTPServer):
         self.db_path = Path(db_path).resolve()
         self.quiet = quiet
         self.access_token = access_token
+        self.max_pending_jobs = int(max_pending_jobs)
         self.discovery_root = (
             Path(discovery_root).resolve()
             if discovery_root is not None
@@ -6488,10 +6739,19 @@ class DegoraHttpServer(ThreadingHTTPServer):
                 mark_unfinished_discovery_runs(self.discovery_root)
             except Exception:  # noqa: BLE001 - labelling old folders must never stop the server
                 pass
-            try:
-                self.discovery_job_manager = manager_class(self.discovery_search_store, max_workers=2)
-            except TypeError:
-                self.discovery_job_manager = manager_class(self.discovery_search_store)
+            # Compatibility for deliberately minimal test/plugin managers is
+            # signature-driven. Catching constructor TypeError and retrying can
+            # mask a real bug raised *inside* the constructor, while retrying
+            # only max_workers still rejects the original store-only contract.
+            manager_kwargs: dict[str, Any] = {}
+            if _accepts_keyword(manager_class, "max_workers"):
+                manager_kwargs["max_workers"] = 2
+            if _accepts_keyword(manager_class, "max_pending_jobs"):
+                manager_kwargs["max_pending_jobs"] = self.max_pending_jobs
+            self.discovery_job_manager = manager_class(
+                self.discovery_search_store,
+                **manager_kwargs,
+            )
         except Exception:
             close_manager = getattr(self.discovery_job_manager, "close", None)
             if callable(close_manager):
@@ -6554,6 +6814,7 @@ def create_server(
     auto_port: bool = True,
     access_token: str | None = None,
     discovery_root: str | Path | None = None,
+    max_pending_jobs: int = DEFAULT_DISCOVERY_MAX_PENDING_JOBS,
 ) -> DegoraHttpServer:
     """Bind the local server, auto-avoiding a port held by an unrelated service.
 
@@ -6570,6 +6831,7 @@ def create_server(
             quiet=quiet,
             access_token=access_token,
             discovery_root=discovery_root,
+            max_pending_jobs=max_pending_jobs,
         )
 
     candidates = [port + offset for offset in range(MAX_PORT_ATTEMPTS)] + [0]
@@ -6582,6 +6844,7 @@ def create_server(
                 quiet=quiet,
                 access_token=access_token,
                 discovery_root=discovery_root,
+                max_pending_jobs=max_pending_jobs,
             )
         except DiscoveryWorkspaceError:
             raise
@@ -6701,6 +6964,9 @@ def serve(
     quiet: bool = False,
     allow_network: bool = False,
     access_token: str | None = None,
+    authenticate_loopback: bool = True,
+    max_pending_jobs: int = DEFAULT_DISCOVERY_MAX_PENDING_JOBS,
+    open_browser: bool = False,
 ) -> None:
     db_path = Path(db_path)
     if not db_path.exists():
@@ -6710,7 +6976,15 @@ def serve(
         _require_degora_score_database(db_path)
         raise FileNotFoundError(f"DEGORA database does not exist: {db_path}")
     _require_degora_score_database(db_path)
+    if access_token == "":
+        raise ValueError("access_token must not be empty; use the explicit no-token option for loopback only")
     token = access_token
+    if _is_loopback_host(host) and token is None and authenticate_loopback:
+        # A loopback listener is reachable by every local account and process,
+        # not only the browser that launched it.  Generate a per-run capability
+        # by default; the UI reads it from the URL fragment, which is never sent
+        # in HTTP request lines or access logs.
+        token = secrets.token_urlsafe(24)
     if not _is_loopback_host(host):
         if not allow_network:
             raise PermissionError(
@@ -6724,7 +6998,14 @@ def serve(
             "network. A per-run access token is required; keep the printed URL private.",
             file=sys.stderr,
         )
-    server = create_server(db_path, host=host, port=port, quiet=quiet, access_token=token)
+    server = create_server(
+        db_path,
+        host=host,
+        port=port,
+        quiet=quiet,
+        access_token=token,
+        max_pending_jobs=max_pending_jobs,
+    )
     address, bound_port = server.server_address[:2]
     host_text = f"[{address}]" if ":" in str(address) else str(address)
     url = f"http://{host_text}:{bound_port}"
@@ -6733,10 +7014,21 @@ def serve(
     print(f"DEGORA browser/API: {url}", flush=True)
     print(f"DEGORA version: {format_version_info()}", flush=True)
     print(f"Database: {server.db_path}", flush=True)
+    browser_bootstrap_cleanup: Callable[[], None] | None = None
+    if open_browser:
+        try:
+            if token:
+                browser_bootstrap_cleanup = _open_browser_with_private_bootstrap(url)
+            elif webbrowser.open(url) is False:
+                raise RuntimeError("the desktop browser launcher declined the request")
+        except Exception as exc:  # noqa: BLE001 - server remains usable when desktop launch is unavailable
+            print(f"Could not open a browser automatically ({exc}); open the secure URL above.", file=sys.stderr)
     try:
         try:
             server.serve_forever()
         except KeyboardInterrupt:
             print("\nStopped DEGORA browser/API.", flush=True)
     finally:
+        if browser_bootstrap_cleanup is not None:
+            browser_bootstrap_cleanup()
         server.server_close()

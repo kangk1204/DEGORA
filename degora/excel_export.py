@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import sqlite3
+import tempfile
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -17,11 +19,17 @@ from .excel_io import locked_panel_mask, read_config_sheet
 from .harmonize import canonical_gene_symbol
 from .formula_safety import EXCEL_ERROR_LITERALS, restore_formula_text_if_marked
 from .provenance import (
+    artifact_output_lock,
+    artifact_provenance_path,
+    artifact_source_path,
     normalize_ooxml_zip,
+    output_directory_lock,
+    publication_target_lock_path,
     portable_command,
     portable_path,
+    publish_staged_artifacts,
     set_reproducible_workbook_properties,
-    write_source_sidecar,
+    source_sidecar_payloads,
 )
 from .score_db import HETEROGENEITY_RULE, RANDOM_EFFECTS_STOUFFER_RULE
 
@@ -38,6 +46,97 @@ FORMULA_PREFIX_WHITESPACE = " \t\r\n"
 # while the gene-scores CSV remains the complete ranked-gene table. Override with
 # DEGORA_EXCEL_EVIDENCE_ROW_CAP (0 disables it).
 EVIDENCE_SHEET_ROW_CAP = 100_000
+
+
+def _artifact_integrity(path: Path) -> dict[str, Any]:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return {"sha256": digest.hexdigest(), "size_bytes": path.stat().st_size}
+
+
+def verify_run_workbook_export(output: str | Path) -> dict[str, Any]:
+    """Verify every workbook artifact and sidecar in the committed generation."""
+
+    workbook = Path(output).resolve()
+    manifest_path = workbook.with_suffix(".manifest.json")
+    validation = workbook.with_suffix(".validation.txt")
+    try:
+        manifest = json.loads(
+            manifest_path.read_text(encoding="utf-8"),
+            parse_constant=lambda value: (_ for _ in ()).throw(ValueError(f"non-finite JSON value: {value}")),
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        raise ValueError(f"workbook export manifest is missing or invalid: {manifest_path}") from exc
+    if (
+        not isinstance(manifest, dict)
+        or manifest.get("artifact_type") != "degora_workbook_export_set"
+        or manifest.get("format_version") != 1
+    ):
+        raise ValueError("workbook export manifest has an unsupported artifact type or format version")
+    integrity = manifest.get("output_integrity")
+    expected_paths = {
+        path.name: path
+        for artifact in (workbook, validation)
+        for path in (
+            artifact,
+            artifact_source_path(artifact),
+            artifact_provenance_path(artifact),
+        )
+    }
+    if not isinstance(integrity, dict) or set(integrity) != set(expected_paths):
+        raise ValueError("workbook export manifest does not name the complete content set")
+    actual: dict[str, dict[str, Any]] = {}
+    for name, path in expected_paths.items():
+        if not path.is_file():
+            raise ValueError(f"workbook export artifact is missing: {name}")
+        actual[name] = _artifact_integrity(path)
+        if integrity.get(name) != actual[name]:
+            raise ValueError(f"workbook export artifact does not match its generation manifest: {name}")
+    generation_text = "\n".join(
+        f"{name}:{entry['sha256']}" for name, entry in sorted(actual.items())
+    )
+    if manifest.get("generation_sha256") != hashlib.sha256(generation_text.encode("utf-8")).hexdigest():
+        raise ValueError("workbook export generation digest is invalid")
+
+    # The manifest's own provenance cannot be included in ``output_integrity``:
+    # that provenance hashes the manifest, which would create a circular digest.
+    # It is nevertheless part of the publication transaction and must be checked
+    # explicitly.  Otherwise a crash or tamper could silently leave the manifest
+    # beside a missing or stale audit trail while the verifier still returned OK.
+    manifest_source = artifact_source_path(manifest_path)
+    manifest_provenance = artifact_provenance_path(manifest_path)
+    if not manifest_source.is_file():
+        raise ValueError(f"workbook export artifact is missing: {manifest_source.name}")
+    if not manifest_provenance.is_file():
+        raise ValueError(f"workbook export artifact is missing: {manifest_provenance.name}")
+    command = manifest.get("command")
+    try:
+        manifest_source_text = manifest_source.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        raise ValueError("workbook manifest source sidecar is invalid") from exc
+    if not isinstance(command, str) or manifest_source_text != f"{command}\n":
+        raise ValueError("workbook manifest source sidecar does not match the generation command")
+    try:
+        manifest_audit = json.loads(
+            manifest_provenance.read_text(encoding="utf-8"),
+            parse_constant=lambda value: (_ for _ in ()).throw(
+                ValueError(f"non-finite JSON value: {value}")
+            ),
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        raise ValueError("workbook manifest provenance sidecar is invalid") from exc
+    manifest_integrity = _artifact_integrity(manifest_path)
+    if (
+        not isinstance(manifest_audit, dict)
+        or manifest_audit.get("artifact_path") != manifest_path.name
+        or manifest_audit.get("artifact_sha256") != manifest_integrity["sha256"]
+        or manifest_audit.get("artifact_size_bytes") != manifest_integrity["size_bytes"]
+        or manifest_audit.get("command") != command
+    ):
+        raise ValueError("workbook manifest provenance sidecar does not match the committed manifest")
+    return manifest
 
 
 def _evidence_row_cap() -> int:
@@ -690,6 +789,62 @@ def export_run_workbook(
     db_path: Path | None = None,
     command: str,
 ) -> dict[str, Any]:
+    """Export a coherent workbook artifact set under the output-directory lock."""
+
+    result_path = Path(result_dir)
+    output_path = Path(output) if output is not None else result_path / DEFAULT_WORKBOOK_NAME
+    resolved_result = result_path.resolve()
+    # Discovery analyses always place canonical outputs in ``<run>/results``
+    # while replacing ``<run>`` as one transaction.  Claim that stable outer
+    # identity before touching inputs so a direct workbook export cannot report
+    # success in a generation the discovery transaction then deletes.
+    if resolved_result.name.casefold() == "results":
+        with output_directory_lock(publication_target_lock_path(resolved_result.parent)):
+            return _export_run_workbook_transaction(
+                result_path,
+                output_path,
+                config_path=config_path,
+                db_path=db_path,
+                command=command,
+            )
+    return _export_run_workbook_transaction(
+        result_path,
+        output_path,
+        config_path=config_path,
+        db_path=db_path,
+        command=command,
+    )
+
+
+def _export_run_workbook_transaction(
+    result_dir: Path,
+    output: Path,
+    *,
+    config_path: Path | None,
+    db_path: Path | None,
+    command: str,
+) -> dict[str, Any]:
+    # The stable identity coordinates aliases and any whole-directory publisher;
+    # the output-directory identity coordinates with the outer ``degora run``
+    # CLI and its lower-level writers. Both are same-thread re-entrant.
+    with artifact_output_lock(output.parent):
+        return _export_run_workbook_locked(
+            result_dir,
+            output,
+            config_path=config_path,
+            db_path=db_path,
+            command=command,
+        )
+
+
+def _export_run_workbook_locked(
+    result_dir: Path,
+    output: Path | None = None,
+    *,
+    config_path: Path | None = None,
+    db_path: Path | None = None,
+    command: str,
+) -> dict[str, Any]:
     """Export a DEGORA run folder to an Excel workbook.
 
     The workbook is an audit convenience built from canonical DEGORA outputs:
@@ -779,25 +934,6 @@ def export_run_workbook(
     dictionary = _column_dictionary(sheet_frames)
 
     output.parent.mkdir(parents=True, exist_ok=True)
-    # Written beside the target and moved into place at the end: a run killed
-    # mid-write used to leave a zero-byte workbook under the final name.
-    partial = output.with_name(output.name + ".partial")
-    with pd.ExcelWriter(partial, engine="openpyxl") as writer:
-        guide.to_excel(writer, sheet_name="Workbook_guide", index=False)
-        dictionary.to_excel(writer, sheet_name="Column_dictionary", index=False)
-        for sheet_name, frame in sheet_frames.items():
-            _write_sheet_chunks(writer, frame, sheet_name)
-        _force_formula_like_text(writer)
-        _annotate_headers(writer)
-        _autosize(writer)
-        # Pin the workbook's own created/modified stamps before openpyxl saves them.
-        set_reproducible_workbook_properties(writer.book)
-    # The saved archive still carries per-member write timestamps, so rewrite it with
-    # fixed timestamps and a stable member order. Identical inputs then produce a
-    # byte-identical workbook, matching the CSV and SQLite outputs of the same run.
-    normalize_ooxml_zip(partial)
-    os.replace(partial, output)
-
     manifest = output.with_suffix(".manifest.json")
     validation = output.with_suffix(".validation.txt")
     manifest_base = manifest.parent
@@ -806,34 +942,7 @@ def export_run_workbook(
         for path in [db_path, score_csv, metadata_json, diagnostics_tsv, config_path]
         if path is not None and path.exists()
     ]
-    manifest_data = {
-        **version_info,
-        "generated_at": "deterministic",
-        "script": "degora.excel_export.export_run_workbook",
-        "path_base": "manifest_directory",
-        "command": portable_command(command, manifest_base),
-        "gold_panel": {
-            "status": gold_panel_status,
-            "reason": gold_panel_reason,
-            "gene_count": int(len(gold)),
-        },
-        "inputs": [portable_path(path, manifest_base) for path in inputs],
-        "outputs": [portable_path(path, manifest_base) for path in [output, manifest, validation]],
-        "sheets": {
-            "Workbook_guide": "Reader-facing guide to workbook tabs and row grain.",
-            "Column_dictionary": "Definitions, scales, and missing-value notes for exported columns.",
-            "Run_summary": "Run-level counts and top genes.",
-            "Gene_scores": "Full DEGORA ranked gene table.",
-            "Gene_evidence": "Source-unit evidence rows from the SQLite database (capped to the top-ranked genes for very large corpora; see Run_summary; full evidence is in the SQLite database and CSV).",
-            "Source_units": "Source/contrast metadata.",
-            "Curated_lookup": "Optional GoldPanel markers with DEGORA ranks.",
-            "Source_quality": "Source-quality diagnostics, when present.",
-            "Metadata": "Score metadata JSON flattened to field/value rows.",
-            "SQLite_meta": "Raw meta table from SQLite, when present.",
-        },
-    }
-    manifest.write_text(json.dumps(manifest_data, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
-    validation.write_text(
+    validation_text = (
         "\n".join(
             [
                 f"n_scored_genes={len(genes)}",
@@ -846,13 +955,137 @@ def export_run_workbook(
                 f"gold_panel_reason={gold_panel_reason}",
             ]
         )
-        + "\n",
-        encoding="utf-8",
-        newline="\n",
+        + "\n"
     )
-    sidecar_metadata = {"generator": "degora-run-workbook", **version_info}
-    for artifact in [output, manifest, validation]:
-        write_source_sidecar(artifact, command, inputs=inputs, metadata=sidecar_metadata)
+    with tempfile.TemporaryDirectory(prefix=f".{output.stem}.export-", dir=output.parent) as staging_name:
+        staging = Path(staging_name)
+        staged_output = staging / output.name
+        staged_validation = staging / validation.name
+        staged_manifest = staging / manifest.name
+
+        with pd.ExcelWriter(staged_output, engine="openpyxl") as writer:
+            guide.to_excel(writer, sheet_name="Workbook_guide", index=False)
+            dictionary.to_excel(writer, sheet_name="Column_dictionary", index=False)
+            for sheet_name, frame in sheet_frames.items():
+                _write_sheet_chunks(writer, frame, sheet_name)
+            _force_formula_like_text(writer)
+            _annotate_headers(writer)
+            _autosize(writer)
+            set_reproducible_workbook_properties(writer.book)
+        normalize_ooxml_zip(staged_output)
+        staged_validation.write_text(validation_text, encoding="utf-8", newline="\n")
+
+        integrity = {
+            output.name: _artifact_integrity(staged_output),
+            validation.name: _artifact_integrity(staged_validation),
+        }
+        generation_text = "\n".join(
+            f"{name}:{entry['sha256']}" for name, entry in sorted(integrity.items())
+        )
+        manifest_data = {
+            **version_info,
+            "artifact_type": "degora_workbook_export_set",
+            "format_version": 1,
+            "generation_sha256": hashlib.sha256(generation_text.encode("utf-8")).hexdigest(),
+            "output_integrity": integrity,
+            "generated_at": "deterministic",
+            "script": "degora.excel_export.export_run_workbook",
+            "path_base": "manifest_directory",
+            "command": portable_command(command, manifest_base),
+            "gold_panel": {
+                "status": gold_panel_status,
+                "reason": gold_panel_reason,
+                "gene_count": int(len(gold)),
+            },
+            "inputs": [portable_path(path, manifest_base) for path in inputs],
+            "outputs": [portable_path(path, manifest_base) for path in [output, manifest, validation]],
+            "sheets": {
+                "Workbook_guide": "Reader-facing guide to workbook tabs and row grain.",
+                "Column_dictionary": "Definitions, scales, and missing-value notes for exported columns.",
+                "Run_summary": "Run-level counts and top genes.",
+                "Gene_scores": "Full DEGORA ranked gene table.",
+                "Gene_evidence": "Source-unit evidence rows from the SQLite database (capped to the top-ranked genes for very large corpora; see Run_summary; full evidence is in the SQLite database and CSV).",
+                "Source_units": "Source/contrast metadata.",
+                "Curated_lookup": "Optional GoldPanel markers with DEGORA ranks.",
+                "Source_quality": "Source-quality diagnostics, when present.",
+                "Metadata": "Score metadata JSON flattened to field/value rows.",
+                "SQLite_meta": "Raw meta table from SQLite, when present.",
+            },
+        }
+        staged_manifest.write_text(
+            json.dumps(manifest_data, indent=2, sort_keys=True, allow_nan=False) + "\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+
+        sidecar_metadata = {"generator": "degora-run-workbook", **version_info}
+        staged_artifacts = {
+            output: staged_output,
+            validation: staged_validation,
+            manifest: staged_manifest,
+        }
+        publication_pairs: dict[Path, Path] = {}
+        # Publish primary content and all audit sidecars before the generation
+        # manifest.  The manifest is the commit marker: a racing reader can hash
+        # the content and detect an in-progress/mixed view until it is replaced.
+        for final_artifact in (output, validation, manifest):
+            staged_artifact = staged_artifacts[final_artifact]
+            source_text, provenance_text = source_sidecar_payloads(
+                final_artifact,
+                command,
+                artifact_content_path=staged_artifact,
+                inputs=inputs,
+                metadata=sidecar_metadata,
+            )
+            staged_source = artifact_source_path(staged_artifact)
+            staged_provenance = artifact_provenance_path(staged_artifact)
+            staged_source.write_text(source_text, encoding="utf-8")
+            if provenance_text is None:  # pragma: no cover - requested above
+                raise RuntimeError("workbook export provenance was not generated")
+            staged_provenance.write_text(provenance_text, encoding="utf-8")
+            if final_artifact is not manifest:
+                publication_pairs[staged_artifact] = final_artifact
+            publication_pairs[staged_source] = artifact_source_path(final_artifact)
+            publication_pairs[staged_provenance] = artifact_provenance_path(final_artifact)
+
+        # Include the workbook/validation sidecars in the generation digest too.
+        # (The manifest's own provenance necessarily sits outside that digest to
+        # avoid a circular hash, and independently pins the manifest bytes.)
+        audited_staged_to_final = {
+            staged_output: output,
+            artifact_source_path(staged_output): artifact_source_path(output),
+            artifact_provenance_path(staged_output): artifact_provenance_path(output),
+            staged_validation: validation,
+            artifact_source_path(staged_validation): artifact_source_path(validation),
+            artifact_provenance_path(staged_validation): artifact_provenance_path(validation),
+        }
+        integrity = {
+            final_path.name: _artifact_integrity(staged_path)
+            for staged_path, final_path in audited_staged_to_final.items()
+        }
+        generation_text = "\n".join(
+            f"{name}:{entry['sha256']}" for name, entry in sorted(integrity.items())
+        )
+        manifest_data["output_integrity"] = integrity
+        manifest_data["generation_sha256"] = hashlib.sha256(generation_text.encode("utf-8")).hexdigest()
+        staged_manifest.write_text(
+            json.dumps(manifest_data, indent=2, sort_keys=True, allow_nan=False) + "\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        manifest_source_text, manifest_provenance_text = source_sidecar_payloads(
+            manifest,
+            command,
+            artifact_content_path=staged_manifest,
+            inputs=inputs,
+            metadata=sidecar_metadata,
+        )
+        artifact_source_path(staged_manifest).write_text(manifest_source_text, encoding="utf-8")
+        if manifest_provenance_text is None:  # pragma: no cover - requested above
+            raise RuntimeError("workbook manifest provenance was not generated")
+        artifact_provenance_path(staged_manifest).write_text(manifest_provenance_text, encoding="utf-8")
+        publication_pairs[staged_manifest] = manifest
+        publish_staged_artifacts(publication_pairs)
     return {
         "output": output.as_posix(),
         "manifest": manifest.as_posix(),

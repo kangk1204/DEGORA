@@ -835,6 +835,78 @@ def test_create_server_rejects_duplicate_discovery_workspace(tmp_path) -> None:
         first.server_close()
 
 
+def test_create_server_supports_store_only_plugin_manager(tmp_path, monkeypatch) -> None:
+    harmonized_path = tmp_path / "harmonized.csv"
+    _harmonized().to_csv(harmonized_path, index=False)
+    write_score_database(harmonized_path, tmp_path, db_path=tmp_path / "degora_scores.db")
+    store_class, _manager_class = api._load_discovery_store_classes()
+
+    class StoreOnlyManager:
+        def __init__(self, store) -> None:
+            self.store = store
+
+    monkeypatch.setattr(
+        api,
+        "_load_discovery_store_classes",
+        lambda: (store_class, StoreOnlyManager),
+    )
+    server = create_server(
+        tmp_path / "degora_scores.db",
+        port=0,
+        quiet=True,
+        discovery_root=tmp_path / "store-only-discovery",
+    )
+    try:
+        assert isinstance(server.discovery_job_manager, StoreOnlyManager)
+        assert server.discovery_job_manager.store is server.discovery_search_store
+    finally:
+        server.server_close()
+
+
+def test_create_server_does_not_pass_positional_only_manager_options_as_keywords(
+    tmp_path, monkeypatch
+) -> None:
+    harmonized_path = tmp_path / "harmonized.csv"
+    _harmonized().to_csv(harmonized_path, index=False)
+    write_score_database(harmonized_path, tmp_path, db_path=tmp_path / "degora_scores.db")
+    store_class, _manager_class = api._load_discovery_store_classes()
+
+    class PositionalOnlyManager:
+        def __init__(self, store, max_workers=7, /) -> None:
+            self.store = store
+            self.max_workers = max_workers
+
+    assert not api._accepts_keyword(PositionalOnlyManager, "max_workers")
+    monkeypatch.setattr(
+        api,
+        "_load_discovery_store_classes",
+        lambda: (store_class, PositionalOnlyManager),
+    )
+    server = create_server(
+        tmp_path / "degora_scores.db",
+        port=0,
+        quiet=True,
+        discovery_root=tmp_path / "positional-only-discovery",
+    )
+    try:
+        assert isinstance(server.discovery_job_manager, PositionalOnlyManager)
+        assert server.discovery_job_manager.max_workers == 7
+    finally:
+        server.server_close()
+
+
+def test_optional_progress_is_not_passed_to_a_positional_only_parameter() -> None:
+    def positional_only(value, progress="default", /):
+        return value, progress
+
+    assert not api._accepts_progress_callback(positional_only)
+    assert api._call_with_optional_progress(
+        positional_only,
+        "value",
+        progress=lambda *_args: None,
+    ) == ("value", "default")
+
+
 def test_dashboard_shows_real_search_progress_instead_of_a_static_panel() -> None:
     from degora.api import INDEX_HTML
 

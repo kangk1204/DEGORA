@@ -90,9 +90,12 @@ def test_quickstart_uses_unpredictable_venv_error_log() -> None:
 
 def test_quickstart_handles_every_supported_platform() -> None:
     text = SCRIPT.read_text(encoding="utf-8")
-    # Platform detection plus one browser opener per platform.
+    # Platform detection is kept for install guidance. Browser launch is handed
+    # to `degora serve`, which alone knows the internally generated token URL;
+    # putting that token in a shell opener or argv would expose it through `ps`.
     assert "PLATFORM=macos" in text and "PLATFORM=wsl" in text and "PLATFORM=linux" in text
-    assert "open " in text and "xdg-open" in text and "wslview" in text
+    assert "--open-browser" in text
+    assert "ACCESS_TOKEN=" not in text and '--token "$ACCESS_TOKEN"' not in text
     # Debian/Ubuntu splits venv into its own package; the failure must say so.
     assert "-venv" in text
 

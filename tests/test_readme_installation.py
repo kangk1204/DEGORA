@@ -57,7 +57,7 @@ def test_readme_and_installed_package_metadata_are_consistent() -> None:
     required_python = tuple(int(part) for part in python_match.group(1).split("."))
     assert sys.version_info[: len(required_python)] >= required_python
     assert f"Python {python_match.group(1)} or newer" in readme
-    assert "automated release tests cover Python 3.10-3.13" in readme
+    assert "automated release tests cover Python 3.10-3.14" in readme
 
 
 def test_xls_support_ships_with_the_package() -> None:
