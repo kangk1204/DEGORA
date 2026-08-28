@@ -258,11 +258,10 @@ else:
 PY
 )"
 
-URL="http://127.0.0.1:${PORT}"
 cat <<EOF
 
 ==================================================
- Dashboard:  ${URL}
+ Dashboard:  authenticated URL printed below
  Database:   ${DB_PATH}
  Checkout:   ${REPO_ROOT}
  Stop:       press Ctrl+C in this window
@@ -270,21 +269,11 @@ cat <<EOF
 
 EOF
 
-# --- open a browser once the server is listening --------------------------
+# `degora serve` generates the per-run token inside Python. Its browser opener
+# passes only an owner-only, short-lived local bootstrap file to the desktop
+# launcher (after WSL-to-Windows path conversion when needed); neither this
+# shell nor the launcher receives the token in argv.
 if [ "$OPEN_BROWSER" -eq 1 ]; then
-  (
-    sleep 3
-    case "$PLATFORM" in
-      macos) command -v open >/dev/null 2>&1 && open "$URL" ;;
-      wsl)
-        if command -v wslview >/dev/null 2>&1; then wslview "$URL"
-        elif command -v explorer.exe >/dev/null 2>&1; then explorer.exe "$URL" || true
-        fi
-        ;;
-      linux) command -v xdg-open >/dev/null 2>&1 && xdg-open "$URL" ;;
-      *) : ;;
-    esac
-  ) >/dev/null 2>&1 &
+  exec degora serve "$DB_PATH" --port "$PORT" --open-browser
 fi
-
 exec degora serve "$DB_PATH" --port "$PORT"

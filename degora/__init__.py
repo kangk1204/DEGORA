@@ -7,8 +7,8 @@ from pathlib import Path
 
 __all__ = ["SCORE_VERSION", "__version__", "format_version_info", "runtime_version_info"]
 
-__version__ = "0.4.33"
-SCORE_VERSION = "degora_score_v1_2_source_unit_mean"
+__version__ = "0.4.34"
+SCORE_VERSION = "degora_score_v1_3_source_unit_mean"
 
 
 def _is_tracked_by_repo(repo: Path, module_path: Path) -> bool:

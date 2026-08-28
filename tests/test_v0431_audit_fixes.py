@@ -66,7 +66,13 @@ def test_an_analysis_runs_as_a_job_and_returns_the_run_through_it(tmp_path: Path
     handler = object.__new__(DegoraRequestHandler)
     handler.server = type("Server", (), {"discovery_job_manager": manager})()
     seen: list[dict] = []
-    handler._discovery_analyze = lambda payload, progress=None: (seen.append(payload) or {"run_id": "r1", "n_source_units": 2})
+    def fake_analyze(payload, progress=None, before_publish=None):
+        seen.append(payload)
+        assert before_publish is not None
+        before_publish()
+        return {"run_id": "r1", "n_source_units": 2}
+
+    handler._discovery_analyze = fake_analyze
 
     request = {"bundle_id": "a" * 16, "species": "human", "selections": [], "species_confirmed": True}
     started = handler._discovery_analyze_job(request)
@@ -114,14 +120,17 @@ def test_a_file_where_the_output_folder_belongs_is_named_as_such(tmp_path: Path)
         ensure_output_directory(nested)
 
 
-def test_a_finished_run_leaves_no_lock_file_behind(tmp_path: Path) -> None:
+def test_a_finished_run_keeps_one_stable_lock_inode(tmp_path: Path) -> None:
     from degora.provenance import output_directory_lock
 
     output = tmp_path / "out"
     with output_directory_lock(output):
         assert (output / ".degora-run.lock").exists()
-    assert not (output / ".degora-run.lock").exists()
-    # ...and the folder is still usable for the next run.
+    lock_path = output / ".degora-run.lock"
+    assert lock_path.exists()
+    inode = lock_path.stat().st_ino
+    # The folder remains usable and every run locks the same inode; unlinking it
+    # could split a waiter from a third process that creates a replacement file.
     with output_directory_lock(output):
         pass
-    assert not (output / ".degora-run.lock").exists()
+    assert lock_path.exists() and lock_path.stat().st_ino == inode

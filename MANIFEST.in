@@ -1,5 +1,12 @@
-# The README documents scripts/degora_quickstart.sh, so an sdist that ships the
-# README without it hands the reader instructions for a file they do not have.
+# Keep both supported quickstart entry points and the dependency contract in the
+# source distribution.  Tests are intentionally shipped: the release workflow
+# installs the sdist in isolation and runs this exact suite from the unpacked
+# archive, including JSON fixtures that setuptools does not discover by default.
+include degora_quickstart.sh
 include scripts/degora_quickstart.sh
+include requirements.txt
+include .gitattributes
+include .gitignore
+recursive-include tests *.py *.json
 include Makefile
 include LICENSE

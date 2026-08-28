@@ -9,6 +9,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+from numpy.typing import NDArray
 from scipy.stats import norm
 
 from .stats import bh_adjust
@@ -72,10 +73,10 @@ def validate_min_studies(min_studies: Any) -> int:
     if isinstance(min_studies, (bool, np.bool_)):
         raise ValueError(f"min_studies must be an integer >= 1, got {min_studies!r}")
     if isinstance(min_studies, (float, np.floating)):
-        numeric = float(min_studies)
-        if not np.isfinite(numeric) or not numeric.is_integer():
+        numeric_float = float(min_studies)
+        if not np.isfinite(numeric_float) or not numeric_float.is_integer():
             raise ValueError(f"min_studies must be an integer >= 1, got {min_studies!r}")
-        value = int(numeric)
+        value = int(numeric_float)
     elif isinstance(min_studies, Decimal):
         if not min_studies.is_finite() or min_studies != min_studies.to_integral_value():
             raise ValueError(f"min_studies must be an integer >= 1, got {min_studies!r}")
@@ -85,12 +86,12 @@ def validate_min_studies(min_studies: Any) -> int:
         if not text:
             raise ValueError(f"min_studies must be an integer >= 1, got {min_studies!r}")
         try:
-            numeric = Decimal(text)
+            numeric_decimal = Decimal(text)
         except InvalidOperation:
             raise ValueError(f"min_studies must be an integer >= 1, got {min_studies!r}") from None
-        if not numeric.is_finite() or numeric != numeric.to_integral_value():
+        if not numeric_decimal.is_finite() or numeric_decimal != numeric_decimal.to_integral_value():
             raise ValueError(f"min_studies must be an integer >= 1, got {min_studies!r}")
-        value = int(numeric)
+        value = int(numeric_decimal)
     else:
         try:
             value = operator.index(min_studies)
@@ -99,6 +100,81 @@ def validate_min_studies(min_studies: Any) -> int:
     if value < 1:
         raise ValueError(f"min_studies must be an integer >= 1, got {min_studies!r}")
     return value
+
+
+def validate_normalized_rank(
+    frame: pd.DataFrame,
+    *,
+    context: str = "scoring input",
+) -> pd.Series:
+    """Return numeric normalized ranks after enforcing the public 0 < rank <= 1 contract.
+
+    A normalized rank is a probability-like position within one source list.  Zero,
+    negative, non-finite, and greater-than-one values have no valid interpretation.
+    Silently clipping them is especially dangerous because a negative value becomes an
+    apparently unbeatable rank after the logarithm used by the rank-product lanes.
+
+    The sole exception is a verifiably neutral audit row (``pvalue == 1`` or
+    ``lfc == 0``) on which both the rank and ``signed_z`` are genuinely missing.
+    The harmonizer deliberately retains those rows for auditability and aggregation
+    drops them before scoring. Numeric infinities, booleans, non-numeric text, and
+    numeric values outside the open-closed interval remain errors even on such rows.
+    """
+
+    if "normalized_rank" not in frame.columns:
+        if frame.empty:
+            return pd.Series(index=frame.index, dtype=float)
+        raise ValueError(f"{context}: missing required normalized_rank column")
+    raw_rank = frame["normalized_rank"]
+    numeric = pd.to_numeric(raw_rank, errors="coerce").astype(float)
+    finite = np.isfinite(numeric.to_numpy(dtype=float))
+    in_range = numeric.gt(0.0).to_numpy(dtype=bool) & numeric.le(1.0).to_numpy(dtype=bool)
+    bool_values: NDArray[np.bool_] = np.fromiter(
+        (isinstance(value, (bool, np.bool_)) for value in raw_rank.to_numpy(dtype=object)),
+        dtype=bool,
+        count=len(frame),
+    )
+    allowed_missing = np.zeros(len(frame), dtype=bool)
+    if "signed_z" in frame.columns:
+        # The harmonizer retains a narrowly defined audit row for biologically
+        # neutral evidence: exactly zero effect or p == 1.  It represents both
+        # signed_z and rank as genuine missing values.  Do not infer that
+        # exception merely because arbitrary text *coerces* to NaN; doing so
+        # lets malformed, non-neutral evidence disappear before scoring.
+        raw_signed_z = frame["signed_z"]
+        neutral_evidence = np.zeros(len(frame), dtype=bool)
+        if "lfc" in frame.columns:
+            raw_lfc = frame["lfc"]
+            lfc = pd.to_numeric(raw_lfc, errors="coerce").to_numpy(dtype=float)
+            lfc_bool = np.fromiter(
+                (isinstance(value, (bool, np.bool_)) for value in raw_lfc.to_numpy(dtype=object)),
+                dtype=bool,
+                count=len(frame),
+            )
+            neutral_evidence |= np.isfinite(lfc) & (lfc == 0.0) & ~lfc_bool
+        if "pvalue" in frame.columns:
+            raw_pvalue = frame["pvalue"]
+            pvalue = pd.to_numeric(raw_pvalue, errors="coerce").to_numpy(dtype=float)
+            pvalue_bool = np.fromiter(
+                (isinstance(value, (bool, np.bool_)) for value in raw_pvalue.to_numpy(dtype=object)),
+                dtype=bool,
+                count=len(frame),
+            )
+            neutral_evidence |= np.isfinite(pvalue) & (pvalue == 1.0) & ~pvalue_bool
+        allowed_missing = (
+            raw_rank.isna().to_numpy(dtype=bool)
+            & raw_signed_z.isna().to_numpy(dtype=bool)
+            & neutral_evidence
+        )
+    invalid = (~(finite & in_range) | bool_values) & ~allowed_missing
+    if invalid.any():
+        examples = [repr(value) for value in frame.loc[invalid, "normalized_rank"].head(5).tolist()]
+        suffix = f"; examples: {', '.join(examples)}" if examples else ""
+        raise ValueError(
+            f"{context}: normalized_rank must be finite and satisfy 0 < normalized_rank <= 1; "
+            f"invalid value(s) in {int(invalid.sum())} row(s){suffix}"
+        )
+    return numeric
 
 
 def _source_unit_series(frame: pd.DataFrame) -> pd.Series:
@@ -355,21 +431,24 @@ def source_unit_rows_for_aggregation(harmonized: pd.DataFrame) -> pd.DataFrame:
                 frame[column] = pd.Series(dtype=dtype)
         return frame
 
-    frame = harmonized.dropna(subset=["signed_z"]).copy()
+    # Resolve temporal selection from the raw harmonized rows.  In particular, an
+    # unusable earliest row must not be dropped before `early` is chosen, because
+    # doing so silently substitutes a later biological time point.  Numeric
+    # eligibility filtering happens only after the raw time point is fixed.
+    frame = harmonized.copy()
     frame["source_unit_id"] = _source_unit_series(frame)
     frame["study_id"] = frame["study_id"].astype("string").fillna("").str.strip()
     frame["gene_symbol"] = frame["gene_symbol"].astype("string").str.upper().str.strip()
     frame["signed_z"] = pd.to_numeric(frame["signed_z"], errors="coerce")
     frame["lfc"] = pd.to_numeric(frame["lfc"], errors="coerce")
-    frame["normalized_rank"] = pd.to_numeric(frame["normalized_rank"], errors="coerce")
+    frame["normalized_rank"] = validate_normalized_rank(
+        frame,
+        context="source-unit aggregation",
+    )
     if "n_genes_in_study" in frame.columns:
         frame["n_genes_in_study"] = pd.to_numeric(frame["n_genes_in_study"], errors="coerce")
     else:
         frame["n_genes_in_study"] = np.nan
-    # Drop non-finite effect values (mirrors harmonize.py): an inf signed_z would make
-    # the Stouffer combination and heterogeneity stats inf/NaN with no error.
-    frame.loc[~np.isfinite(frame["signed_z"]), "signed_z"] = np.nan
-    frame.loc[~np.isfinite(frame["lfc"]), "lfc"] = np.nan
     n_ctrl = (
         pd.to_numeric(frame["n_ctrl"], errors="coerce")
         if "n_ctrl" in frame.columns
@@ -389,34 +468,28 @@ def source_unit_rows_for_aggregation(harmonized: pd.DataFrame) -> pd.DataFrame:
     total_samples = np.where(usable_counts, n_ctrl + n_treat, 1.0)
     frame["_weight"] = np.where(usable_counts, np.sqrt(total_samples), 1.0)
     frame["_weight"] = np.minimum(frame["_weight"], MAX_SOURCE_SAMPLE_WEIGHT)
+    frame = _apply_time_course_mode(frame)
+    # Drop non-finite effect values (mirrors harmonize.py) only after time-course
+    # selection. An inf signed_z would otherwise make Stouffer and heterogeneity
+    # statistics inf/NaN with no error.
+    frame.loc[~np.isfinite(frame["signed_z"]), "signed_z"] = np.nan
+    frame.loc[~np.isfinite(frame["lfc"]), "lfc"] = np.nan
     frame = frame.dropna(subset=["gene_symbol", "study_id", "source_unit_id", "signed_z", "normalized_rank"])
     frame = frame.loc[frame["gene_symbol"].ne("") & frame["source_unit_id"].ne("")].copy()
-    if frame.empty:
-        return frame
-    return _apply_time_course_mode(frame)
+    return frame
 
 
-def collapse_gene_source_units(harmonized: pd.DataFrame) -> pd.DataFrame:
-    """Collapse rows to one aggregate gene row per independent source unit.
+def _collapse_preselected_source_unit_rows(frame: pd.DataFrame) -> pd.DataFrame:
+    """Collapse rows already prepared and time-selected by the canonical selector.
 
-    The biological replication unit for DEGORA is the independent source unit
-    (`paper_id`/dataset family), not every contrast row. Multiple time points,
-    cell lines, or technical table rows from one source can support a gene, but
-    they must not increase the cross-study Stouffer or rank-product sample size.
-
-    Within a source unit, DEGORA now aggregates rather than choosing the maximum
-    absolute z value. This avoids reintroducing multiplicity through a
-    winner-take-all representative contrast.
+    This deliberately does not call :func:`source_unit_rows_for_aggregation`.
+    Reapplying that selector would halve a ``peak_mean`` window a second time.
     """
 
-    if harmonized.empty:
-        return pd.DataFrame(columns=COLLAPSED_SOURCE_UNIT_COLUMNS)
-
-    frame = source_unit_rows_for_aggregation(harmonized)
     if frame.empty:
         return pd.DataFrame(columns=COLLAPSED_SOURCE_UNIT_COLUMNS)
 
-    frame = frame.sort_values(
+    frame = frame.copy().sort_values(
         ["gene_symbol", "source_unit_id", "study_id", "normalized_rank"],
         kind="mergesort",
     ).reset_index(drop=True)
@@ -438,8 +511,29 @@ def collapse_gene_source_units(harmonized: pd.DataFrame) -> pd.DataFrame:
         n_studies_in_source_unit=("study_id", "nunique"),
     )
     grouped["signed_z"] = grouped["sum_wz"] / grouped["sum_w"]
-    grouped["lfc"] = np.where(grouped["sum_w_lfc"].gt(0), grouped["sum_wlfc"] / grouped["sum_w_lfc"], np.nan)
+    grouped["lfc"] = np.where(
+        grouped["sum_w_lfc"].gt(0),
+        grouped["sum_wlfc"] / grouped["sum_w_lfc"],
+        np.nan,
+    )
     return grouped[COLLAPSED_SOURCE_UNIT_COLUMNS].reset_index(drop=True)
+
+
+def collapse_gene_source_units(harmonized: pd.DataFrame) -> pd.DataFrame:
+    """Collapse rows to one aggregate gene row per independent source unit.
+
+    The biological replication unit for DEGORA is the independent source unit
+    (`paper_id`/dataset family), not every contrast row. Multiple time points,
+    cell lines, or technical table rows from one source can support a gene, but
+    they must not increase the cross-study Stouffer or rank-product sample size.
+
+    Within a source unit, DEGORA now aggregates rather than choosing the maximum
+    absolute z value. This avoids reintroducing multiplicity through a
+    winner-take-all representative contrast.
+    """
+
+    frame = source_unit_rows_for_aggregation(harmonized)
+    return _collapse_preselected_source_unit_rows(frame)
 
 
 def _study_gene_stats(harmonized: pd.DataFrame) -> pd.DataFrame:
@@ -568,8 +662,9 @@ def rank_product_consensus(harmonized: pd.DataFrame, min_studies: int = 2) -> pd
     if by_study.empty:
         return pd.DataFrame(columns=RANK_COLUMNS)
 
-    eps = np.finfo(float).tiny
-    by_study["_log_rank"] = np.log(by_study["normalized_rank"].clip(lower=eps, upper=1.0))
+    # source_unit_rows_for_aggregation has already enforced 0 < rank <= 1, so no
+    # clipping or artificial floor is needed here.
+    by_study["_log_rank"] = np.log(by_study["normalized_rank"])
     out = by_study.groupby("gene_symbol", as_index=False).agg(
         n_studies_rank=("source_unit_id", "nunique"),
         mean_log_rank=("_log_rank", "mean"),

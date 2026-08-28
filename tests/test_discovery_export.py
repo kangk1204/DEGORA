@@ -139,3 +139,14 @@ def test_export_writes_json_csv_and_xlsx_atomically_and_refuses_overwrite(tmp_pa
         export_publication_search(_snapshot(), tmp_path)
     export_publication_search(_snapshot(), tmp_path, force=True)
     assert not list(tmp_path.glob(".*.tmp"))
+
+
+def test_export_creates_a_new_nested_output_directory(tmp_path: Path) -> None:
+    output = tmp_path / "new" / "nested" / "search"
+
+    result = export_publication_search(_snapshot(), output)
+
+    assert Path(result["search_json"]).is_file()
+    assert Path(result["search_csv"]).is_file()
+    assert Path(result["search_xlsx"]).is_file()
+    assert Path(result["manifest"]).is_file()

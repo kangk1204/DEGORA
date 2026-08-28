@@ -3,50 +3,89 @@ name: tests
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
+  release:
+    types: [published]
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PYTHONUNBUFFERED: "1"
+
 jobs:
   test-ubuntu:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "24"
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -e ".[dev]"
       - run: make check
       - run: make smoke
 
-  smoke-macos:
+  test-macos:
     runs-on: macos-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
           cache: pip
-      - run: python3.12 --version
-      - run: python3.12 -m venv .venv
-      - run: .venv/bin/python --version
-      - run: .venv/bin/python -m pip install --upgrade pip
-      - run: .venv/bin/python -m pip install -e .
-      - run: make PYTHON=.venv/bin/python smoke
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "24"
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e ".[dev]"
+      - run: make check
+      - run: make smoke
 
-  # The test suite runs under ".[dev]", which installs xlrd - so a .xls branch
-  # could be advertised by the package and unreachable for everyone who installs it
-  # normally, with every unit test still green. Exercise the built wheel with no
-  # dev extra at all.
+  quality-and-coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+          cache: pip
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "24"
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e ".[dev]"
+      - run: make requirements-check
+      - run: make lint
+      - run: make typecheck
+      - run: make coverage
+      # pip-audit is the only intentional live service check. Provider discovery
+      # tests remain mocked so a transient PubMed/GEO outage cannot block release.
+      - run: make audit
+
   wheel-no-dev-extra:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -57,19 +96,18 @@ jobs:
       - run: python -m build
       - name: Install the wheel into a clean environment
         run: |
-          python -m venv /tmp/clean
-          /tmp/clean/bin/python -m pip install --upgrade pip --quiet
-          /tmp/clean/bin/python -m pip install dist/*.whl
-          /tmp/clean/bin/python -m pip list
+          clean_root="$(mktemp -d)"
+          python -m venv "$clean_root/venv"
+          "$clean_root/venv/bin/python" -m pip install --upgrade pip --quiet
+          "$clean_root/venv/bin/python" -m pip install dist/*.whl
+          echo "CLEAN_PYTHON=$clean_root/venv/bin/python" >> "$GITHUB_ENV"
+          echo "CLEAN_DEGORA=$clean_root/venv/bin/degora" >> "$GITHUB_ENV"
       - name: Every reader the package advertises must be importable
         run: |
-          /tmp/clean/bin/python -c "import xlrd, openpyxl; print('xlrd', xlrd.__version__, '| openpyxl', openpyxl.__version__)"
+          "$CLEAN_PYTHON" -c "import xlrd, openpyxl; print('xlrd', xlrd.__version__, '| openpyxl', openpyxl.__version__)"
       - name: Build real legacy .xls fixtures
         # Written with a throwaway interpreter: pandas dropped its xlwt writer, and
-        # the point is to hand the clean environment genuine OLE2 workbooks it had
-        # no part in making. Two source units need two different tables: one file
-        # declared under two units is exactly the double counting `validate`
-        # refuses since 0.4.18.
+        # the clean wheel must read genuine OLE2 workbooks it had no part in making.
         run: |
           python -m pip install --quiet xlwt
           python - <<'PY'
@@ -112,11 +150,10 @@ jobs:
           PY
       - name: The .xls fixtures validate and run without the dev extra
         run: |
-          /tmp/clean/bin/degora validate legacy_catalog.csv
-          /tmp/clean/bin/degora run legacy_catalog.csv --output-dir xls-out --harmonized-dir xls-harm --no-excel
+          "$CLEAN_DEGORA" validate legacy_catalog.csv
+          "$CLEAN_DEGORA" run legacy_catalog.csv --output-dir xls-out --harmonized-dir xls-harm --no-excel
           test -f xls-out/degora_gene_scores.csv
-          # Both workbooks were read: every gene carries evidence from two source units.
-          /tmp/clean/bin/python - <<'PY'
+          "$CLEAN_PYTHON" - <<'PY'
           import csv
 
           with open("xls-out/degora_gene_scores.csv", newline="") as handle:
@@ -125,34 +162,143 @@ jobs:
           assert all(row["n_source_units"] == "2" for row in rows), rows[0]
           PY
 
-  # The dependency pins are a range, and only its floor was exercised. A pandas or
-  # numpy release inside the allowed range could break a run for anyone installing
-  # today, and nothing here would have said so.
   upper-bounds-ubuntu:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.13"
+          python-version: "3.14"
           cache: pip
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "24"
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -e ".[dev]"
-      - run: python -m pip install --upgrade "pandas<3.1" "numpy<3" "scipy<1.18" "pyarrow<25" "openpyxl<4"
+      - run: python -m pip install --upgrade "pandas<3.1" "numpy<3" "scipy<1.18" "pyarrow<25" "openpyxl<4" "xlrd<3"
+      - run: python -m pip check
       - run: python -m pip list
       - run: make check
       - run: make smoke
 
   lower-bounds-ubuntu:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.10"
           cache: pip
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "24"
       - run: python -m pip install --upgrade pip
-      - run: python -m pip install pandas==2.1.0 numpy==1.26.0 scipy==1.11.1 pyarrow==14.0.1 openpyxl==3.1.0 pytest==9.0.3 build==1.3.0 xlrd==2.0.2
+      - name: Install declared runtime and test floors
+        run: >-
+          python -m pip install
+          pandas==2.1.0 numpy==1.26.0 scipy==1.11.1 pyarrow==14.0.1
+          openpyxl==3.1.0 xlrd==2.0.1 pytest==9.0.3 build==1.0.0
+          packaging==23.0 tomli==2.0.1
       - run: python -m pip install -e . --no-deps
+      - run: python -m pip check
       - run: make check
       - run: make smoke
+
+  sdist-release-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "24"
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e ".[dev]"
+      - name: Verify release tag metadata and GitHub-verified signature
+        if: github.ref_type == 'tag'
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          package_version="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
+          test "$GITHUB_REF_NAME" = "v$package_version"
+          test "$(git cat-file -t "refs/tags/$GITHUB_REF_NAME")" = "tag"
+          python - <<'PY'
+          import json
+          import os
+          import subprocess
+          import urllib.request
+
+          tag_name = os.environ["GITHUB_REF_NAME"]
+          tag_sha = subprocess.check_output(
+              ["git", "rev-parse", f"refs/tags/{tag_name}"], text=True
+          ).strip()
+          request = urllib.request.Request(
+              f"{os.environ['GITHUB_API_URL']}/repos/{os.environ['GITHUB_REPOSITORY']}/git/tags/{tag_sha}",
+              headers={
+                  "Accept": "application/vnd.github+json",
+                  "Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}",
+                  "X-GitHub-Api-Version": "2022-11-28",
+              },
+          )
+          with urllib.request.urlopen(request, timeout=30) as response:
+              verification = json.load(response).get("verification", {})
+          if verification.get("verified") is not True:
+              reason = verification.get("reason", "missing verification result")
+              raise SystemExit(f"release tag {tag_name} is not GitHub-verified: {reason}")
+          print(f"GitHub verified release tag {tag_name} at {verification.get('verified_at')}")
+          PY
+      - run: python -m check_manifest -v
+      - run: python -m build
+      - run: python -m twine check dist/*
+      - name: Inspect source-distribution contents
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import tarfile
+
+          archives = sorted(Path("dist").glob("*.tar.gz"))
+          assert len(archives) == 1, archives
+          with tarfile.open(archives[0], "r:gz") as archive:
+              members = {member.name: member for member in archive.getmembers()}
+          roots = {name.split("/", 1)[0] for name in members}
+          assert len(roots) == 1, roots
+          root = roots.pop()
+          required = {
+              "degora_quickstart.sh",
+              "scripts/degora_quickstart.sh",
+              "requirements.txt",
+              ".gitattributes",
+              ".gitignore",
+              "tests/fixtures/prepared_bundle_two_studies.json",
+              "tests/test_packaging_contract.py",
+          }
+          missing = sorted(item for item in required if f"{root}/{item}" not in members)
+          assert not missing, f"sdist is missing: {missing}"
+          for script in ("degora_quickstart.sh", "scripts/degora_quickstart.sh"):
+              assert members[f"{root}/{script}"].mode & 0o111, f"{script} is not executable"
+          PY
+      - name: Install the sdist cleanly and run its shipped test suite
+        shell: bash
+        run: |
+          work_root="$(mktemp -d)"
+          tar -xzf dist/*.tar.gz -C "$work_root"
+          sdist_root="$(find "$work_root" -mindepth 1 -maxdepth 1 -type d -print -quit)"
+          python -m venv "$work_root/venv"
+          "$work_root/venv/bin/python" -m pip install --upgrade pip --quiet
+          "$work_root/venv/bin/python" -m pip install "${sdist_root}[dev]"
+          cd "$sdist_root"
+          "$work_root/venv/bin/python" -m pytest -q
+          cd "$work_root"
+          "$work_root/venv/bin/degora" --version
+          "$work_root/venv/bin/degora" demo demo
+          "$work_root/venv/bin/degora" validate demo/degora_demo_config.xlsx
+          "$work_root/venv/bin/degora" run demo/degora_demo_config.xlsx --no-excel

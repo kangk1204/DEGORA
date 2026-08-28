@@ -107,10 +107,12 @@ def test_the_analysis_job_reports_every_stage_through_the_job(tmp_path: Path) ->
     handler.server = type("Server", (), {"discovery_job_manager": manager})()
     seen: list[str] = []
 
-    def fake_analyze(payload, progress=None):
+    def fake_analyze(payload, progress=None, before_publish=None):
         progress(0.3, "Deriving contrast 1 of 2.")
         progress(0.62, "Scoring 2 contrast(s) across 2 source unit(s).")
         seen.append("ran")
+        assert before_publish is not None
+        before_publish()
         return {"run_id": "r1"}
 
     handler._discovery_analyze = fake_analyze
@@ -149,12 +151,16 @@ def test_a_run_folder_killed_with_the_server_is_labelled(tmp_path: Path) -> None
     assert mark_unfinished_discovery_runs(root) == []  # idempotent
 
 
-def test_the_workbook_is_written_beside_its_target_then_moved() -> None:
+def test_the_workbook_set_is_staged_then_published_with_manifest_last() -> None:
     from degora import excel_export
 
     source = Path(excel_export.__file__).read_text(encoding="utf-8")
-    assert 'partial = output.with_name(output.name + ".partial")' in source
-    assert "os.replace(partial, output)" in source
+    assert "TemporaryDirectory" in source
+    assert "publish_staged_artifacts(publication_pairs)" in source
+    assert "publication_pairs[staged_manifest] = manifest" in source
+    assert source.index("publication_pairs[staged_manifest] = manifest") < source.index(
+        "publish_staged_artifacts(publication_pairs)"
+    )
 
 
 def test_min_studies_one_is_named_exploratory(tmp_path: Path) -> None:

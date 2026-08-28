@@ -481,7 +481,7 @@ def _ablate(args: argparse.Namespace) -> int:
 def _run_from_config(args: argparse.Namespace, *, serve_after: bool = False) -> int:
     """Resolve the run's paths and settings, then hold the output directory for it."""
 
-    from .provenance import output_directory_lock
+    from .provenance import artifact_output_lock
 
     config = Path(args.config)
     config_base = config.resolve().parent
@@ -512,7 +512,7 @@ def _run_from_config(args: argparse.Namespace, *, serve_after: bool = False) -> 
     # One claim for the whole pipeline. Harmonization and the database are written
     # tens of seconds apart, so two runs sharing an output directory could each
     # succeed and leave one run's contrast table beside the other's gene scores.
-    with output_directory_lock(output_dir):
+    with artifact_output_lock(output_dir):
         return _run_pipeline(
             args, serve_after, config, settings, min_studies, output_dir, harmonized_dir, db_path,
             progress=progress, validation=validation,
@@ -682,6 +682,8 @@ def _run_pipeline(
             port=port,
             allow_network=args.allow_network,
             access_token=args.token,
+            authenticate_loopback=not getattr(args, "no_token", False),
+            max_pending_jobs=getattr(args, "max_pending_jobs", 64),
         )
     return 0
 
@@ -743,14 +745,21 @@ def build_parser() -> argparse.ArgumentParser:
     launch.add_argument("--host", default="127.0.0.1")
     launch.add_argument("--port", type=int)
     launch.add_argument("--allow-network", action="store_true", help="Allow non-loopback browser/API binding with token protection.")
-    launch.add_argument("--token", help="Access token for non-loopback browser/API binding; generated when omitted.")
+    launch_auth = launch.add_mutually_exclusive_group()
+    launch_auth.add_argument("--token", help="Access token for browser/API binding; generated when omitted.")
+    launch_auth.add_argument("--no-token", action="store_true", help="Disable the default per-run token on loopback only (not recommended on shared hosts).")
+    launch.add_argument("--max-pending-jobs", type=int, default=64, help="Maximum queued or running discovery jobs (default 64).")
 
     serve = subparsers.add_parser("serve", help="Open the local browser/API for an existing score DB.")
     serve.add_argument("db")
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8765)
     serve.add_argument("--allow-network", action="store_true", help="Allow non-loopback binding with token protection.")
-    serve.add_argument("--token", help="Access token for non-loopback binding; generated when omitted.")
+    serve_auth = serve.add_mutually_exclusive_group()
+    serve_auth.add_argument("--token", help="Access token for browser/API binding; generated when omitted.")
+    serve_auth.add_argument("--no-token", action="store_true", help="Disable the default per-run token on loopback only (not recommended on shared hosts).")
+    serve.add_argument("--max-pending-jobs", type=int, default=64, help="Maximum queued or running discovery jobs (default 64).")
+    serve.add_argument("--open-browser", action="store_true", help="Open the authenticated dashboard URL after binding.")
 
     ablate = subparsers.add_parser(
         "ablate",
@@ -968,7 +977,16 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "serve":
             from .api import serve as serve_db
 
-            serve_db(Path(args.db), host=args.host, port=args.port, allow_network=args.allow_network, access_token=args.token)
+            serve_db(
+                Path(args.db),
+                host=args.host,
+                port=args.port,
+                allow_network=args.allow_network,
+                access_token=args.token,
+                authenticate_loopback=not args.no_token,
+                max_pending_jobs=args.max_pending_jobs,
+                open_browser=args.open_browser,
+            )
             return 0
         if args.command == "discover":
             if len(str(args.query).strip()) < 2:

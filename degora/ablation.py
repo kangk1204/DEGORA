@@ -17,13 +17,14 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any, Iterable, Mapping, cast
 
 import numpy as np
 import pandas as pd
 
 from .formula_safety import neutralize_formula_text, restore_formula_text_if_marked
 from .harmonize import canonical_gene_symbol
+from .provenance import artifact_output_lock
 from .score_db import PRIMARY_RANK_COLUMN, SCORE_WEIGHTS, ScoreAblation, degora_score_table
 
 DEFAULT_TOP_K = (50, 100)
@@ -138,8 +139,17 @@ def run_ablations(
     """
 
     variants = list(ablations) if ablations is not None else default_ablations()
-    if not variants or variants[0].name != "full" or not variants[0].is_default:
-        variants = [ScoreAblation(name="full"), *[variant for variant in variants if variant.name != "full"]]
+    names = [variant.name for variant in variants]
+    duplicate_names = sorted({name for name in names if names.count(name) > 1})
+    if duplicate_names:
+        raise ValueError(
+            "ablation names must be unique; duplicate name(s): "
+            + ", ".join(repr(name) for name in duplicate_names)
+        )
+    canonical = next((variant for variant in variants if variant.name == "full"), None)
+    if canonical is None:
+        canonical = ScoreAblation(name="full")
+    variants = [canonical, *[variant for variant in variants if variant.name != "full"]]
     gold = list(gold_genes or [])
     ks = [int(k) for k in top_k]
     ranks: dict[str, pd.Series] = {}
@@ -206,14 +216,14 @@ def write_ablation_report(
 ) -> dict[str, str]:
     """Write the summary table and the per-gene rank matrix beside each other."""
 
-    target = Path(output_dir)
-    target.mkdir(parents=True, exist_ok=True)
-    summary_path = target / "degora_ablation_summary.csv"
-    ranks_path = target / "degora_ablation_ranks.csv"
-    neutralize_formula_text(summary).to_csv(summary_path, index=False)
-    matrix = pd.DataFrame({name: series for name, series in ranks.items()})
-    matrix.index.name = "gene_symbol"
-    neutralize_formula_text(matrix.reset_index()).to_csv(ranks_path, index=False)
+    target = Path(output_dir).resolve()
+    with artifact_output_lock(target):
+        summary_path = target / "degora_ablation_summary.csv"
+        ranks_path = target / "degora_ablation_ranks.csv"
+        neutralize_formula_text(summary).to_csv(summary_path, index=False)
+        matrix = pd.DataFrame({name: series for name, series in ranks.items()})
+        matrix.index.name = "gene_symbol"
+        neutralize_formula_text(matrix.reset_index()).to_csv(ranks_path, index=False)
     return {"summary_csv": str(summary_path), "ranks_csv": str(ranks_path)}
 
 
@@ -226,4 +236,4 @@ def format_summary(summary: pd.DataFrame) -> str:
     view = summary[columns].copy()
     for column in columns[1:]:
         view[column] = pd.to_numeric(view[column], errors="coerce").map(lambda value: "" if pd.isna(value) else f"{value:.3f}")
-    return view.to_string(index=False)
+    return cast(str, view.to_string(index=False))

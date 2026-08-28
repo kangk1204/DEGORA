@@ -343,7 +343,7 @@ def test_shutdown_drains_committing_job_before_interrupting_others(tmp_path) -> 
     assert store.get_job(running_job["job_id"])["status"] == "interrupted"
 
 
-def test_shutdown_preserves_committing_job_after_drain_timeout(tmp_path) -> None:
+def test_shutdown_waits_past_drain_timeout_for_committing_job(tmp_path) -> None:
     store = DiscoveryStateStore(tmp_path)
     manager = DiscoveryJobManager(store, max_workers=1)
     manager._commit_drain_timeout = 0.01
@@ -360,11 +360,20 @@ def test_shutdown_preserves_committing_job_after_drain_timeout(tmp_path) -> None
     job = manager.submit("search", {}, worker)
     assert committed.wait(timeout=5)
 
-    manager.shutdown(wait=False, cancel_futures=True, interrupt=True)
+    shutdown_done = threading.Event()
+    shutdown_thread = threading.Thread(
+        target=lambda: (
+            manager.shutdown(wait=False, cancel_futures=True, interrupt=True),
+            shutdown_done.set(),
+        )
+    )
+    shutdown_thread.start()
 
+    assert not shutdown_done.wait(timeout=0.1)
     assert store.get_job(job["job_id"])["status"] == "running"
     release.set()
-    manager.shutdown(wait=True)
+    assert shutdown_done.wait(timeout=5)
+    shutdown_thread.join(timeout=5)
     final = store.get_job(job["job_id"])
     assert final["status"] == "completed"
     assert final["result"] == {"done": True}

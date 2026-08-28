@@ -12,6 +12,7 @@ import shutil
 import tempfile
 import threading
 import time
+import unicodedata
 import zipfile
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -41,7 +42,51 @@ class OutputDirectoryBusyError(RuntimeError):
 
 
 _OUTPUT_LOCK_GUARD = threading.Lock()
-_OUTPUT_LOCKS_HELD: dict[str, int] = {}
+# Re-entrancy is deliberately scoped to one thread.  The CLI owns the lock and
+# calls lower-level helpers that take it again on that same thread, but a second
+# worker thread is a second run for integrity purposes and must be refused. PID
+# is part of the owner identity because a fork can preserve the numeric thread ID.
+_OUTPUT_LOCKS_HELD: dict[str, tuple[int, int, int]] = {}
+_OUTPUT_LOCK_HANDLES: dict[str, Any] = {}
+
+
+def _lock_registry_before_fork() -> None:
+    """Freeze the in-process registry while a POSIX process is forked."""
+
+    _OUTPUT_LOCK_GUARD.acquire()
+
+
+def _lock_registry_after_fork_parent() -> None:
+    _OUTPUT_LOCK_GUARD.release()
+
+
+def _lock_registry_after_fork_child() -> None:
+    """Drop inherited descriptors so a child must acquire its own OS lock.
+
+    ``flock`` state and Python thread identifiers are both inherited across
+    ``fork``. Keeping either in the child would make the parent's critical
+    section look re-entrant there. Closing the duplicate descriptor does not
+    release the parent's lock; it only removes the child's inherited claim.
+    """
+
+    try:
+        for handle in _OUTPUT_LOCK_HANDLES.values():
+            try:
+                handle.close()
+            except OSError:
+                pass
+        _OUTPUT_LOCK_HANDLES.clear()
+        _OUTPUT_LOCKS_HELD.clear()
+    finally:
+        _OUTPUT_LOCK_GUARD.release()
+
+
+if hasattr(os, "register_at_fork"):  # pragma: no branch - one-time POSIX setup
+    os.register_at_fork(
+        before=_lock_registry_before_fork,
+        after_in_parent=_lock_registry_after_fork_parent,
+        after_in_child=_lock_registry_after_fork_child,
+    )
 
 
 def ensure_output_directory(path: Path) -> Path:
@@ -67,6 +112,30 @@ def ensure_output_directory(path: Path) -> Path:
     return resolved
 
 
+def _normalized_path_identity(path: str | Path) -> str:
+    """Return a conservative identity for filesystem-equivalent path spellings."""
+
+    resolved = Path(path).resolve()
+    return unicodedata.normalize("NFC", str(resolved)).casefold()
+
+
+def publication_target_lock_path(target: str | Path) -> Path:
+    """Return a stable, alias-normalized sibling lock identity for ``target``.
+
+    A publication lock inside a replaceable target moves away with the old
+    generation.  The hidden namespace beside the target survives replacement.
+    APFS/NTFS may treat case and Unicode-normalization aliases as the same path
+    while ``Path.resolve()`` preserves the caller's spelling, so the absolute
+    identity is normalized and case-folded before hashing.  On a case-sensitive
+    filesystem this conservatively serializes case-only sibling names.
+    """
+
+    resolved = Path(target).resolve()
+    canonical = _normalized_path_identity(resolved)
+    identity = hashlib.sha256(os.fsencode(canonical)).hexdigest()
+    return resolved.parent / ".degora-publication-locks" / identity
+
+
 @contextmanager
 def output_directory_lock(output_dir: str | Path) -> Iterator[None]:
     """Hold an exclusive claim on one output directory for the whole run.
@@ -79,69 +148,126 @@ def output_directory_lock(output_dir: str | Path) -> Iterator[None]:
     can tell the halves came from different runs. The default output directory is
     a fixed path, so this needs no flag to happen.
 
-    Re-entrant within a process: the CLI takes the lock for the whole pipeline
-    while ``run_slice`` and ``write_score_database`` also take it when they are
-    the entry point, and flock on a second descriptor would otherwise deadlock
-    against the first.
+    Re-entrant only on the owning thread: the CLI takes the lock for the whole
+    pipeline while ``run_slice`` and ``write_score_database`` also take it when
+    they are the entry point.  A different thread is independent work and is
+    excluded just like a different process.
     """
 
     resolved = Path(output_dir).resolve()
     ensure_output_directory(resolved)
     key = str(resolved)
+    owner_pid = os.getpid()
+    owner_thread = threading.get_ident()
     with _OUTPUT_LOCK_GUARD:
-        depth = _OUTPUT_LOCKS_HELD.get(key, 0)
-        if depth:
-            _OUTPUT_LOCKS_HELD[key] = depth + 1
-    if depth:
+        held = _OUTPUT_LOCKS_HELD.get(key)
+        if held is not None:
+            held_pid, held_thread, depth = held
+            if (held_pid, held_thread) != (owner_pid, owner_thread):
+                raise OutputDirectoryBusyError(
+                    f"another DEGORA run is using this output directory: {resolved}. "
+                    "Wait for it to finish, or give this run its own --output-dir."
+                )
+            _OUTPUT_LOCKS_HELD[key] = (owner_pid, owner_thread, depth + 1)
+    if held is not None:
         try:
             yield
         finally:
             with _OUTPUT_LOCK_GUARD:
-                _OUTPUT_LOCKS_HELD[key] -= 1
-                if not _OUTPUT_LOCKS_HELD[key]:
+                current_pid, current_thread, current_depth = _OUTPUT_LOCKS_HELD[key]
+                if (current_pid, current_thread) != (owner_pid, owner_thread):  # pragma: no cover
+                    raise RuntimeError("DEGORA output lock ownership changed unexpectedly")
+                if current_depth == 1:
                     del _OUTPUT_LOCKS_HELD[key]
+                else:
+                    _OUTPUT_LOCKS_HELD[key] = (owner_pid, owner_thread, current_depth - 1)
         return
 
-    handle = (resolved / ".degora-run.lock").open("a+b")
+    lock_path = resolved / ".degora-run.lock"
+    handle = lock_path.open("a+b")
     try:
-        import fcntl
-
         try:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except OSError as exc:
+            if os.name == "nt":  # pragma: no cover - exercised on Windows CI
+                import msvcrt
+
+                if lock_path.stat().st_size == 0:
+                    handle.write(b"\0")
+                    handle.flush()
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except (ImportError, OSError) as exc:
             raise OutputDirectoryBusyError(
                 f"another DEGORA run is using this output directory: {resolved}. "
                 "Wait for it to finish, or give this run its own --output-dir."
             ) from exc
-    except ImportError:  # pragma: no cover - no file locking available
-        pass
-    with _OUTPUT_LOCK_GUARD:
-        _OUTPUT_LOCKS_HELD[key] = 1
+        with _OUTPUT_LOCK_GUARD:
+            # A second thread can race between the first registry check and the
+            # OS lock.  The OS lock decides the winner; only its owner is recorded.
+            if key in _OUTPUT_LOCKS_HELD:  # pragma: no cover - defensive race guard
+                raise OutputDirectoryBusyError(
+                    f"another DEGORA run is using this output directory: {resolved}. "
+                    "Wait for it to finish, or give this run its own --output-dir."
+                )
+            _OUTPUT_LOCKS_HELD[key] = (owner_pid, owner_thread, 1)
+            _OUTPUT_LOCK_HANDLES[key] = handle
+    except BaseException:
+        handle.close()
+        raise
     try:
         yield
     finally:
-        with _OUTPUT_LOCK_GUARD:
-            _OUTPUT_LOCKS_HELD.pop(key, None)
         try:
-            import fcntl
+            if os.name == "nt":  # pragma: no cover - exercised on Windows CI
+                import msvcrt
 
-            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
         except (ImportError, OSError):
             pass
-        own_inode = None
-        try:
-            own_inode = os.fstat(handle.fileno()).st_ino
-        except OSError:
-            pass
         handle.close()
-        # The file only means something while a run holds the lock; left behind
-        # empty, it read as an active lock. Remove it while it is still ours.
-        lock_path = resolved / ".degora-run.lock"
-        try:
-            if own_inode is not None and os.stat(lock_path).st_ino == own_inode:
-                lock_path.unlink()
-        except OSError:
-            pass
+        with _OUTPUT_LOCK_GUARD:
+            held_pid, held_thread, held_depth = _OUTPUT_LOCKS_HELD.get(key, (None, None, 0))
+            if (held_pid, held_thread) == (owner_pid, owner_thread) and held_depth == 1:
+                del _OUTPUT_LOCKS_HELD[key]
+                _OUTPUT_LOCK_HANDLES.pop(key, None)
+            elif (held_pid, held_thread) == (owner_pid, owner_thread):  # pragma: no cover
+                raise RuntimeError("DEGORA output lock was released while nested")
+        # Keep the lock inode stable permanently.  Unlinking an unlocked path can
+        # split it from a waiter that already opened the old inode, allowing a
+        # third process to lock a newly-created file while the waiter is active.
+
+
+@contextmanager
+def artifact_output_lock(output_dir: str | Path) -> Iterator[None]:
+    """Lock one artifact directory, including its canonical discovery-run scope.
+
+    Public writers normally coordinate through both the alias-normalized target
+    identity and the directory's raw lock. A directory named ``results`` is the
+    canonical artifact child of a replaceable discovery run, so its parent
+    target identity must be claimed first and held for the complete operation.
+    That conservative convention can serialize an unrelated directory that is
+    also literally named ``results``; the tradeoff keeps a successful direct
+    writer from being overwritten by a concurrent whole-run transaction.
+    """
+
+    resolved = Path(output_dir).resolve()
+    if resolved.name.casefold() == "results":
+        with output_directory_lock(publication_target_lock_path(resolved.parent)):
+            with output_directory_lock(publication_target_lock_path(resolved)):
+                with output_directory_lock(resolved):
+                    yield
+        return
+    with output_directory_lock(publication_target_lock_path(resolved)):
+        with output_directory_lock(resolved):
+            yield
 
 
 def reproducible_generated_at() -> str:
@@ -372,11 +498,15 @@ def provenance_record(
     *,
     artifact_content_path: str | Path | None = None,
     inputs: Iterable[str | Path] = (),
+    input_content_paths: dict[str | Path, str | Path] | None = None,
     allow_missing_inputs: Iterable[str | Path] = (),
     metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a deterministic provenance record for one generated artifact.
 
+    ``input_content_paths`` maps a final input name to an unpublished staging
+    file with the bytes that will occupy it.  This lets a multi-artifact
+    transaction build a truthful sidecar before publishing any member.
     ``allow_missing_inputs`` is reserved for large, intentionally unretained
     regeneration inputs. Their size and digest are recorded and verified whenever
     the file is present, while a clean checkout may omit the file.
@@ -386,17 +516,22 @@ def provenance_record(
     path_base = artifact.parent
     content = Path(artifact_content_path).resolve() if artifact_content_path is not None else artifact
     allowed_missing = {Path(raw_input).resolve() for raw_input in allow_missing_inputs}
+    staged_inputs = {
+        Path(final_path).resolve(): Path(staged_path).resolve()
+        for final_path, staged_path in (input_content_paths or {}).items()
+    }
     input_records = []
     for raw_input in inputs:
         input_path = Path(raw_input).resolve()
+        input_content = staged_inputs.get(input_path, input_path)
         record: dict[str, Any] = {
             "path": portable_path(input_path, path_base),
-            "exists": input_path.exists(),
+            "exists": input_content.exists(),
             "required_for_audit": input_path not in allowed_missing,
         }
         record["path_replayable"] = not is_external_path_reference(record["path"])
-        if input_path.is_file():
-            record.update({"size_bytes": input_path.stat().st_size, "sha256": _sha256(input_path)})
+        if input_content.is_file():
+            record.update({"size_bytes": input_content.stat().st_size, "sha256": _sha256(input_content)})
         input_records.append(record)
 
     portable_regeneration_command = portable_command(command, path_base)
@@ -495,6 +630,7 @@ def source_sidecar_payloads(
     *,
     artifact_content_path: str | Path | None = None,
     inputs: Iterable[str | Path] = (),
+    input_content_paths: dict[str | Path, str | Path] | None = None,
     allow_missing_inputs: Iterable[str | Path] = (),
     metadata: dict[str, Any] | None = None,
     write_json: bool = True,
@@ -515,10 +651,11 @@ def source_sidecar_payloads(
             command,
             artifact_content_path=artifact_content_path,
             inputs=inputs,
+            input_content_paths=input_content_paths,
             allow_missing_inputs=allow_missing_inputs,
             metadata=metadata,
         )
-        json_text = json.dumps(record, indent=2, sort_keys=True) + "\n"
+        json_text = json.dumps(record, indent=2, sort_keys=True, allow_nan=False) + "\n"
     return command + "\n", json_text
 
 
@@ -528,6 +665,7 @@ def write_source_sidecar(
     *,
     artifact_content_path: str | Path | None = None,
     inputs: Iterable[str | Path] = (),
+    input_content_paths: dict[str | Path, str | Path] | None = None,
     allow_missing_inputs: Iterable[str | Path] = (),
     metadata: dict[str, Any] | None = None,
     write_json: bool = True,
@@ -546,6 +684,7 @@ def write_source_sidecar(
         command,
         artifact_content_path=artifact_content_path,
         inputs=inputs,
+        input_content_paths=input_content_paths,
         allow_missing_inputs=allow_missing_inputs,
         metadata=metadata,
         write_json=write_json,
@@ -558,13 +697,23 @@ def write_source_sidecar(
 def publish_staged_artifacts(staged_to_final: dict[Path, Path]) -> None:
     """Publish a complete artifact set, restoring all known targets on failure."""
 
-    if len(set(staged_to_final.values())) != len(staged_to_final):
+    staged_identities = [_normalized_path_identity(path) for path in staged_to_final]
+    final_identities = [_normalized_path_identity(path) for path in staged_to_final.values()]
+    if len(set(final_identities)) != len(final_identities):
         raise ValueError("staged artifact publication target paths must be unique")
+    if len(set(staged_identities)) != len(staged_identities):
+        raise ValueError("staged artifact source paths must be unique")
+    if set(staged_identities) & set(final_identities):
+        # The finally block consumes staging files after publication.  Allowing
+        # source and target aliases to overlap could therefore delete a newly
+        # published final file (the simplest case is staged == final).
+        raise ValueError("staged artifact source and target paths must be different")
     if not staged_to_final:
         return
 
     prepared: list[tuple[Path, Path, Path | None]] = []
-    published: list[tuple[Path, Path | None]] = []
+    rollback_intents: list[tuple[Path, Path, Path | None]] = []
+    preserved_backups: set[Path] = set()
     try:
         # Copy every staged artifact to a sibling pending file first. This keeps the
         # final os.replace on one filesystem even when a caller places the SQLite DB
@@ -604,19 +753,48 @@ def publish_staged_artifacts(staged_to_final: dict[Path, Path]) -> None:
 
         try:
             for pending_path, final_path, backup_path in prepared:
+                # Register the old-generation restoration before replacement.
+                # os.replace() can be interrupted after the rename has taken
+                # effect but before it returns.  The pending path distinguishes
+                # that case from a failure before mutation: a successful atomic
+                # rename consumes its source, while a failed rename leaves it.
+                rollback_intents.append((pending_path, final_path, backup_path))
                 os.replace(pending_path, final_path)
-                published.append((final_path, backup_path))
-        except BaseException:
-            for final_path, backup_path in reversed(published):
-                if backup_path is not None and backup_path.exists():
-                    os.replace(backup_path, final_path)
-                else:
-                    final_path.unlink(missing_ok=True)
+        except BaseException as publication_error:
+            rollback_errors: list[tuple[Path, Path | None, BaseException]] = []
+            for pending_path, final_path, backup_path in reversed(rollback_intents):
+                if pending_path.exists():
+                    continue
+                try:
+                    if backup_path is not None and backup_path.exists():
+                        try:
+                            os.replace(backup_path, final_path)
+                        except BaseException:  # noqa: BLE001 - rollback must survive cancellation too
+                            # A transient rename failure must not turn a recoverable
+                            # old generation into a mixed set. Copying from the
+                            # private backup is a safe second restoration route.
+                            shutil.copy2(backup_path, final_path)
+                    else:
+                        final_path.unlink(missing_ok=True)
+                except BaseException as rollback_error:  # noqa: BLE001 - preserve backup on every failure
+                    if backup_path is not None and backup_path.exists():
+                        preserved_backups.add(backup_path)
+                    rollback_errors.append((final_path, backup_path, rollback_error))
+            if rollback_errors:
+                details = "; ".join(
+                    f"{final_path} (recovery backup: {backup_path if backup_path is not None else 'none'}): "
+                    f"{type(error).__name__}: {error}"
+                    for final_path, backup_path, error in rollback_errors
+                )
+                raise RuntimeError(
+                    "artifact publication failed and automatic rollback was incomplete; "
+                    f"preserved recovery backups must not be deleted: {details}"
+                ) from publication_error
             raise
     finally:
         for staged_path in staged_to_final:
             staged_path.unlink(missing_ok=True)
         for pending_path, _final_path, backup_path in prepared:
             pending_path.unlink(missing_ok=True)
-            if backup_path is not None:
+            if backup_path is not None and backup_path not in preserved_backups:
                 backup_path.unlink(missing_ok=True)

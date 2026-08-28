@@ -43,6 +43,7 @@ from .discovery_sources import (
     describe_unexpected_payload,
     download_public_candidate,
 )
+from .provenance import output_directory_lock, publication_target_lock_path
 
 
 _TABULAR_MEMBER_RE = TABULAR_MEMBER_RE  # one contract with the readers: .xls and gzipped workbooks included
@@ -50,6 +51,43 @@ _GSE_RE = re.compile(r"^GSE[0-9]+$", re.IGNORECASE)
 
 
 def prepare_publication_records(
+    records: Iterable[dict[str, Any]],
+    species: str,
+    *,
+    query: str = "",
+    materialize_dir: str | Path,
+    max_records: int = 20,
+    max_files_per_record: int = 6,
+    inspection_budget: int | None = None,
+    transport: Any | None = None,
+    geo_client: Any | None = None,
+    force: bool = False,
+    progress: Callable[[float, str], None] | None = None,
+    before_publish: Callable[[], None] | None = None,
+) -> dict[str, Any]:
+    """Prepare publication records under one stable directory transaction lock."""
+
+    target = Path(materialize_dir).resolve()
+    # The final directory is replaced wholesale.  Its stable target-scoped
+    # sibling lock survives replacement without serializing other bundle IDs.
+    with output_directory_lock(publication_target_lock_path(target)):
+        return _prepare_publication_records_locked(
+            records,
+            species,
+            query=query,
+            materialize_dir=target,
+            max_records=max_records,
+            max_files_per_record=max_files_per_record,
+            inspection_budget=inspection_budget,
+            transport=transport,
+            geo_client=geo_client,
+            force=force,
+            progress=progress,
+            before_publish=before_publish,
+        )
+
+
+def _prepare_publication_records_locked(
     records: Iterable[dict[str, Any]],
     species: str,
     *,
@@ -888,7 +926,10 @@ def _write_marker(path: Path, species_key: str) -> None:
         "format_version": DISCOVERY_BUNDLE_FORMAT_VERSION,
         "species": species_key,
     }
-    (path / DISCOVERY_BUNDLE_MARKER).write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    (path / DISCOVERY_BUNDLE_MARKER).write_text(
+        json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n",
+        encoding="utf-8",
+    )
 
 
 def _publish_prepared_bundle(staging: Path, target: Path, *, force: bool) -> None:

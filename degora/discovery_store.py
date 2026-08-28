@@ -12,10 +12,11 @@ from collections.abc import Callable, Iterable
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-
+from urllib.parse import unquote, unquote_plus, urlsplit, urlunsplit
 
 SCHEMA_VERSION = "1"
 DEFAULT_DB_NAME = "discovery_state.sqlite3"
+DEFAULT_MAX_PENDING_JOBS = 64
 # "cancelled" is kept apart from "interrupted" because they answer different
 # questions about a job that did not finish. "interrupted" means the server
 # stopped underneath it and the work is worth resuming; "cancelled" means a
@@ -31,22 +32,13 @@ ALLOWED_TRANSITIONS = {
     "interrupted": frozenset(),
     "cancelled": frozenset(),
 }
-SENSITIVE_KEY_PARTS = (
-    "api_key",
-    "apikey",
-    "authorization",
-    "bearer",
-    "client_secret",
-    "credential",
-    "ncbi_api_key",
-    "password",
-    "refresh_token",
-    "secret",
-    "token",
-)
+_SAFE_NONCREDENTIAL_TOKEN_PREFIXES = frozenset({"continuation", "cursor", "next", "page", "pagination"})
 _MISSING = object()
 _SENSITIVE_ASSIGNMENT_RE = re.compile(
-    r"(?i)\b(api[_-]?key|apikey|ncbi[_-]?api[_-]?key|client[_-]?secret|access[_-]?token|"
+    # URL query/fragment/userinfo credentials are parsed structurally before
+    # this fallback runs.  Matching a key after one of their delimiters would
+    # consume the rest of the URL and erase safe identifiers beside the secret.
+    r"(?i)(?<![?&#])\b(api[_-]?key|apikey|ncbi[_-]?api[_-]?key|client[_-]?secret|access[_-]?token|"
     r"refresh[_-]?token|token|secret|password|credentials?)"
     r"(\s*[=:]\s*)([^,\s;]+)"
 )
@@ -71,14 +63,241 @@ _POSIX_ABSOLUTE_PATH_RE = re.compile(
 )
 _WINDOWS_ABSOLUTE_PATH_RE = re.compile(r"(?i)\b[A-Z]:[\\/](?:[^\\/\s,;)]+[\\/]?)+")
 _UNC_PATH_RE = re.compile(r"\\\\[^\\\s,;)]+\\[^,\s;)]+")
+_URL_RE = re.compile(r'''(?i)\b(?:https?|ftp)://[^\s<>"']+''')
+_TRAILING_URL_PUNCTUATION = frozenset(".,;:!?")
+_UNMATCHED_URL_CLOSERS = {")": "(", "]": "[", "}": "{"}
+_MAX_CREDENTIAL_SIGNAL_DECODE_ROUNDS = 16
+_SENSITIVE_URL_PARAMETER_NAMES = frozenset(
+    {
+        "apikey",
+        "authorization",
+        "auth",
+        "bearer",
+        "accesstoken",
+        "authtoken",
+        "refreshtoken",
+        "idtoken",
+        "jwt",
+        "token",
+        "session",
+        "sessionid",
+        "sessionkey",
+        "sessiontoken",
+        "password",
+        "passwd",
+        "pwd",
+        "secret",
+        "clientsecret",
+        "credential",
+        "credentials",
+        "signature",
+        "sig",
+        "xamzcredential",
+        "xamzsignature",
+        "xamzsecuritytoken",
+        "xgoogcredential",
+        "xgoogsignature",
+        "xgoogsecuritytoken",
+        "googleaccessid",
+        "awsaccesskeyid",
+        "keypairid",
+        "githubpat",
+        "gitpat",
+        "privatekey",
+        "secretkey",
+        "sessioncookie",
+        "authcookie",
+    }
+)
 
 
 class DiscoveryStoreError(ValueError):
     """Invalid discovery state operation."""
 
 
+class DiscoveryQueueFullError(DiscoveryStoreError):
+    """The durable active-job admission limit has been reached."""
+
+
+def _is_sensitive_url_parameter(name: str) -> bool:
+    normalized = re.sub(r"[^a-z0-9]", "", str(name).lower())
+    return normalized in _SENSITIVE_URL_PARAMETER_NAMES
+
+
+def _is_sensitive_json_key(name: str) -> bool:
+    parts = [part for part in re.split(r"[^a-z0-9]+", str(name).lower()) if part]
+    normalized = "".join(parts)
+    if normalized in _SENSITIVE_URL_PARAMETER_NAMES | {
+        "ncbiapikey",
+        "personalaccesstoken",
+        "githubtoken",
+        "gittoken",
+        "pat",
+    }:
+        return True
+    if any(part in {"authorization", "bearer", "credential", "credentials", "password", "passwd", "secret"} for part in parts):
+        return True
+    if parts and parts[-1] == "token":
+        return len(parts) == 1 or parts[-2] not in _SAFE_NONCREDENTIAL_TOKEN_PREFIXES
+    return len(parts) >= 2 and parts[-2:] == ["api", "key"]
+
+
+def _redact_parameter_string(value: str) -> tuple[str, bool]:
+    """Redact credential parameters from a query/fragment without touching safe IDs."""
+
+    # ``urllib.parse.parse_qsl`` deliberately stopped treating ``;`` as a
+    # query separator.  Providers and OAuth callbacks still emit both forms,
+    # so parsing only ``&`` can recognize a credential signal while leaving
+    # its value untouched.  Split structurally and retain every delimiter and
+    # safe component verbatim; only the sensitive value is replaced.
+    components = re.split(r"([&;])", value)
+    changed = False
+    for index in range(0, len(components), 2):
+        component = components[index]
+        key, _separator, _item = component.partition("=")
+        if not _is_sensitive_url_parameter(unquote_plus(key)):
+            continue
+        components[index] = f"{key}=%5Bredacted%5D"
+        changed = True
+    return ("".join(components), True) if changed else (value, False)
+
+
+def _split_url_suffix(url: str) -> tuple[str, str]:
+    """Separate prose punctuation from a URL without damaging balanced paths."""
+
+    core = url
+    suffix = ""
+    while core and core[-1] in _TRAILING_URL_PUNCTUATION:
+        suffix = core[-1] + suffix
+        core = core[:-1]
+    while core and core[-1] in _UNMATCHED_URL_CLOSERS:
+        closer = core[-1]
+        opener = _UNMATCHED_URL_CLOSERS[closer]
+        if core.count(closer) <= core.count(opener):
+            break
+        suffix = closer + suffix
+        core = core[:-1]
+    return core, suffix
+
+
+def _url_has_credential_signal(url: str) -> bool:
+    """Conservatively recognize credentials even when URL parsing must fail."""
+
+    decoded = str(url)
+    for _round in range(_MAX_CREDENTIAL_SIGNAL_DECODE_ROUNDS):
+        next_decoded = unquote(decoded)
+        if next_decoded == decoded:
+            break
+        decoded = next_decoded
+    else:
+        # Excessively nested percent-encoding is not reconstructable with a
+        # bounded parser. Treat it as credential-bearing rather than letting an
+        # attacker place the meaningful delimiters just beyond our decode depth.
+        return True
+    if "://" in decoded:
+        remainder = decoded.split("://", 1)[1]
+        authority = re.split(r"[/#?]", remainder, maxsplit=1)[0]
+        if "@" in authority:
+            return True
+    for match in re.finditer(r"[?&#;]\s*([^=&#;\s]+)\s*=", decoded):
+        if _is_sensitive_url_parameter(match.group(1)):
+            return True
+    return False
+
+
+def _url_has_unredacted_credential_signal(url: str) -> bool:
+    """Whether a sanitized URL still contains any recoverable credential field."""
+
+    decoded = str(url)
+    for _round in range(_MAX_CREDENTIAL_SIGNAL_DECODE_ROUNDS):
+        next_decoded = unquote(decoded)
+        if next_decoded == decoded:
+            break
+        decoded = next_decoded
+    else:
+        return True
+
+    # Remove only the sanitizer's exact markers before rechecking the fully
+    # decoded structure.  This lets an ordinary `token=[redacted]` parameter
+    # preserve safe neighbouring IDs, while a mixed encoded sibling such as
+    # `%2574oken=secret` remains visible and forces whole-URL redaction.
+    decoded = re.sub(
+        r"(?i)^((?:https?|ftp)://)(?:\[redacted\]|redacted)@",
+        r"\1",
+        decoded,
+        count=1,
+    )
+
+    def mask_redacted_parameter(match: re.Match[str]) -> str:
+        delimiter, key, value = match.groups()
+        if _is_sensitive_url_parameter(key) and unquote_plus(value).strip().lower() == "[redacted]":
+            return f"{delimiter}redacted_parameter=redacted"
+        return match.group(0)
+
+    decoded = re.sub(
+        r"([?&#;])\s*([^=&#;\s]+)\s*=\s*([^&#;\s]*)",
+        mask_redacted_parameter,
+        decoded,
+    )
+    return _url_has_credential_signal(decoded)
+
+
+def _sanitize_url(url: str) -> str:
+    core, suffix = _split_url_suffix(url)
+    credential_signal = _url_has_credential_signal(core)
+    # Our human-readable userinfo marker contains brackets, which urlsplit
+    # otherwise interprets as an IPv6 literal on a second sanitization pass.
+    # Parse through an equivalent marker so sanitization stays idempotent.
+    parseable_core, already_redacted_userinfo = re.subn(
+        r"(?i)^((?:https?|ftp)://)\[redacted\]@",
+        r"\1redacted@",
+        core,
+        count=1,
+    )
+    try:
+        parts = urlsplit(parseable_core)
+    except ValueError:
+        return ("[redacted: credential URL]" if credential_signal else core) + suffix
+    if parts.scheme.lower() not in {"http", "https", "ftp"}:
+        return core + suffix
+    if not parts.netloc:
+        return ("[redacted: credential URL]" if credential_signal else core) + suffix
+
+    query, query_changed = _redact_parameter_string(parts.query)
+    fragment = parts.fragment
+    fragment_changed = False
+    # OAuth-style fragments are ordinary key/value strings.  Hash-router URLs
+    # put the credential parameters after a '?' inside the fragment.
+    route, separator, route_query = fragment.partition("?")
+    if separator:
+        cleaned_route_query, fragment_changed = _redact_parameter_string(route_query)
+        if fragment_changed:
+            fragment = f"{route}?{cleaned_route_query}"
+    else:
+        fragment, fragment_changed = _redact_parameter_string(fragment)
+
+    netloc = parts.netloc
+    userinfo_changed = "@" in netloc or bool(already_redacted_userinfo)
+    if userinfo_changed:
+        netloc = "[redacted]@" + netloc.rsplit("@", 1)[1]
+    if not (query_changed or fragment_changed or userinfo_changed):
+        # A decoded delimiter or otherwise malformed parameter may have
+        # exposed a credential signal that cannot be safely reconstructed.
+        # Never return that original URL unchanged.
+        return ("[redacted: credential URL]" if credential_signal else core) + suffix
+    sanitized_core = urlunsplit((parts.scheme, netloc, parts.path, query, fragment))
+    if _url_has_unredacted_credential_signal(sanitized_core):
+        return "[redacted: credential URL]" + suffix
+    return sanitized_core + suffix
+
+
+def _sanitize_credential_urls(value: str) -> str:
+    return _URL_RE.sub(lambda match: _sanitize_url(match.group(0)), value)
+
+
 def _sanitize_text(value: str) -> str:
-    text = _BEARER_TOKEN_RE.sub(r"\1[redacted]", value)
+    text = _sanitize_credential_urls(value)
+    text = _BEARER_TOKEN_RE.sub(r"\1[redacted]", text)
     text = _SENSITIVE_ASSIGNMENT_RE.sub(r"\1\2[redacted]", text)
     text = _FILE_URI_RE.sub("[redacted: local path]", text)
     text = _UNC_PATH_RE.sub("[redacted: local path]", text)
@@ -107,17 +326,33 @@ def _sanitize_json(value: Any) -> Any:
         cleaned = {}
         for key, item in value.items():
             text_key = str(key)
-            lowered = text_key.lower()
-            if any(part in lowered for part in SENSITIVE_KEY_PARTS):
-                cleaned[text_key] = "[redacted]"
+            safe_key = _sanitize_credential_urls(text_key)
+            if safe_key in cleaned:
+                raise DiscoveryStoreError(
+                    "payload mapping keys collide after credential sanitization"
+                )
+            if _is_sensitive_json_key(text_key):
+                cleaned[safe_key] = "[redacted]"
             else:
-                cleaned[text_key] = _sanitize_json(item)
+                cleaned[safe_key] = _sanitize_json(item)
         return cleaned
     if isinstance(value, list):
         return [_sanitize_json(item) for item in value]
     if isinstance(value, tuple):
         return [_sanitize_json(item) for item in value]
+    if isinstance(value, str):
+        return _sanitize_credential_urls(value)
     return value
+
+
+def sanitize_discovery_payload(value: Any) -> Any:
+    """Return a recursively persistence-safe discovery payload.
+
+    Credential-bearing fields and URL authentication parameters are redacted;
+    ordinary identifiers and non-credential URL parameters remain unchanged.
+    """
+
+    return _sanitize_json(value)
 
 
 def _json_dumps(value: Any) -> str:
@@ -129,6 +364,8 @@ def _json_dumps(value: Any) -> str:
             sort_keys=True,
             separators=(",", ":"),
         )
+    except DiscoveryStoreError:
+        raise
     except (TypeError, ValueError) as exc:
         raise DiscoveryStoreError("payload must be JSON-serializable") from exc
 
@@ -248,15 +485,39 @@ class DiscoveryStateStore:
             "completed_at": row["completed_at"],
         }
 
-    def create_job(self, kind: str, payload: Any, job_id: str | None = None) -> dict[str, Any]:
+    def create_job(
+        self,
+        kind: str,
+        payload: Any,
+        job_id: str | None = None,
+        *,
+        active_job_limit: int | None = None,
+    ) -> dict[str, Any]:
         text_kind = str(kind).strip()
         if not text_kind:
             raise DiscoveryStoreError("kind is required")
+        if active_job_limit is not None and (
+            isinstance(active_job_limit, bool)
+            or not isinstance(active_job_limit, int)
+            or active_job_limit < 1
+        ):
+            raise DiscoveryStoreError("active_job_limit must be a positive integer")
         resolved_job_id = _validate_id(job_id, field="job_id") if job_id is not None else _new_id()
         now = _utc_now()
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
+                if active_job_limit is not None:
+                    active_count = int(
+                        connection.execute(
+                            "SELECT COUNT(*) FROM jobs WHERE status IN ('queued', 'running')"
+                        ).fetchone()[0]
+                    )
+                    if active_count >= int(active_job_limit):
+                        raise DiscoveryQueueFullError(
+                            f"discovery job queue is full ({active_count}/{int(active_job_limit)} active jobs); "
+                            "wait for a job to finish or cancel one before submitting more work"
+                        )
                 connection.execute(
                     """
                     INSERT INTO jobs(
@@ -475,8 +736,7 @@ class DiscoveryStateStore:
                                             (_json_dumps(interrupted), now, search_id),
                                         )
                 recovered = connection.execute(
-                    "SELECT * FROM jobs WHERE job_id IN (%s) ORDER BY created_at"
-                    % ",".join("?" for _ in rows),
+                    f"SELECT * FROM jobs WHERE job_id IN ({','.join('?' for _ in rows)}) ORDER BY created_at",
                     tuple(row["job_id"] for row in rows),
                 ).fetchall() if rows else []
                 connection.execute("COMMIT")
@@ -544,9 +804,26 @@ class DiscoveryJobCancelled(BaseException):
 class DiscoveryJobManager:
     """Submit discovery jobs to a thread pool while persisting state."""
 
-    def __init__(self, store: DiscoveryStateStore, max_workers: int = 4):
+    def __init__(
+        self,
+        store: DiscoveryStateStore,
+        max_workers: int = 4,
+        max_pending_jobs: int = DEFAULT_MAX_PENDING_JOBS,
+    ):
+        if (
+            isinstance(max_pending_jobs, bool)
+            or not isinstance(max_pending_jobs, int)
+            or max_pending_jobs < 1
+        ):
+            raise DiscoveryStoreError("max_pending_jobs must be a positive integer")
         self.store = store
         self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
+        self.max_pending_jobs = int(max_pending_jobs)
+        # A durable cancelled row no longer counts as active, but its executor
+        # Future may still be queued or running.  Tie admission to the Future's
+        # complete lifetime so cancel/re-submit churn cannot grow the executor's
+        # private work queue without bound.
+        self._admission = threading.BoundedSemaphore(self.max_pending_jobs)
         self._futures: set[concurrent.futures.Future[Any]] = set()
         self._lock = threading.Lock()
         self._condition = threading.Condition(self._lock)
@@ -603,87 +880,106 @@ class DiscoveryJobManager:
     ) -> dict[str, Any]:
         if self._closing.is_set():
             raise DiscoveryStoreError("discovery manager is shutting down")
-        job = self.store.create_job(kind, payload, job_id=job_id)
-        if self._closing.is_set():
-            self.store.update_job(
-                job["job_id"],
-                status="interrupted",
-                message="Job was interrupted because the local DEGORA server was stopped.",
+        if not self._admission.acquire(blocking=False):
+            raise DiscoveryQueueFullError(
+                "discovery job queue is full "
+                f"(in-flight admission limit {self.max_pending_jobs}); "
+                "wait for a job to finish or cancel queued work before submitting more work"
             )
-            raise DiscoveryStoreError("discovery manager is shutting down")
-
-        def progress_callback(progress: float, message: str | None = None) -> dict[str, Any]:
-            # Cancellation point. cancel_futures only drops work that has not
-            # started; a worker already downloading or writing needs somewhere to
-            # notice, and every stage already reports here.
-            stop_reason = self._job_stop_reason(job["job_id"])
-            if stop_reason:
-                raise DiscoveryJobCancelled(stop_reason)
-            return self.store.update_job(job["job_id"], progress=progress, message=message)
-
-        def complete_job(result: Any) -> None:
-            try:
-                self.store.update_job(job["job_id"], status="completed", result=result, message="Job completed.")
-            except DiscoveryStoreError:
-                terminal = self.store.get_job(job["job_id"])
-                if terminal and terminal["status"] in TERMINAL_STATUSES:
-                    return
-                raise
-
-        def fail_job(exc: BaseException) -> None:
-            try:
+        admission_transferred = False
+        try:
+            if self._closing.is_set():
+                raise DiscoveryStoreError("discovery manager is shutting down")
+            job = self.store.create_job(
+                kind,
+                payload,
+                job_id=job_id,
+                active_job_limit=self.max_pending_jobs,
+            )
+            if self._closing.is_set():
                 self.store.update_job(
                     job["job_id"],
-                    status="failed",
-                    error={"type": type(exc).__name__, "message": _sanitize_text(str(exc))},
-                    message="Job failed.",
+                    status="interrupted",
+                    message="Job was interrupted because the local DEGORA server was stopped.",
                 )
-            except DiscoveryStoreError:
-                terminal = self.store.get_job(job["job_id"])
-                if terminal and terminal["status"] in TERMINAL_STATUSES:
-                    return
-                raise
+                raise DiscoveryStoreError("discovery manager is shutting down")
 
-        def should_stop_without_terminal_write() -> bool:
-            return bool(self._job_stop_reason(job["job_id"]))
+            def progress_callback(progress: float, message: str | None = None) -> dict[str, Any]:
+                # Cancellation point. cancel_futures only drops work that has not
+                # started; a worker already downloading or writing needs somewhere to
+                # notice, and every stage already reports here.
+                stop_reason = self._job_stop_reason(job["job_id"])
+                if stop_reason:
+                    raise DiscoveryJobCancelled(stop_reason)
+                return self.store.update_job(job["job_id"], progress=progress, message=message)
 
-        def run() -> None:
-            try:
-                if self._closing.is_set():
-                    return
-                self.store.update_job(job["job_id"], status="running", message="Job started.")
-                result = worker(job["job_id"], payload, progress_callback)
-                if should_stop_without_terminal_write():
-                    return
-                complete_job(result)
-            except DiscoveryJobCancelled:
-                # interrupt_active_jobs has already written the terminal state, and
-                # anything this worker would have written next is exactly what the
-                # cancellation exists to prevent.
-                return
-            except BaseException as exc:  # noqa: BLE001 - persist arbitrary worker failures.
-                if should_stop_without_terminal_write():
-                    return
-                fail_job(exc)
-            finally:
-                self._finish_job_state(job["job_id"])
+            def complete_job(result: Any) -> None:
+                try:
+                    self.store.update_job(job["job_id"], status="completed", result=result, message="Job completed.")
+                except DiscoveryStoreError:
+                    terminal = self.store.get_job(job["job_id"])
+                    if terminal and terminal["status"] in TERMINAL_STATUSES:
+                        return
+                    raise
 
-        try:
+            def fail_job(exc: BaseException) -> None:
+                try:
+                    self.store.update_job(
+                        job["job_id"],
+                        status="failed",
+                        error={"type": type(exc).__name__, "message": _sanitize_text(str(exc))},
+                        message="Job failed.",
+                    )
+                except DiscoveryStoreError:
+                    terminal = self.store.get_job(job["job_id"])
+                    if terminal and terminal["status"] in TERMINAL_STATUSES:
+                        return
+                    raise
+
+            def should_stop_without_terminal_write() -> bool:
+                return bool(self._job_stop_reason(job["job_id"]))
+
+            def run() -> None:
+                try:
+                    if self._closing.is_set():
+                        return
+                    self.store.update_job(job["job_id"], status="running", message="Job started.")
+                    result = worker(job["job_id"], payload, progress_callback)
+                    if should_stop_without_terminal_write():
+                        return
+                    complete_job(result)
+                except DiscoveryJobCancelled:
+                    # interrupt_active_jobs has already written the terminal state, and
+                    # anything this worker would have written next is exactly what the
+                    # cancellation exists to prevent.
+                    return
+                except BaseException as exc:  # noqa: BLE001 - persist arbitrary worker failures.
+                    if should_stop_without_terminal_write():
+                        return
+                    fail_job(exc)
+                finally:
+                    self._finish_job_state(job["job_id"])
+
             # Register the future while holding the same condition used by
             # commit/shutdown. A very fast worker can otherwise enter its commit
             # section before shutdown can discover which future must be drained.
-            with self._condition:
-                future = self._executor.submit(run)
-                self._futures.add(future)
-                self._future_job_ids[future] = job["job_id"]
-                self._condition.notify_all()
-        except RuntimeError:
-            self.store.update_job(
-                job["job_id"],
-                status="interrupted",
-                message="Job was interrupted because the local DEGORA server was stopped.",
-            )
-            raise
+            try:
+                with self._condition:
+                    future = self._executor.submit(run)
+                    self._futures.add(future)
+                    self._future_job_ids[future] = job["job_id"]
+                    self._condition.notify_all()
+            except RuntimeError:
+                self.store.update_job(
+                    job["job_id"],
+                    status="interrupted",
+                    message="Job was interrupted because the local DEGORA server was stopped.",
+                )
+                raise
+            admission_transferred = True
+        finally:
+            if not admission_transferred:
+                self._admission.release()
         future.add_done_callback(self._discard_future)
         return job
 
@@ -734,6 +1030,12 @@ class DiscoveryJobManager:
             else:
                 self._state[job_id] = "cancelled"
             self._condition.notify_all()
+        # Do not call Future.cancel() here. ThreadPoolExecutor marks that Future
+        # done immediately but leaves its private WorkItem in the physical queue;
+        # releasing admission from the done callback would therefore permit
+        # unbounded cancel/re-submit churn. Keeping the Future live makes the
+        # admission slot cover the WorkItem until a worker dequeues the wrapper,
+        # observes the durable cancelled state, and exits without calling worker.
         return cancelled
 
     def _discard_future(self, future: concurrent.futures.Future[Any]) -> None:
@@ -743,6 +1045,26 @@ class DiscoveryJobManager:
             if job_id is not None:
                 self._state.pop(job_id, None)
             self._condition.notify_all()
+        self._admission.release()
+
+    def _drain_job_futures(self, job_ids: set[str]) -> None:
+        """Wait until commit-barrier owners finish before releasing root ownership."""
+
+        if not job_ids:
+            return
+        with self._condition:
+            committing = {
+                future
+                for future, mapped_job_id in self._future_job_ids.items()
+                if mapped_job_id in job_ids and not future.done()
+            }
+        if committing:
+            # Once commit() succeeds the worker owns publication. Returning from
+            # shutdown while it is alive lets the HTTP server release its root
+            # lock and a new process can recover the job as interrupted while the
+            # old process is still publishing. Correctness takes precedence over
+            # the prompt timeout for this small, explicitly fenced critical set.
+            concurrent.futures.wait(committing)
 
     def _await_committing(self) -> set[str]:
         with self._condition:
@@ -776,4 +1098,5 @@ class DiscoveryJobManager:
                 "Job was interrupted because the local DEGORA server was stopped.",
                 exclude_job_ids=still_committing,
             )
+            self._drain_job_futures(still_committing)
         self._executor.shutdown(wait=wait, cancel_futures=cancel_futures)

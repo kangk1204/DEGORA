@@ -37,7 +37,17 @@ from typing import Any, Callable, Iterable
 from . import runtime_version_info
 from .identifiers import GENE_SPACE_PREFERENCE, identifier_space
 from .formula_safety import formula_guard_metadata, neutralize_formula_cell
-from .provenance import apply_default_file_mode, artifact_provenance_path, artifact_source_path, write_source_sidecar
+from .discovery_store import sanitize_discovery_payload
+from .provenance import (
+    apply_default_file_mode,
+    artifact_provenance_path,
+    artifact_source_path,
+    output_directory_lock,
+    publication_target_lock_path,
+    publish_staged_artifacts,
+    source_sidecar_payloads,
+    write_source_sidecar,
+)
 
 
 EUTILS_BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
@@ -2482,6 +2492,54 @@ def prepare_geo_studies(
     before_publish: Callable[[], None] | None = None,
     max_studies: int = MAX_SELECTED_STUDIES,
 ) -> dict[str, Any]:
+    """Prepare a bundle while serializing the complete directory transaction."""
+
+    if materialize_dir is None:
+        return _prepare_geo_studies_locked(
+            accessions,
+            species,
+            query=query,
+            inspection_budget=inspection_budget,
+            max_files_per_study=max_files_per_study,
+            materialize_dir=None,
+            client=client,
+            force=force,
+            before_publish=before_publish,
+            max_studies=max_studies,
+        )
+
+    target = Path(materialize_dir).resolve()
+    # The target itself is replaced, so hold a stable sibling identity for the
+    # complete validate -> stage -> replace/rollback -> cleanup transaction.
+    # Different API bundle IDs retain independent locks and can run in parallel.
+    with output_directory_lock(publication_target_lock_path(target)):
+        return _prepare_geo_studies_locked(
+            accessions,
+            species,
+            query=query,
+            inspection_budget=inspection_budget,
+            max_files_per_study=max_files_per_study,
+            materialize_dir=target,
+            client=client,
+            force=force,
+            before_publish=before_publish,
+            max_studies=max_studies,
+        )
+
+
+def _prepare_geo_studies_locked(
+    accessions: Iterable[str],
+    species: str,
+    *,
+    query: str = "",
+    inspection_budget: int = 40,
+    max_files_per_study: int = 6,
+    materialize_dir: str | Path | None = None,
+    client: NcbiGeoClient | Any | None = None,
+    force: bool = False,
+    before_publish: Callable[[], None] | None = None,
+    max_studies: int = MAX_SELECTED_STUDIES,
+) -> dict[str, Any]:
     """Prepare a bundle transactionally, publishing files only after all checks pass."""
 
     if materialize_dir is None:
@@ -2532,7 +2590,7 @@ def prepare_geo_studies(
         }
         _atomic_write_text(
             staging / DISCOVERY_BUNDLE_MARKER,
-            json.dumps(marker_payload, indent=2, sort_keys=True) + "\n",
+            json.dumps(marker_payload, indent=2, sort_keys=True, allow_nan=False) + "\n",
         )
         if before_publish is not None:
             before_publish()
@@ -2653,6 +2711,16 @@ def _csv_text(rows: list[dict[str, Any]], columns: list[str]) -> str:
 
 
 def export_search_page(result: dict[str, Any], output_dir: str | Path, *, force: bool = False) -> dict[str, str]:
+    """Publish one coherent legacy GEO search page generation."""
+
+    output = Path(output_dir).resolve()
+    with output_directory_lock(publication_target_lock_path(output)):
+        return _export_search_page_locked(result, output, force=force)
+
+
+def _export_search_page_locked(
+    result: dict[str, Any], output_dir: str | Path, *, force: bool = False
+) -> dict[str, str]:
     output = Path(output_dir).resolve()
     output.mkdir(parents=True, exist_ok=True)
     json_path = output / "geo_search_page.json"
@@ -2660,8 +2728,9 @@ def export_search_page(result: dict[str, Any], output_dir: str | Path, *, force:
     existing = [path for path in (json_path, csv_path) if path.exists()]
     if existing and not force:
         raise FileExistsError("search output already exists; use --force to replace: " + ", ".join(map(str, existing)))
+    safe_result = sanitize_discovery_payload(result)
     rows = []
-    for study in result.get("studies", []):
+    for study in safe_result.get("studies", []):
         row = dict(study)
         row["authors"] = "; ".join(map(str, row.get("authors", [])))
         row["pubmed_ids"] = "; ".join(map(str, row.get("pubmed_ids", [])))
@@ -2705,12 +2774,37 @@ def export_search_page(result: dict[str, Any], output_dir: str | Path, *, force:
         "deg_input_matrix_count",
         "deg_input_assessment_error",
     ]
-    _atomic_write_text(json_path, json.dumps(result, indent=2, sort_keys=True, ensure_ascii=False) + "\n")
-    _atomic_write_text(csv_path, _csv_text(rows, columns))
+    with tempfile.TemporaryDirectory(prefix=".degora-geo-search-export-", dir=output) as staging_name:
+        staging = Path(staging_name)
+        staged_json = staging / json_path.name
+        staged_csv = staging / csv_path.name
+        _atomic_write_text(
+            staged_json,
+            json.dumps(
+                safe_result,
+                indent=2,
+                sort_keys=True,
+                ensure_ascii=False,
+                allow_nan=False,
+            )
+            + "\n",
+        )
+        _atomic_write_text(staged_csv, _csv_text(rows, columns))
+        publish_staged_artifacts({staged_json: json_path, staged_csv: csv_path})
     return {"output_dir": str(output), "search_json": str(json_path), "search_csv": str(csv_path)}
 
 
 def export_discovery_bundle(result: dict[str, Any], output_dir: str | Path, *, force: bool = False) -> dict[str, str]:
+    """Publish one coherent prepared-bundle artifact generation."""
+
+    output = Path(output_dir).resolve()
+    with output_directory_lock(publication_target_lock_path(output)):
+        return _export_discovery_bundle_locked(result, output, force=force)
+
+
+def _export_discovery_bundle_locked(
+    result: dict[str, Any], output_dir: str | Path, *, force: bool = False
+) -> dict[str, str]:
     output = Path(output_dir).resolve()
     output.mkdir(parents=True, exist_ok=True)
     audit_path = output / "discovery_audit.json"
@@ -2727,8 +2821,9 @@ def export_discovery_bundle(result: dict[str, Any], output_dir: str | Path, *, f
     if existing and not force:
         raise FileExistsError("discovery output already exists; use --force to replace: " + ", ".join(map(str, existing)))
 
-    candidates = _candidate_rows(result)
-    catalog = _draft_catalog_rows(result)
+    safe_result = sanitize_discovery_payload(result)
+    candidates = _candidate_rows(safe_result)
+    catalog = _draft_catalog_rows(safe_result)
     candidate_columns = list(candidates[0]) if candidates else [
         "species",
         "scientific_name",
@@ -2773,15 +2868,47 @@ def export_discovery_bundle(result: dict[str, Any], output_dir: str | Path, *, f
         "curation_status",
         "curation_notes",
     ]
-    _atomic_write_text(audit_path, json.dumps(result, indent=2, sort_keys=True, ensure_ascii=False) + "\n")
-    _atomic_write_text(candidates_path, _csv_text(candidates, candidate_columns))
-    _atomic_write_text(catalog_path, _csv_text(catalog, catalog_columns))
-    write_source_sidecar(
-        catalog_path,
-        "degora discovery prepare",
-        inputs=[audit_path],
-        metadata={"generator": "discovery_draft_catalog", **formula_guard_metadata()},
-    )
+    with tempfile.TemporaryDirectory(prefix=".degora-bundle-export-", dir=output) as staging_name:
+        staging = Path(staging_name)
+        staged_audit = staging / audit_path.name
+        staged_candidates = staging / candidates_path.name
+        staged_catalog = staging / catalog_path.name
+        staged_source = artifact_source_path(staged_catalog)
+        staged_provenance = artifact_provenance_path(staged_catalog)
+        _atomic_write_text(
+            staged_audit,
+            json.dumps(
+                safe_result,
+                indent=2,
+                sort_keys=True,
+                ensure_ascii=False,
+                allow_nan=False,
+            )
+            + "\n",
+        )
+        _atomic_write_text(staged_candidates, _csv_text(candidates, candidate_columns))
+        _atomic_write_text(staged_catalog, _csv_text(catalog, catalog_columns))
+        source_text, provenance_text = source_sidecar_payloads(
+            catalog_path,
+            "degora discovery prepare",
+            artifact_content_path=staged_catalog,
+            inputs=[audit_path],
+            input_content_paths={audit_path: staged_audit},
+            metadata={"generator": "discovery_draft_catalog", **formula_guard_metadata()},
+        )
+        staged_source.write_text(source_text, encoding="utf-8")
+        if provenance_text is None:  # pragma: no cover - requested above
+            raise RuntimeError("discovery catalog provenance was not generated")
+        staged_provenance.write_text(provenance_text, encoding="utf-8")
+        publish_staged_artifacts(
+            {
+                staged_audit: audit_path,
+                staged_candidates: candidates_path,
+                staged_catalog: catalog_path,
+                staged_source: artifact_source_path(catalog_path),
+                staged_provenance: artifact_provenance_path(catalog_path),
+            }
+        )
     return {
         "output_dir": str(output),
         "audit_json": str(audit_path),

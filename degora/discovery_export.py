@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import io
 import json
 import os
@@ -15,12 +16,78 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 from .formula_safety import neutralize_formula_cell
-from .provenance import apply_default_file_mode
+from .discovery_store import sanitize_discovery_payload
+from .provenance import (
+    apply_default_file_mode,
+    output_directory_lock,
+    publication_target_lock_path,
+    publish_staged_artifacts,
+)
 
 
 SEARCH_JSON_NAME = "publication_search.json"
 SEARCH_CSV_NAME = "publication_search.csv"
 SEARCH_XLSX_NAME = "DEGORA_search_results.xlsx"
+SEARCH_MANIFEST_NAME = "publication_search.manifest.json"
+SEARCH_EXPORT_ARTIFACT_TYPE = "degora_publication_search_export_set"
+SEARCH_EXPORT_FORMAT_VERSION = 1
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _export_set_manifest(paths: Iterable[Path]) -> dict[str, Any]:
+    files = {
+        path.name: {"sha256": _sha256(path), "size_bytes": path.stat().st_size}
+        for path in paths
+    }
+    generation_text = "\n".join(f"{name}:{entry['sha256']}" for name, entry in sorted(files.items()))
+    return {
+        "artifact_type": SEARCH_EXPORT_ARTIFACT_TYPE,
+        "format_version": SEARCH_EXPORT_FORMAT_VERSION,
+        "generation_sha256": hashlib.sha256(generation_text.encode("utf-8")).hexdigest(),
+        "files": files,
+    }
+
+
+def verify_publication_search_export(output_dir: str | Path) -> dict[str, Any]:
+    """Verify that all fixed-name search exports belong to one published generation."""
+
+    output = Path(output_dir).resolve()
+    manifest_path = output / SEARCH_MANIFEST_NAME
+    try:
+        manifest = json.loads(
+            manifest_path.read_text(encoding="utf-8"),
+            parse_constant=lambda value: (_ for _ in ()).throw(ValueError(f"non-finite JSON value: {value}")),
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        raise ValueError(f"publication search export manifest is missing or invalid: {manifest_path}") from exc
+    if (
+        not isinstance(manifest, dict)
+        or manifest.get("artifact_type") != SEARCH_EXPORT_ARTIFACT_TYPE
+        or manifest.get("format_version") != SEARCH_EXPORT_FORMAT_VERSION
+    ):
+        raise ValueError("publication search export manifest has an unsupported artifact type or format version")
+    expected_names = {SEARCH_JSON_NAME, SEARCH_CSV_NAME, SEARCH_XLSX_NAME}
+    files = manifest.get("files")
+    if not isinstance(files, dict) or set(files) != expected_names:
+        raise ValueError("publication search export manifest does not name the complete artifact set")
+    for name in sorted(expected_names):
+        entry = files.get(name)
+        path = output / name
+        if not isinstance(entry, dict) or not path.is_file():
+            raise ValueError(f"publication search export artifact is missing: {name}")
+        if entry.get("sha256") != _sha256(path) or entry.get("size_bytes") != path.stat().st_size:
+            raise ValueError(f"publication search export artifact does not match its generation manifest: {name}")
+    expected = _export_set_manifest([output / name for name in sorted(expected_names)])
+    if manifest.get("generation_sha256") != expected["generation_sha256"]:
+        raise ValueError("publication search export generation digest is invalid")
+    return manifest
 
 
 def _safe_cell(value: Any) -> Any:
@@ -277,22 +344,69 @@ def _publication_csv(rows: list[dict[str, Any]]) -> str:
 
 def export_publication_search(snapshot: dict[str, Any], output_dir: str | Path, *, force: bool = False) -> dict[str, str]:
     output = Path(output_dir).resolve()
-    output.mkdir(parents=True, exist_ok=True)
     json_path = output / SEARCH_JSON_NAME
     csv_path = output / SEARCH_CSV_NAME
     xlsx_path = output / SEARCH_XLSX_NAME
-    existing = [path for path in (json_path, csv_path, xlsx_path) if path.exists()]
-    if existing and not force:
-        raise FileExistsError("federated search output already exists; use --force to replace: " + ", ".join(map(str, existing)))
-    rows = publication_rows(snapshot)
-    _atomic_text(json_path, json.dumps(snapshot, indent=2, sort_keys=True, ensure_ascii=False) + "\n")
-    _atomic_text(csv_path, _publication_csv(rows))
-    _atomic_bytes(xlsx_path, build_publication_search_workbook(snapshot))
+    manifest_path = output / SEARCH_MANIFEST_NAME
+    safe_snapshot = sanitize_discovery_payload(snapshot)
+    rows = publication_rows(safe_snapshot)
+    with output_directory_lock(publication_target_lock_path(output)):
+        # Preserve the public API contract: callers may name a new nested output
+        # directory.  The stable publication lock lives beside the target and
+        # therefore does not create the target itself.
+        output.mkdir(parents=True, exist_ok=True)
+        existing = [path for path in (json_path, csv_path, xlsx_path, manifest_path) if path.exists()]
+        if existing and not force:
+            raise FileExistsError(
+                "federated search output already exists; use --force to replace: "
+                + ", ".join(map(str, existing))
+            )
+        with tempfile.TemporaryDirectory(prefix=".degora-search-export-", dir=output) as staging_name:
+            staging = Path(staging_name)
+            staged_json = staging / json_path.name
+            staged_csv = staging / csv_path.name
+            staged_xlsx = staging / xlsx_path.name
+            staged_manifest = staging / manifest_path.name
+            _atomic_text(
+                staged_json,
+                json.dumps(
+                    safe_snapshot,
+                    indent=2,
+                    sort_keys=True,
+                    ensure_ascii=False,
+                    allow_nan=False,
+                )
+                + "\n",
+            )
+            _atomic_text(staged_csv, _publication_csv(rows))
+            _atomic_bytes(staged_xlsx, build_publication_search_workbook(safe_snapshot))
+            _atomic_text(
+                staged_manifest,
+                json.dumps(
+                    _export_set_manifest([staged_json, staged_csv, staged_xlsx]),
+                    indent=2,
+                    sort_keys=True,
+                    allow_nan=False,
+                )
+                + "\n",
+            )
+            publish_staged_artifacts(
+                {
+                    staged_json: json_path,
+                    staged_csv: csv_path,
+                    staged_xlsx: xlsx_path,
+                    # The generation manifest is intentionally published last.
+                    # A reader racing publication sees either matching hashes or
+                    # a detectable incomplete/mixed generation, never silent mix.
+                    staged_manifest: manifest_path,
+                }
+            )
     return {
         "output_dir": str(output),
         "search_json": str(json_path),
         "search_csv": str(csv_path),
         "search_xlsx": str(xlsx_path),
+        "manifest": str(manifest_path),
     }
 
 
@@ -300,7 +414,9 @@ __all__ = [
     "SEARCH_CSV_NAME",
     "SEARCH_JSON_NAME",
     "SEARCH_XLSX_NAME",
+    "SEARCH_MANIFEST_NAME",
     "build_publication_search_workbook",
     "export_publication_search",
     "publication_rows",
+    "verify_publication_search_export",
 ]

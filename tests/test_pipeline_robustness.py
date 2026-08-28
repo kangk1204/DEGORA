@@ -404,9 +404,11 @@ def test_two_runs_cannot_share_one_output_directory(tmp_path) -> None:
     holder.start()
     try:
         assert held.wait(timeout=5)
-        # Same process, same directory, nested: must not deadlock against itself,
-        # because the CLI holds it for the pipeline while run_slice takes it too.
-        with output_directory_lock(output):
+        # A different thread is a different run and must not borrow the owner's
+        # re-entrant depth merely because it lives in the same process.
+        from degora.provenance import OutputDirectoryBusyError
+
+        with pytest.raises(OutputDirectoryBusyError):
             with output_directory_lock(output):
                 pass
     finally:
@@ -414,9 +416,11 @@ def test_two_runs_cannot_share_one_output_directory(tmp_path) -> None:
         holder.join(timeout=5)
     assert not failures, failures
 
-    # And it is released, so the next run can take it.
+    # It is released for the next run, and nesting on that owning thread remains
+    # re-entrant for CLI -> run_slice -> write_score_database calls.
     with output_directory_lock(output):
-        pass
+        with output_directory_lock(output):
+            pass
 
 
 def test_a_second_process_is_refused_the_output_directory(tmp_path) -> None:

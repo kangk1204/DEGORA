@@ -1,6 +1,6 @@
 PYTHON ?= python3
 
-.PHONY: check unit syntax smoke build audit python-version
+.PHONY: check unit syntax smoke build audit coverage lint package-check python-version requirements-check typecheck
 
 # macOS ships Python 3.9 as `python3`, so running these targets without
 # activating the virtual environment silently selects an unsupported interpreter
@@ -39,4 +39,21 @@ build:
 	$(PYTHON) -m build
 
 audit:
-	$(PYTHON) -m pip_audit
+	$(PYTHON) -m pip_audit --skip-editable --progress-spinner off --timeout 30
+
+coverage:
+	$(PYTHON) -m pytest --cov=degora --cov-branch --cov-report=term-missing --cov-report=xml
+
+lint:
+	$(PYTHON) -m ruff check --select E9,F63,F7,F82 .
+
+typecheck:
+	$(PYTHON) -m mypy
+
+requirements-check:
+	$(PYTHON) -m pytest -q tests/test_packaging_contract.py::test_requirements_txt_exactly_matches_project_runtime_dependencies
+
+package-check: requirements-check lint typecheck
+	$(PYTHON) -m check_manifest -v
+	$(PYTHON) -m build
+	$(PYTHON) -m twine check dist/*

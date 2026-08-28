@@ -3,6 +3,11 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+.coverage
+.coverage.*
+coverage.xml
+coverage.json
+htmlcov/
 *.egg-info/
 build/
 dist/
@@ -15,6 +20,7 @@ degora-demo/
 .smoke-demo/
 results/
 .degora-run.lock
+.degora-publication-locks/
 search-human/
 search-mouse/
 analysis-human/
