@@ -1771,7 +1771,13 @@ def _rra_beta_layer(evidence: pd.DataFrame, *, total_source_units: int, min_stud
     if out.empty:
         return pd.DataFrame(columns=columns)
     out["_log_rho"] = pd.to_numeric(out["_log_rho"], errors="coerce")
-    out = out.sort_values(["_log_rho", "gene_symbol"], ascending=[True, True]).reset_index(drop=True)
+    # Supported SciPy builds can disagree by a few ULPs in beta.logcdf even
+    # when the underlying normalized ranks represent the same decimal value.
+    # Quantize only the private ordering key: the raw log-rho still determines
+    # the reported rho magnitudes, while 12-decimal ties fall through to the
+    # deterministic gene-symbol key.
+    out["_rra_sort_key"] = out["_log_rho"].round(12)
+    out = out.sort_values(["_rra_sort_key", "gene_symbol"], ascending=[True, True]).reset_index(drop=True)
     out["rra_rank"] = np.arange(1, len(out) + 1, dtype=int)
     out["rra_rho"] = np.exp(out["_log_rho"].to_numpy(dtype=float)).clip(0.0, 1.0)
     out["rra_neglog10_rho"] = (-out["_log_rho"] / ln10).clip(lower=0.0)
@@ -2236,8 +2242,8 @@ def degora_score_table(
                     "the CLI rejects a zero, negative or fractional group size during validation, "
                     "so the 0.35 zero-count branch is reachable only through the Python API"
                 ),
-                "source_coherence_guardrail": "gold-panel-free source-source LFC Spearman check; low-quality sources with median pairwise Spearman < 0.05 receive source_coherence_weight=0.50 in the secondary score only",
-                "source_reliability_shrinkage": "secondary-score weight shrunk toward neutral 0.65 using source gene coverage and pairwise-comparison evidence; not a calibrated probability",
+                "source_coherence_guardrail": "gold-panel-free source-source LFC Spearman check; low-quality sources with median pairwise Spearman < 0.05 receive source_coherence_weight=0.50 in the default primary quality-weighted lane; high-quality incoherence and direction-conflict flags remain advisory and change no weight or rank",
+                "source_reliability_shrinkage": "primary quality-weighted-lane source weight shrunk toward neutral 0.65 using source gene coverage and pairwise-comparison evidence; not a calibrated probability",
             },
             "near_duplicate_source_unit_rule": NEAR_DUPLICATE_SOURCE_RULE,
             "near_duplicate_source_unit_warnings": source_similarity_warnings,
@@ -2247,7 +2253,7 @@ def degora_score_table(
             "direction_confidence_rule": "Beta(1,1)-shrunk source-unit count concordance against the reported consensus signed-z direction: (1 + concordant source units) / (2 + observed source units). When the consensus z is exactly 0 the direction is a tie and every source unit is credited one half rather than zero, so the index is 0.5 rather than the 0.25 the formula alone would give, and direction_concordant_source_units carries that half-credit and is not a whole number. Quality-weighted direction confidence uses reliability-weighted pseudo-counts against the quality-weighted consensus direction and is not a calibrated posterior probability",
             "random_effects_stouffer_rule": RANDOM_EFFECTS_STOUFFER_RULE,
             "stouffer_inference_warning": _stouffer_inference_warning(evidence),
-            "rra_rule": "parallel rank lane using beta order-statistic RobustRankAggreg-style rho over source-unit normalized ranks; missing source-unit lists are handled through the total source-unit universe; rho is computed in log space and rra_neglog10_rho (-log10 rho) preserves ordering for top genes whose rho underflows to 0; rho is not reported as a calibrated FDR",
+            "rra_rule": "parallel rank lane using beta order-statistic RobustRankAggreg-style rho over source-unit normalized ranks; missing source-unit lists are handled through the total source-unit universe; rho is computed in log space, and rra_rank sorts log-rho rounded to 12 decimal places then gene_symbol while reported rho magnitudes retain the unquantized calculation; rra_neglog10_rho (-log10 rho) preserves ordering for top genes whose rho underflows to 0; rho is not reported as a calibrated FDR",
             "effect_meta_rule": EFFECT_META_RULE,
             "effect_meta_small_k_warning": "For effect_meta_k = 2 the HKSJ t critical value is 12.71, so the interval is wide enough to be uninformative in practice: it will usually span zero whatever the pooled estimate is. For k = 3 it is 4.30. Read these intervals as descriptive only, and do not read an interval covering zero at small k as evidence of no effect.",
             "loo_stability_rule": LOO_STABILITY_RULE,
@@ -2542,8 +2548,8 @@ def degora_score_table(
                 "the CLI rejects a zero, negative or fractional group size during validation, "
                 "so the 0.35 zero-count branch is reachable only through the Python API"
             ),
-            "source_coherence_guardrail": "gold-panel-free source-source LFC Spearman check; low-quality sources with median pairwise Spearman < 0.05 receive source_coherence_weight=0.50 in the secondary score only",
-            "source_reliability_shrinkage": "secondary-score weight shrunk toward neutral 0.65 using source gene coverage and pairwise-comparison evidence; not a calibrated probability",
+            "source_coherence_guardrail": "gold-panel-free source-source LFC Spearman check; low-quality sources with median pairwise Spearman < 0.05 receive source_coherence_weight=0.50 in the default primary quality-weighted lane; high-quality incoherence and direction-conflict flags remain advisory and change no weight or rank",
+            "source_reliability_shrinkage": "primary quality-weighted-lane source weight shrunk toward neutral 0.65 using source gene coverage and pairwise-comparison evidence; not a calibrated probability",
         },
         "near_duplicate_source_unit_rule": NEAR_DUPLICATE_SOURCE_RULE,
         "near_duplicate_source_unit_warnings": source_similarity_warnings,
@@ -2570,7 +2576,7 @@ def degora_score_table(
         "direction_confidence_rule": "Beta(1,1)-shrunk source-unit count concordance against the reported consensus signed-z direction: (1 + concordant source units) / (2 + observed source units). When the consensus z is exactly 0 the direction is a tie and every source unit is credited one half rather than zero, so the index is 0.5 rather than the 0.25 the formula alone would give, and direction_concordant_source_units carries that half-credit and is not a whole number. Quality-weighted direction confidence uses reliability-weighted pseudo-counts against the quality-weighted consensus direction and is not a calibrated posterior probability",
         "random_effects_stouffer_rule": RANDOM_EFFECTS_STOUFFER_RULE,
         "stouffer_inference_warning": _stouffer_inference_warning(evidence),
-        "rra_rule": "parallel rank lane using beta order-statistic RobustRankAggreg-style rho over source-unit normalized ranks; missing source-unit lists are handled through the total source-unit universe; rho is computed in log space and rra_neglog10_rho (-log10 rho) preserves ordering for top genes whose rho underflows to 0; rho is not reported as a calibrated FDR",
+        "rra_rule": "parallel rank lane using beta order-statistic RobustRankAggreg-style rho over source-unit normalized ranks; missing source-unit lists are handled through the total source-unit universe; rho is computed in log space, and rra_rank sorts log-rho rounded to 12 decimal places then gene_symbol while reported rho magnitudes retain the unquantized calculation; rra_neglog10_rho (-log10 rho) preserves ordering for top genes whose rho underflows to 0; rho is not reported as a calibrated FDR",
         "effect_meta_rule": EFFECT_META_RULE,
         "effect_meta_small_k_warning": "For effect_meta_k = 2 the HKSJ t critical value is 12.71, so the interval is wide enough to be uninformative in practice: it will usually span zero whatever the pooled estimate is. For k = 3 it is 4.30. Read these intervals as descriptive only, and do not read an interval covering zero at small k as evidence of no effect.",
         "loo_stability_rule": LOO_STABILITY_RULE,

@@ -283,6 +283,11 @@ For each contrast, provide at least:
 - a signed effect column such as log2 fold change;
 - a nominal p-value column.
 
+Recognized GEO/ArrayExpress, PMID/PMCID, and DOI aliases are canonicalized before
+independent source units are counted. A bare integral source-unit value such as
+`999` or a spreadsheet-promoted `999.0` is interpreted as `PMID:999`; prefix a
+purely local numeric label (for example, `LOCAL:999`) to keep it opaque.
+
 Adjusted p-values, sample counts, assay labels, platform details, and source URLs are optional but useful. Validate before running:
 
 ```bash
@@ -505,7 +510,7 @@ Create or sign in to an NCBI account and open <https://account.ncbi.nlm.nih.gov/
 
 ## Reproduction boundary
 
-The included synthetic demo is numerically and semantically reproducible from this repository across the supported Python environments. Repeating a run over the same inputs **in the same environment** reproduces `degora_gene_scores.csv`, `degora_scores.db`, and `DEGORA_output.xlsx` byte for byte: the workbook's own timestamps and its archive member timestamps are pinned rather than taken from the clock. Across *different* dependency versions the results are numerically identical but not byte-identical: NumPy and SciPy differ in the last one or two digits of some floating-point fields, which changes the text a float is written as. Ranks, tiers, directions and every displayed value are unaffected. Compare runs from different environments by value at a sane precision, not by checksum; the `.provenance.json` sidecars checksum the *inputs*, which are stable, and the environment that produced each output is recorded beside it. Larger external datasets are not bundled here and must be obtained from their original providers before they can be analyzed.
+The included synthetic demo is numerically and semantically reproducible from this repository across the supported Python environments. Repeating a run over the same inputs **in the same environment** reproduces `degora_gene_scores.csv`, `degora_scores.db`, and `DEGORA_output.xlsx` byte for byte: the workbook's own timestamps and its archive member timestamps are pinned rather than taken from the clock. Across *different* dependency versions the results are numerically identical but not byte-identical: NumPy and SciPy differ in the last one or two digits of some floating-point fields, which changes the text a float is written as. Primary ranks, tiers, directions and values at their documented display precision are unaffected. The auxiliary `rra_rank` treats log-rho values equal at 12 decimal places as ties and then orders them by `gene_symbol`, so values in the same documented log-rho bin have a stable secondary order across supported dependency builds. Compare runs from different environments by value at a sane precision, not by checksum; the `.provenance.json` sidecars checksum the *inputs*, which are stable, and the environment that produced each output is recorded beside it. Larger external datasets are not bundled here and must be obtained from their original providers before they can be analyzed.
 
 ## Interpretation boundaries
 
@@ -570,6 +575,32 @@ make smoke
 
 <!--
 ## Release notes
+
+### 0.4.38
+
+The scoring and aggregation contract remains v1.3. This release changes neither
+primary eligibility, score components, source weights, tiers nor primary-rank
+semantics.
+
+**Auxiliary RRA ties are deterministic across supported dependency builds.**
+`rra_rank` now orders genes by log-rho rounded to 12 decimal places and then by
+`gene_symbol`. The reported rho magnitudes still come from the unquantized
+log-rho values; primary ranks, score components, eligibility and tiers are
+unchanged.
+
+**Manual catalogs canonicalize recognized public source-unit aliases.** The
+`validate` and `run` paths now treat GEO/ArrayExpress, PMID/PMCID and DOI spelling
+aliases as the same declared independent source unit. Non-numeric opaque user
+identifiers and the per-contrast `study_id` fallback keep their original
+spelling; bare integral source-unit values are documented as PMID identifiers.
+The change closes alias-based `min_studies` inflation without rewriting
+prefixed local IDs.
+
+**Source-quality metadata names the actual primary lane.** The persisted rule
+now states that the fixed reliability weight belongs to the default primary
+quality-weighted ranking. High-quality incoherence and direction-conflict flags
+remain advisory because automatically weighting observed agreement would turn a
+review diagnostic into outcome-dependent filtering.
 
 ### 0.4.37
 

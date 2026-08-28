@@ -35,6 +35,151 @@ def test_read_catalog_accepts_beginner_excel_aliases(tmp_path) -> None:
     assert "padj_column" in catalog.columns
 
 
+@pytest.mark.parametrize("source_field", ["source_unit_id", "paper_id"])
+@pytest.mark.parametrize(
+    ("left", "right", "expected"),
+    [
+        ("GSE12345", "gse 12345", "GSE12345"),
+        ("GSE12345", "E-GEOD-12345", "GSE12345"),
+        ("E-MTAB-456", "EMTAB456", "E-MTAB-456"),
+        ("999", "PMID-999", "PMID:999"),
+        ("PMC-741", "PMCID:PMC741", "PMCID:PMC741"),
+        ("https://doi.org/10.1000/ABC", "DOI:10.1000/abc", "DOI:10.1000/abc"),
+    ],
+)
+def test_read_catalog_canonicalizes_public_source_unit_aliases(
+    tmp_path, source_field: str, left: str, right: str, expected: str
+) -> None:
+    config_path = tmp_path / f"{source_field}.csv"
+    frame = pd.DataFrame(
+        {
+            "study_id": ["S1", "S2"],
+            source_field: [left, right],
+            "source_path": ["a.csv", "b.csv"],
+            "gene_column": ["gene", "gene"],
+            "lfc_column": ["log2FoldChange", "log2FoldChange"],
+            "p_column": ["pvalue", "pvalue"],
+        }
+    )
+    frame.to_csv(config_path, index=False)
+
+    catalog = read_catalog(config_path)
+
+    assert catalog[source_field].tolist() == [expected, expected]
+    assert catalog["paper_id"].tolist() == [expected, expected]
+
+
+@pytest.mark.parametrize("source_field", ["source_unit_id", "paper_id"])
+def test_read_catalog_preserves_opaque_source_unit_ids(tmp_path, source_field: str) -> None:
+    config_path = tmp_path / f"opaque_{source_field}.csv"
+    opaque_ids = ["Lab:Batch-A", "lab:batch-a"]
+    pd.DataFrame(
+        {
+            "study_id": ["S1", "S2"],
+            source_field: opaque_ids,
+            "source_path": ["a.csv", "b.csv"],
+            "gene_column": ["gene", "gene"],
+            "lfc_column": ["log2FoldChange", "log2FoldChange"],
+            "p_column": ["pvalue", "pvalue"],
+        }
+    ).to_csv(config_path, index=False)
+
+    catalog = read_catalog(config_path)
+
+    assert catalog[source_field].tolist() == opaque_ids
+
+
+def test_read_catalog_does_not_canonicalize_study_id_fallback(tmp_path) -> None:
+    config_path = tmp_path / "study_id_fallback.csv"
+    study_ids = ["GSE12345", "gse 12345"]
+    pd.DataFrame(
+        {
+            "study_id": study_ids,
+            "paper_id": ["", ""],
+            "source_path": ["a.csv", "b.csv"],
+            "gene_column": ["gene", "gene"],
+            "lfc_column": ["log2FoldChange", "log2FoldChange"],
+            "p_column": ["pvalue", "pvalue"],
+        }
+    ).to_csv(config_path, index=False)
+
+    catalog = read_catalog(config_path)
+
+    assert catalog["study_id"].tolist() == study_ids
+    assert catalog["paper_id"].tolist() == ["", ""]
+    assert catalog["source_unit_id"].tolist() == ["", ""]
+
+
+def test_public_source_unit_aliases_cannot_satisfy_min_studies(tmp_path) -> None:
+    source_a = tmp_path / "a.csv"
+    source_b = tmp_path / "b.csv"
+    pd.DataFrame(
+        {
+            "gene": ["GENEA", "GENEB"],
+            "log2FoldChange": [1.0, -1.0],
+            "pvalue": [0.01, 0.02],
+        }
+    ).to_csv(source_a, index=False)
+    pd.DataFrame(
+        {
+            "gene": ["GENEA", "GENEB"],
+            "log2FoldChange": [1.2, -0.8],
+            "pvalue": [0.02, 0.03],
+        }
+    ).to_csv(source_b, index=False)
+    config_path = tmp_path / "aliases.csv"
+    pd.DataFrame(
+        {
+            "study_id": ["S1", "S2"],
+            "source_unit_id": ["GSE12345", "gse 12345"],
+            "source_path": [source_a.name, source_b.name],
+            "gene_column": ["gene", "gene"],
+            "lfc_column": ["log2FoldChange", "log2FoldChange"],
+            "p_column": ["pvalue", "pvalue"],
+        }
+    ).to_csv(config_path, index=False)
+
+    validation = validate_catalog_inputs(config_path)
+    metrics = run_slice(
+        config_path,
+        tmp_path / "out",
+        tmp_path / "harmonized",
+        min_studies=2,
+    )
+    harmonized = pd.read_csv(tmp_path / "out" / "slice_harmonized.csv")
+
+    assert validation["source_units"] == 1
+    assert metrics["n_consensus_genes"] == 0
+    assert harmonized["source_unit_id"].unique().tolist() == ["GSE12345"]
+
+
+def test_float_promoted_numeric_source_unit_alias_cannot_satisfy_min_studies(tmp_path) -> None:
+    source = tmp_path / "source.csv"
+    pd.DataFrame(
+        {"gene": ["GENEA"], "log2FoldChange": [1.0], "pvalue": [0.01]}
+    ).to_csv(source, index=False)
+    config_path = tmp_path / "float_promoted_pmid.csv"
+    pd.DataFrame(
+        {
+            "study_id": ["S1", "S2"],
+            # The blank second cell makes pandas read the first ID as 999.0.
+            "source_unit_id": [999, None],
+            "paper_id": [None, "PMID:999"],
+            "source_path": [source.name, source.name],
+            "gene_column": ["gene", "gene"],
+            "lfc_column": ["log2FoldChange", "log2FoldChange"],
+            "p_column": ["pvalue", "pvalue"],
+        }
+    ).to_csv(config_path, index=False)
+
+    catalog = read_catalog(config_path)
+    validation = validate_catalog_inputs(config_path)
+
+    assert catalog["paper_id"].tolist() == ["PMID:999", "PMID:999"]
+    assert catalog["source_unit_id"].tolist() == ["PMID:999", ""]
+    assert validation["source_units"] == 1
+
+
 def test_read_catalog_ignores_leading_excel_note_rows(tmp_path) -> None:
     config_path = tmp_path / "commented_config.xlsx"
     contrasts = pd.DataFrame(
@@ -495,7 +640,7 @@ def test_validate_catalog_counts_explicit_source_units_over_shared_paper_id(tmp_
     pd.DataFrame(
         {
             "study_id": ["S1", "S2"],
-            "paper_id": ["PAPER", "PAPER"],
+            "paper_id": ["GSE12345", "gse 12345"],
             "source_unit_id": ["UNIT_A", "UNIT_B"],
             "source_path": [str(source_path), str(source_b)],
             "gene_column": ["gene", "gene"],

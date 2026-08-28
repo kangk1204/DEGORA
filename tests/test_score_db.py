@@ -383,6 +383,11 @@ def test_degora_score_prioritizes_repeated_directional_source_unit_support() -> 
     assert "heterogeneity_flag_rule" in metadata
     assert "loo_stability_rule" in metadata
     assert "source_quality_diagnostics" in metadata
+    source_rules = metadata["source_quality_weight_rules"]
+    assert "default primary quality-weighted lane" in source_rules["source_coherence_guardrail"]
+    assert "high-quality incoherence" in source_rules["source_coherence_guardrail"]
+    assert "primary quality-weighted-lane" in source_rules["source_reliability_shrinkage"]
+    assert "12 decimal places then gene_symbol" in metadata["rra_rule"]
     rule = metadata["heterogeneity_rule"]
     assert "not a calibrated Higgins' I2" in rule
     # The rule must not claim a bias direction: Q is not chi-square distributed
@@ -620,6 +625,42 @@ def test_rra_exact_ties_use_gene_symbol_as_a_deterministic_secondary_key() -> No
     assert first["gene_symbol"].tolist() == ["AAA", "ZZZ"]
     assert first["rra_rank"].tolist() == [1, 2]
     pd.testing.assert_frame_equal(first, shuffled)
+
+
+def test_rra_ulp_near_ties_use_the_twelve_decimal_log_key_without_quantizing_outputs() -> None:
+    from scipy.stats import beta
+
+    conceptual_rank = 0.49025
+    rank_below = np.nextafter(conceptual_rank, -np.inf)
+    rank_above = np.nextafter(conceptual_rank, np.inf)
+    evidence = pd.DataFrame(
+        {
+            "gene_symbol": ["AAA", "AAA", "ZZZ", "ZZZ"],
+            "source_unit_id": ["S1", "S2", "S1", "S2"],
+            "normalized_rank": [rank_above, 0.9, rank_below, 0.9],
+        }
+    )
+
+    first = score_db._rra_beta_layer(evidence, total_source_units=2, min_studies=2)
+    shuffled = score_db._rra_beta_layer(
+        evidence.sample(frac=1.0, random_state=23), total_source_units=2, min_studies=2
+    )
+
+    assert first["gene_symbol"].tolist() == ["AAA", "ZZZ"]
+    assert first["rra_rank"].tolist() == [1, 2]
+    pd.testing.assert_frame_equal(first, shuffled)
+
+    expected_log_rho = beta.logcdf(
+        np.array([rank_above, rank_below]),
+        np.ones(2, dtype=float),
+        np.full(2, 2.0),
+    )
+    observed = first.set_index("gene_symbol").loc[["AAA", "ZZZ"]]
+    np.testing.assert_array_equal(observed["rra_rho"].to_numpy(), np.exp(expected_log_rho))
+    np.testing.assert_array_equal(
+        observed["rra_neglog10_rho"].to_numpy(),
+        -expected_log_rho / np.log(10.0),
+    )
 
 
 def test_random_effects_stouffer_preserves_small_finite_tail_probabilities(tmp_path: Path) -> None:

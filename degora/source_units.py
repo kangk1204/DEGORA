@@ -101,13 +101,15 @@ def canonical_source_unit_id(value: Any) -> str:
 
     An all-digit value is treated as a PMID only here, where the caller has
     already established that the value is an explicit source-unit identifier.
-    Bare numbers in generic accession fields remain ambiguous and are not
-    rewritten by :func:`recognized_source_unit_key`.
+    Integral spreadsheet numbers may arrive as text such as ``"999.0"`` after a
+    column containing blanks is float-promoted; that representation is treated
+    as the same PMID. Bare numbers in generic accession fields remain ambiguous
+    and are not rewritten by :func:`recognized_source_unit_key`.
     """
 
     text = _clean_text(value)
-    if re.fullmatch(r"\d+", text):
-        return f"PMID:{text}"
+    if match := re.fullmatch(r"(\d+)(?:\.0+)?", text):
+        return f"PMID:{match.group(1)}"
     key = recognized_source_unit_key(text)
     if key.startswith("pmid:"):
         return f"PMID:{key.split(':', 1)[1]}"

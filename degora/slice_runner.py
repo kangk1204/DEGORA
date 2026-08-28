@@ -48,6 +48,7 @@ from .harmonize import (
 )
 from .metrics import recall_at_k
 from .provenance import artifact_output_lock, portable_path, shell_command, write_source_sidecar
+from .source_units import canonical_source_unit_id
 
 
 CATALOG_COLUMNS = [
@@ -819,6 +820,18 @@ def _normalize_catalog_columns(catalog: pd.DataFrame) -> pd.DataFrame:
     for column, default in OPTIONAL_CATALOG_DEFAULTS.items():
         if column not in frame.columns:
             frame[column] = default
+    # Public identifiers denote the same independent source even when a manual
+    # config uses a case, spacing, prefix, or repository alias.  Canonicalize the
+    # two explicit source-unit fields after alias promotion/default injection so
+    # validation, harmonization, and scoring all see the same display ID.  Do not
+    # canonicalize study_id: it is the per-contrast fallback, and opaque user IDs
+    # must retain their existing meaning and case.
+    for column in ("source_unit_id", "paper_id"):
+        if column not in frame.columns:
+            continue
+        frame[column] = frame[column].map(
+            lambda value: canonical_source_unit_id(value) if _nonempty(value) is not None else ""
+        )
     frame.attrs["promoted_alias_warnings"] = promoted_warnings
     return frame
 
