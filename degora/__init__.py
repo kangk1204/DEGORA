@@ -7,7 +7,7 @@ from pathlib import Path
 
 __all__ = ["SCORE_VERSION", "__version__", "format_version_info", "runtime_version_info"]
 
-__version__ = "0.4.34"
+__version__ = "0.4.35"
 SCORE_VERSION = "degora_score_v1_3_source_unit_mean"
 
 

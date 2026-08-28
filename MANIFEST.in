@@ -8,5 +8,8 @@ include requirements.txt
 include .gitattributes
 include .gitignore
 recursive-include tests *.py *.json
+# Keep the high-risk public-discovery regression suite explicit as well as
+# covered by the recursive test rule, so its accidental removal is visible.
+include tests/test_live_discovery_regressions.py
 include Makefile
 include LICENSE

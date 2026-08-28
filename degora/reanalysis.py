@@ -10,6 +10,7 @@ from __future__ import annotations
 import csv
 import gzip
 import os
+import re
 import tempfile
 from collections.abc import Iterable
 from pathlib import Path
@@ -51,13 +52,21 @@ VARIANCE_FLOOR_MINIMUM = 1e-8
 # The candidate inspector reads at most this much text; the sniffer below must
 # see the same bytes it saw or the two can disagree about the delimiter.
 SNIFF_TEXT_BYTES = 5 * 1024 * 1024
+ENSEMBL_SYMBOL_SUFFIX_TRANSFORM = "ensembl_gene_symbol_suffix_v1"
+ENSEMBL_PREFIX_TRANSFORM = "ensembl_gene_prefix_v1"
+ENSEMBL_SYMBOL_COMPOSITE_VALUE_RE = re.compile(
+    r"^(?P<ensembl>ENS[A-Z]*G\d+(?:\.\d+)?)_"
+    r"(?P<symbol>(?=[A-Za-z0-9_.@-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_.@-]*)$"
+)
+ENSEMBL_GENE_ID_RE = re.compile(r"^ENS[A-Z]*G\d+(?:\.\d+)?$")
 
 
 def sniff_delimited_separator(path: Path, *, matrix_table: bool = False) -> str:
     """Pick the delimiter exactly the way candidate inspection did.
 
-    Inspection tries tab, comma and semicolon and keeps the widest parse of the
-    first rows, so reading the same file back by its extension meant a
+    Inspection tries tab, comma, semicolon and a quoted whitespace table, then
+    prefers a parse with a safely recognizable gene header. Reading the same
+    file back by its extension meant a
     comma-delimited ``.txt`` (or a semicolon ``.csv``) that inspection had
     presented as usable could never be activated: the columns inspection
     offered came back as one glued-together name.
@@ -83,16 +92,79 @@ def sniff_delimited_separator(path: Path, *, matrix_table: bool = False) -> str:
                 break
         lines = [line for line in lines if line.strip() and not line.startswith("!")]
     lines = lines[:80]
-    best = ("\t", 0)
-    for separator in ("\t", ",", ";"):
+    from .discovery import (
+        _author_delimited_parse_score,
+        _name_upstream_row_label_column,
+        is_gene_identifier_header,
+    )
+
+    best: tuple[str, tuple[int, ...]] = ("\t", (0, 0, 0))
+    for separator in ("\t", ",", ";", " "):
         try:
-            parsed = list(csv.reader(lines, delimiter=separator))
+            parsed = list(csv.reader(lines, delimiter=separator, skipinitialspace=separator == " "))
         except csv.Error:
             continue
-        width = max((len(row) for row in parsed[:10]), default=0)
-        if width > best[1]:
-            best = (separator, width)
+        if matrix_table:
+            width = max((len(row) for row in parsed[:10]), default=0)
+            gene_header_width = 0
+            for index, row in enumerate(parsed[:12]):
+                repaired = _name_upstream_row_label_column(row, parsed[index + 1 : index + 21])
+                if any(is_gene_identifier_header(value) for value in repaired):
+                    gene_header_width = max(gene_header_width, len(repaired))
+            score = (int(gene_header_width > 0), gene_header_width, width)
+        else:
+            score = _author_delimited_parse_score(parsed)
+        if score > best[1]:
+            best = (separator, score)
     return best[0]
+
+
+def _safe_r_row_names(values: pd.Series | pd.Index) -> bool:
+    labels = pd.Series(values, dtype="string").str.strip()
+    nonempty = labels.notna() & labels.ne("")
+    if len(labels) < 2 or float(nonempty.mean()) < 0.9:
+        return False
+    # Numeric row numbers are ambiguous with ranks or exported frame indices.
+    numeric = pd.to_numeric(labels[nonempty], errors="coerce").notna()
+    return not bool(numeric.any())
+
+
+def _numeric_matrix_column_count(frame: pd.DataFrame, *, exclude: set[Any] | None = None) -> int:
+    excluded = exclude or set()
+    return sum(
+        pd.to_numeric(frame[column], errors="coerce").notna().mean() >= 0.7
+        for column in frame.columns
+        if column not in excluded
+    )
+
+
+def _recover_r_row_name_column(frame: pd.DataFrame) -> pd.DataFrame:
+    """Materialize the same safe row_name column that inspection reported."""
+
+    if frame.empty or "row_name" in frame.columns:
+        return frame
+    if len(frame.columns):
+        first = frame.columns[0]
+        first_name = str(first).strip()
+        if (
+            (not first_name or re.fullmatch(r"Unnamed:\s*\d+", first_name, re.I))
+            and _safe_r_row_names(frame[first])
+            and _numeric_matrix_column_count(frame, exclude={first}) >= 4
+        ):
+            return frame.rename(columns={first: "row_name"})
+    # pandas infers an index when every data row has one more field than the
+    # header. This is how write.table(row.names=TRUE) appears when its leading
+    # header cell was omitted entirely.
+    if (
+        not isinstance(frame.index, pd.RangeIndex)
+        and frame.index.nlevels == 1
+        and _safe_r_row_names(frame.index)
+        and _numeric_matrix_column_count(frame) >= 4
+    ):
+        recovered = frame.copy()
+        recovered.insert(0, "row_name", recovered.index.astype(str))
+        return recovered.reset_index(drop=True)
+    return frame
 
 
 def read_matrix_frame(
@@ -127,21 +199,25 @@ def read_matrix_frame(
             0 if sheet_name in (None, "") else sheet_name,
             header_row=resolved_header,
         )
-        return frame if nrows is None else frame.head(nrows)
+        frame = frame if nrows is None else frame.head(nrows)
+        return _recover_r_row_name_column(frame)
     # Delimiter and decoding must match what inspection saw (utf-8-sig with
     # replacement). Blank lines and GEO metadata are excluded before the
     # 1-based header is applied, just as upstream inspection excluded them.
-    return pd.read_csv(
+    separator = sniff_delimited_separator(path, matrix_table=True)
+    frame = pd.read_csv(
         path,
-        sep=sniff_delimited_separator(path, matrix_table=True),
+        sep=separator,
         header=resolved_header - 1,
         comment="!",
         skip_blank_lines=True,
+        skipinitialspace=separator == " ",
         low_memory=False,
         encoding="utf-8-sig",
         encoding_errors="replace",
         nrows=nrows,
     )
+    return _recover_r_row_name_column(frame)
 
 
 def _clean_gene_ids(values: pd.Series) -> pd.Series:
@@ -149,6 +225,61 @@ def _clean_gene_ids(values: pd.Series) -> pd.Series:
     # a private copy here stripped `.\d+` from every label and merged NKX2.5
     # with NKX2.1 in matrices exactly as it once did in result tables.
     return _clean_gene_symbol(values)
+
+
+def _apply_gene_value_transform(
+    values: pd.Series,
+    transform: str | None,
+) -> tuple[pd.Series, dict[str, Any]]:
+    name = str(transform or "").strip()
+    if not name:
+        return values, {}
+    if name not in {ENSEMBL_SYMBOL_SUFFIX_TRANSFORM, ENSEMBL_PREFIX_TRANSFORM}:
+        raise ValueError(f"unsupported gene_value_transform: {name}")
+    labels = values.astype("string").str.strip()
+    nonempty = labels.notna() & labels.ne("")
+    extracted = labels.str.extract(ENSEMBL_SYMBOL_COMPOSITE_VALUE_RE, expand=True)
+    matched = nonempty & extracted["ensembl"].notna() & extracted["symbol"].notna()
+    denominator = int(nonempty.sum())
+    fraction = float(matched.sum() / denominator) if denominator else 0.0
+    if denominator < 2 or fraction < 0.9:
+        raise ValueError(
+            f"gene_value_transform={name} requires at least 90% ENS...G..._SYMBOL values"
+        )
+    if name == ENSEMBL_PREFIX_TRANSFORM:
+        transformed = extracted["ensembl"].where(matched, pd.NA)
+        output_space = "Ensembl gene ID"
+        usable = matched
+        ensembl_only_dropped = 0
+    else:
+        cleaned_suffixes = _clean_gene_ids(extracted["symbol"])
+        symbol_suffix = (
+            matched
+            & cleaned_suffixes.notna()
+            & ~extracted["symbol"].str.fullmatch(ENSEMBL_GENE_ID_RE, na=False)
+        )
+        symbol_fraction = float(symbol_suffix.sum() / denominator) if denominator else 0.0
+        if symbol_fraction < 0.9:
+            raise ValueError(
+                "gene_value_transform=ensembl_gene_symbol_suffix_v1 requires at least 90% usable "
+                "non-Ensembl gene-symbol suffixes; use the validated prefix transform instead"
+            )
+        transformed = extracted["symbol"].where(symbol_suffix, pd.NA)
+        output_space = "gene symbol"
+        usable = symbol_suffix
+        ensembl_only_dropped = int((matched & ~symbol_suffix).sum())
+    return transformed, {
+        "gene_value_transform": name,
+        "gene_value_transform_output_space": output_space,
+        "gene_value_transform_match_fraction": round(fraction, 6),
+        "gene_value_transform_input_nonempty": denominator,
+        "gene_value_transform_matched": int(matched.sum()),
+        "gene_value_transform_usable_identifiers": int(usable.sum()),
+        "gene_value_transform_symbol_suffixes": (
+            int(usable.sum()) if name == ENSEMBL_SYMBOL_SUFFIX_TRANSFORM else 0
+        ),
+        "gene_value_transform_ensembl_only_suffixes_dropped": ensembl_only_dropped,
+    }
 
 
 def welch_with_variance_floor(
@@ -291,6 +422,7 @@ def derive_welch_deg(
     normalized_scale: str | None = None,
     sheet_name: str | int | None = None,
     header_row: int | None = None,
+    gene_value_transform: str | None = None,
     command: str = "degora discovery analyze",
     metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -313,7 +445,11 @@ def derive_welch_deg(
     missing = [column for column in required if column not in matrix.columns]
     if missing:
         raise ValueError("matrix is missing required columns: " + ", ".join(missing))
-    genes = _clean_gene_ids(matrix[gene_column])
+    transformed_genes, gene_transform_summary = _apply_gene_value_transform(
+        matrix[gene_column],
+        gene_value_transform,
+    )
+    genes = _clean_gene_ids(transformed_genes)
     values = matrix[control + treatment].apply(pd.to_numeric, errors="coerce")
     finite = np.isfinite(values.to_numpy(dtype=float)).all(axis=1)
     valid = genes.notna().to_numpy() & finite
@@ -416,6 +552,9 @@ def derive_welch_deg(
         **variance_summary,
         **filter_summary,
         **(metadata or {}),
+        # A caller may add provenance, but may not claim a transform that was
+        # not actually validated and applied above.
+        **gene_transform_summary,
         **formula_guard_metadata(),
     }
     write_source_sidecar(output, command, inputs=[source], metadata=provenance)
@@ -440,6 +579,7 @@ def derive_welch_deg(
         "normalized_scale": normalized_scale or "not_applicable",
         "sheet_name": "" if sheet_name in (None, "") else sheet_name,
         "header_row": 1 if header_row in (None, "") else int(header_row),
+        **gene_transform_summary,
         **variance_summary,
         **filter_summary,
     }

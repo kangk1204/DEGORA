@@ -15,6 +15,8 @@ import pandas as pd
 from .discovery import (
     DISCOVERY_BUNDLE_ARTIFACT_TYPE,
     DiscoveryError,
+    _is_explicit_raw_count_column,
+    _measurement_column_parts,
     normalize_species,
 )
 from .excel_export import DEFAULT_WORKBOOK_NAME, export_run_workbook
@@ -26,7 +28,12 @@ from .provenance import (
     shell_command,
     write_source_sidecar,
 )
-from .reanalysis import derive_welch_deg, read_matrix_frame, sniff_delimited_separator
+from .reanalysis import (
+    _apply_gene_value_transform,
+    derive_welch_deg,
+    read_matrix_frame,
+    sniff_delimited_separator,
+)
 from .score_db import write_score_database
 from .slice_runner import CATALOG_COLUMNS, run_slice, run_warning_messages, validate_catalog_inputs
 
@@ -447,6 +454,36 @@ def _author_activation_key(candidate_id: str, inspection: dict[str, Any], entry:
     )
 
 
+def _selected_gene_value_transform(inspection: dict[str, Any], gene_column: str) -> str:
+    """Return the transform validated for this exact gene mapping, if any."""
+
+    transform_record = inspection.get("gene_value_transform")
+    transform_name = ""
+    if transform_record not in (None, ""):
+        if not isinstance(transform_record, dict):
+            raise DiscoveryError("prepared candidate has an invalid gene_value_transform record")
+        transform_source = str(transform_record.get("source_header") or "").strip()
+        candidate_name = str(transform_record.get("name") or "").strip()
+        if transform_source == gene_column and not candidate_name:
+            raise DiscoveryError(
+                "prepared candidate has an incomplete gene_value_transform for the selected gene_column"
+            )
+        # A reviewer may correct the mapping to a separate plain gene-symbol
+        # column. A transform for the composite source must then be ignored.
+        if transform_source == gene_column:
+            transform_name = candidate_name
+    composite_header = re.fullmatch(
+        r"ensembl[_. ]?gene(?:[_. ]?gene)?[_. ]?symbol",
+        gene_column,
+        re.IGNORECASE,
+    )
+    if composite_header and not transform_name:
+        raise DiscoveryError(
+            "composite Ensembl/gene-symbol identifiers require a validated gene_value_transform before activation"
+        )
+    return transform_name
+
+
 def _materialize_author_table(
     *,
     study: dict[str, Any],
@@ -499,7 +536,15 @@ def _materialize_author_table(
                 f"row filter matched no author-table rows: {filter_column}={filter_value!r}"
             )
 
-    genes = frame[mapping["gene_column"]].astype("string").str.strip()
+    gene_value_transform = _selected_gene_value_transform(inspection, mapping["gene_column"])
+    try:
+        transformed_genes, gene_transform_summary = _apply_gene_value_transform(
+            frame[mapping["gene_column"]],
+            gene_value_transform or None,
+        )
+    except ValueError as exc:
+        raise DiscoveryError(f"author gene identifiers could not be normalized: {exc}") from exc
+    genes = transformed_genes.astype("string").str.strip()
     lfc = pd.to_numeric(frame[mapping["lfc_column"]], errors="coerce")
     pvalue = pd.to_numeric(frame[mapping["p_column"]], errors="coerce")
     valid = genes.notna() & genes.ne("") & lfc.notna() & pvalue.notna() & pvalue.between(0.0, 1.0)
@@ -555,6 +600,7 @@ def _materialize_author_table(
         "n_duplicate_gene_rows": n_duplicate_gene_rows,
         "n_duplicate_genes": n_duplicate_genes,
         "n_usable_output_rows": int(len(selected)),
+        **gene_transform_summary,
         **formula_guard_metadata(),
     }
     write_source_sidecar(output, replay_command, inputs=[source_path], metadata=provenance)
@@ -584,6 +630,19 @@ def _author_row(
         "n_ctrl": _optional_count(entry.get("n_ctrl"), field="n_ctrl", required=True),
         "n_treat": _optional_count(entry.get("n_treat"), field="n_treat", required=True),
     }
+    study_sample_value = study.get("n_samples")
+    study_sample_count = 0
+    if not isinstance(study_sample_value, bool):
+        study_sample_text = str(study_sample_value or "").strip()
+        if re.fullmatch(r"[0-9]+", study_sample_text):
+            study_sample_count = int(study_sample_text)
+    selected_sample_count = int(author_entry["n_ctrl"]) + int(author_entry["n_treat"])
+    if study_sample_count > 0 and selected_sample_count > study_sample_count:
+        raise DiscoveryError(
+            f"n_ctrl+n_treat={selected_sample_count} exceeds the study metadata total n_samples={study_sample_count}. "
+            "Correct the group sizes before activation; otherwise DEGORA would overstate the evidence weight for "
+            "this study."
+        )
     original_source_path = _contained_local_path(candidate, bundle_root)
     source_path, derivation, mapping = _materialize_author_table(
         study=study,
@@ -623,6 +682,12 @@ def _author_row(
     metadata_note = _publication_metadata_note(study)
     if metadata_note:
         row["notes"] = f"{row['notes']} Publication metadata: {metadata_note}."
+    if derivation.get("gene_value_transform"):
+        row["notes"] = (
+            f"{row['notes']} The validated composite gene identifier was normalized uniformly to "
+            f"{derivation.get('gene_value_transform_output_space', 'one identifier space')} with "
+            f"{derivation['gene_value_transform']}."
+        )
     source_mapping = derivation.get("source_mapping", {})
     if source_mapping.get("padj_column") and source_mapping.get("p_column") == source_mapping.get("padj_column"):
         row["notes"] = (
@@ -862,7 +927,115 @@ def _fallback_row(
     unknown = sorted(requested.difference(allowed_samples))
     if unknown:
         raise DiscoveryError("selected sample column(s) were not found in the inspected matrix: " + ", ".join(unknown))
-    role = str(candidate.get("role") or inspection.get("declared_role") or "")
+    # A public matrix may expose both count and FPKM/TPM columns for one GSM.
+    # Two columns resolving to the same GEO accession are two measurements of
+    # one biological sample, not independent Welch replicates. Enforce this on
+    # the server even when an older prepared bundle offered both columns.
+    inspection_labels = inspection.get("sample_labels", {}) or {}
+    study_labels = study.get("sample_labels", {}) or {}
+    selected_by_accession: dict[str, list[str]] = {}
+    for sample in control_samples + treatment_samples:
+        label = inspection_labels.get(sample) or study_labels.get(sample.upper()) or {}
+        accession_label = str(label.get("accession") or "").strip().upper() if isinstance(label, dict) else ""
+        if accession_label:
+            selected_by_accession.setdefault(accession_label, []).append(sample)
+    duplicate_accessions = {
+        accession_label: columns
+        for accession_label, columns in selected_by_accession.items()
+        if len(columns) > 1
+    }
+    if duplicate_accessions:
+        detail = "; ".join(
+            f"{accession_label}: {', '.join(columns)}"
+            for accession_label, columns in sorted(duplicate_accessions.items())
+        )
+        raise DiscoveryError(
+            "selected sample columns reuse the same GEO biological sample accession ("
+            + detail
+            + "). Choose one measurement column per accession; count, FPKM and TPM columns for one GSM are not "
+            "independent replicates."
+        )
+    family_metadata = inspection.get("sample_column_families", {}) or {}
+    if not isinstance(family_metadata, dict):
+        family_metadata = {}
+    count_columns = set(map(str, family_metadata.get("count", []) or []))
+    normalized_columns = set(map(str, family_metadata.get("normalized", []) or []))
+    # Re-derive obvious suffixes on the server as well as consuming inspector
+    # metadata. This keeps legacy or hand-edited prepared bundles from bypassing
+    # the guard merely by omitting sample_column_families.
+    derived: dict[str, tuple[str, str, str]] = {}
+    for column in requested:
+        parts = _measurement_column_parts(column)
+        if parts is None:
+            continue
+        family, base, subtype = parts
+        derived[column] = (family, base, subtype)
+        (count_columns if family == "count" else normalized_columns).add(column)
+
+    requested_count_columns = sorted(requested & count_columns)
+    requested_normalized_columns = sorted(requested & normalized_columns)
+    requested_unclassified_columns = sorted(
+        requested.difference(requested_count_columns).difference(requested_normalized_columns)
+    )
+    if requested_unclassified_columns and (requested_count_columns or requested_normalized_columns):
+        raise DiscoveryError(
+            "selected sample columns mix explicitly labeled measurement columns with unclassified columns "
+            f"(explicit: {', '.join(requested_count_columns + requested_normalized_columns)}; unclassified: "
+            f"{', '.join(requested_unclassified_columns)}). Choose one explicit measurement family and subtype, "
+            "or use only unclassified columns whose shared scale you have confirmed; otherwise the contrast may "
+            "compare measurement scales instead of biology."
+        )
+    metadata_bases = family_metadata.get("base_by_column", {}) or {}
+    if not isinstance(metadata_bases, dict):
+        metadata_bases = {}
+    metadata_subtypes = family_metadata.get("subtype_by_column", {}) or {}
+    if not isinstance(metadata_subtypes, dict):
+        metadata_subtypes = {}
+    requested_by_base: dict[str, list[str]] = {}
+    for column in sorted(set(requested_count_columns + requested_normalized_columns)):
+        base = derived.get(column, ("", "", ""))[1] or str(metadata_bases.get(column) or "").strip()
+        if base:
+            requested_by_base.setdefault(base.casefold(), []).append(column)
+    duplicate_bases = {
+        base: columns
+        for base, columns in requested_by_base.items()
+        if len(columns) > 1
+    }
+    if duplicate_bases:
+        detail = "; ".join(
+            f"{base}: {', '.join(columns)}"
+            for base, columns in sorted(duplicate_bases.items())
+        )
+        raise DiscoveryError(
+            "selected sample columns reuse the same biological sample base "
+            f"({detail}). Choose exactly one measurement column per base; raw-count, count, FPKM and TPM "
+            "variants are not independent replicates."
+        )
+    if requested_count_columns and requested_normalized_columns:
+        raise DiscoveryError(
+            "selected sample columns mix count and normalized measurement families in one contrast "
+            f"(count: {', '.join(requested_count_columns)}; normalized: "
+            f"{', '.join(requested_normalized_columns)}). Choose one family for every control and treatment "
+            "sample; otherwise the contrast compares measurement scales instead of biology."
+        )
+    normalized_by_subtype: dict[str, list[str]] = {}
+    for column in requested_normalized_columns:
+        subtype = derived.get(column, ("", "", ""))[2] or str(metadata_subtypes.get(column) or "").strip().lower()
+        if subtype:
+            normalized_by_subtype.setdefault(subtype, []).append(column)
+    if len(normalized_by_subtype) > 1:
+        detail = "; ".join(
+            f"{subtype}: {', '.join(columns)}"
+            for subtype, columns in sorted(normalized_by_subtype.items())
+        )
+        raise DiscoveryError(
+            "selected sample columns mix normalized measurement subtypes in one contrast "
+            f"({detail}). Choose one of FPKM, FPKM-UQ, TPM, RPKM, CPM, logCPM, TMM, voom, VST or rlog "
+            "for every control and treatment sample; "
+            "otherwise the contrast compares measurement scales instead of biology."
+        )
+    declared_role = str(candidate.get("role") or inspection.get("declared_role") or "")
+    role = declared_role
     chosen = (
         _text(entry.get("matrix_type"), field="matrix_type", required=role == "unknown_matrix", maximum=40)
         .strip().lower().replace("-", "_").replace(" ", "_")
@@ -880,6 +1053,35 @@ def _fallback_row(
         # A file the repository labels as counts whose values are fractional:
         # the reader may say what it is instead of being refused with no way on.
         role = ESTIMATED_COUNT_MATRIX
+    derived_count_columns = sorted(
+        column for column, (family, _, _) in derived.items() if family == "count"
+    )
+    derived_normalized_columns = sorted(
+        column for column, (family, _, _) in derived.items() if family == "normalized"
+    )
+    derived_raw_count_columns = sorted(
+        column for column in derived_count_columns if _is_explicit_raw_count_column(column)
+    )
+    if role in {"count_matrix", ESTIMATED_COUNT_MATRIX} and derived_normalized_columns:
+        raise DiscoveryError(
+            "normalized-suffix sample columns cannot use a count matrix role "
+            f"({', '.join(derived_normalized_columns)}). Select normalized_expression_matrix and declare whether "
+            "the values are linear or log2; integer-looking FPKM, FPKM-UQ, TPM, RPKM, CPM, logCPM, TMM, voom, "
+            "VST or rlog values are still normalized."
+        )
+    if role == "normalized_expression_matrix" and derived_raw_count_columns:
+        raise DiscoveryError(
+            "explicit raw-count sample columns cannot use a normalized matrix role "
+            f"({', '.join(derived_raw_count_columns)}). Select count_matrix for raw whole-number counts; "
+            "a normalized filename or hand-edited prepared bundle cannot override explicit *_raw_count suffixes."
+        )
+    if role == "normalized_expression_matrix" and derived_count_columns and declared_role != "normalized_expression_matrix":
+        raise DiscoveryError(
+            "count-suffix sample columns cannot use a normalized matrix role "
+            f"({', '.join(derived_count_columns)}). Select count_matrix for raw whole-number counts or "
+            "estimated_count_matrix for fractional estimated counts. A file already classified as normalized is "
+            "allowed only with an explicit normalized_scale because normalized/size-factor counts may use this suffix."
+        )
     # Every preflight must read the same sheet the derivation reads below.
     inspected_sheet = inspection.get("sheet_name") or None
     try:
@@ -930,6 +1132,7 @@ def _fallback_row(
             f"gene_column={gene_column!r} is one of the sample columns; it holds expression values, not gene "
             f"identifiers. Use the identifier column" + (f" (the inspector detected {detected!r})" if detected else "") + "."
         )
+    gene_value_transform = _selected_gene_value_transform(inspection, gene_column)
     accession = _study_accession_key(study)
     # The sequence keeps two contrasts derived from one file apart on disk.
     derived_path = derived_dir / f"{spec.key}_{accession}_{str(candidate['candidate_id'])[:10]}_{sequence}_welch.csv"
@@ -944,6 +1147,7 @@ def _fallback_row(
             normalized_scale=normalized_scale or None,
             sheet_name=inspected_sheet,
             header_row=inspected_header,
+            gene_value_transform=gene_value_transform or None,
             command=replay_command,
             metadata={
                 "accession": study.get("accession", ""),
@@ -994,6 +1198,14 @@ def _fallback_row(
         )
         row["notes"] = f"{row['notes']} {note}"
         summary["estimated_counts_note"] = f"{accession}: {note}"
+    if gene_value_transform:
+        output_space = str(summary.get("gene_value_transform_output_space") or "validated identifier space")
+        note = (
+            "The validated Ensembl/gene-symbol composite identifier was normalized uniformly to "
+            f"{output_space} with {gene_value_transform}."
+        )
+        row["notes"] = f"{row['notes']} {note}"
+        summary["gene_value_transform_note"] = f"{accession}: {note}"
     if min(len(control_samples), len(treatment_samples)) < 3:
         # Two against two is the floor, not a comfortable design; a Welch test
         # on two replicates ranks genes only loosely.

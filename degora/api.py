@@ -434,6 +434,7 @@ INDEX_HTML = """<!doctype html>
     }
     .policy-chip::before { content: none; }
     .discovery-card {
+      container-type: inline-size;
       border: 1px solid var(--line);
       border-radius: 14px;
       background: rgba(255,255,255,.96);
@@ -549,6 +550,16 @@ INDEX_HTML = """<!doctype html>
     }
     .candidate-name { font-weight: 720; overflow-wrap: anywhere; }
     .candidate-note { display: block; margin-top: 4px; color: var(--muted); font-size: 11px; line-height: 1.4; }
+    .measurement-family-guidance {
+      margin-top: 7px;
+      padding: 6px 8px;
+      border-left: 3px solid #69a99d;
+      border-radius: 4px;
+      background: #eef8f5;
+      color: #1f5c54;
+      white-space: normal;
+    }
+    .measurement-family-guidance.warning { border-left-color: #d49a32; background: #fff7e6; color: #6b4e00; }
     .candidate-fields { display: grid; gap: 7px; }
     /* The author card carries six children but the track list above defines
        four columns, so these last two groups wrapped onto an implicit second
@@ -588,7 +599,19 @@ INDEX_HTML = """<!doctype html>
     .sample-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
     .sample-id { grid-area: id; font-variant-numeric: tabular-nums; color: var(--muted); font-size: 10px; }
     .sample-label { grid-area: label; color: var(--ink); font-weight: 620; }
-    .sample-traits { grid-area: traits; color: var(--muted); font-size: 10px; }
+    /* Treatment, time and condition often occur late in GEO characteristics.
+       Keeping this line ellipsized hid the very metadata used to assign groups,
+       and a title attribute does not provide a dependable touch-screen fallback. */
+    .sample-item .sample-traits {
+      grid-area: traits;
+      overflow: visible;
+      text-overflow: clip;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      color: var(--muted);
+      font-size: 10px;
+      line-height: 1.35;
+    }
     .sample-label-missing { color: var(--muted); font-weight: 500; font-style: italic; }
     .prepared-blocked {
       display: flex;
@@ -700,6 +723,9 @@ INDEX_HTML = """<!doctype html>
       flex-direction: column;
       height: 100%;
     }
+    /* The atlas splitter, rather than the viewport, determines whether the gene
+       table is narrower than its 760px readable minimum. */
+    .genes-panel { container-type: inline-size; }
     .splitter {
       align-self: stretch;
       width: 18px;
@@ -841,6 +867,17 @@ INDEX_HTML = """<!doctype html>
       overscroll-behavior: contain;
     }
     .gene-table-scroll table { min-width: 760px; }
+    @container (max-width: 759px) {
+      .gene-scroll-hint {
+        display: block;
+        margin: 0;
+        padding: 7px 14px;
+        border-bottom: 1px solid var(--line);
+        background: #f7faf9;
+        color: var(--muted);
+        font-size: 11px;
+      }
+    }
     .gene-rank-col { width: 58px; }
     .gene-tier-col { width: 54px; }
     .gene-symbol-col { width: 160px; }
@@ -1156,6 +1193,61 @@ INDEX_HTML = """<!doctype html>
       pointer-events: none;
       display: none;
     }
+    /* The result table has a 1120px readable minimum. Switch to cards based on
+       the card's real content width, not a viewport guess, so Inspect and DEG
+       readiness stay visible in split windows and landscape tablets too. */
+    @container (max-width: 1119px) {
+      .study-action-bar { align-items: flex-start; flex-direction: column; gap: 6px; padding: 8px 12px; }
+      .study-action-bar .selection-action { width: 100%; margin-left: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px; }
+      .study-action-bar .selection-action .status { grid-column: 1 / -1; }
+      .study-action-bar .selection-action button { min-width: 0; }
+      .table-footer { align-items: flex-start; flex-direction: column; }
+      .table-footer .selection-action { width: 100%; flex-wrap: wrap; }
+      .table-footer .selection-action button { flex: 1 1 150px; min-width: 0; }
+      .pager { width: 100%; justify-content: space-between; }
+      .pager span { min-width: 0; }
+      .mobile-study-tools {
+        display: flex;
+        align-items: end;
+        gap: 8px;
+        padding: 10px 0;
+      }
+      .mobile-study-tools label { flex: 1; min-width: 0; color: var(--muted); font-size: 12px; }
+      .mobile-study-tools select { width: 100%; margin-top: 4px; }
+      .mobile-study-tools button { width: auto; min-width: 118px; }
+      .results-scroll { overflow: visible; }
+      .study-table { display: block; min-width: 0; }
+      .study-table thead { display: none; }
+      .study-table tbody { display: grid; gap: 10px; }
+      .study-table tr {
+        display: grid;
+        grid-template-columns: 32px minmax(0, 1fr) auto;
+        gap: 5px 9px;
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+      }
+      .study-table td {
+        display: block;
+        padding: 0;
+        border: 0;
+        white-space: normal;
+        overflow: visible;
+        text-overflow: clip;
+        overflow-wrap: anywhere;
+      }
+      .study-table td:nth-child(1) { grid-column: 1; grid-row: 1 / span 3; padding-top: 3px; }
+      .study-table td:nth-child(2) { grid-column: 2 / 4; grid-row: 1; }
+      .study-table td:nth-child(3),
+      .study-table td:nth-child(4),
+      .study-table td:nth-child(5) { display: none; }
+      .study-table td:nth-child(6) { grid-column: 2; grid-row: 2; }
+      .study-table td:nth-child(7) { grid-column: 2; grid-row: 3; color: var(--muted); font-size: 12px; }
+      .study-table td:nth-child(8) { grid-column: 3; grid-row: 2 / span 2; align-self: center; }
+      .study-mobile-meta, .study-publication-meta { display: block; margin-top: 6px; color: var(--muted); font-size: 12px; line-height: 1.4; }
+      .mobile-field-label { display: block; margin-bottom: 3px; color: var(--muted); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+    }
     @media (max-width: 1120px) {
       header { align-items: center; flex-wrap: wrap; padding: 12px 18px 10px; }
       .meta { flex-basis: 100%; justify-content: flex-start; margin-left: 46px; gap: 12px; font-size: 12px; }
@@ -1208,73 +1300,20 @@ INDEX_HTML = """<!doctype html>
       .policy-row { justify-content: flex-start; flex-wrap: nowrap; overflow-x: auto; padding: 1px 1px 4px; scrollbar-width: thin; }
       .policy-chip { flex: 0 0 auto; }
       .discovery-card-head { align-items: flex-start; flex-wrap: wrap; }
-      .study-action-bar { align-items: flex-start; flex-direction: column; gap: 6px; padding: 8px 12px; }
-      .study-action-bar .selection-action { width: 100%; margin-left: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px; }
-      .study-action-bar .selection-action .status { grid-column: 1 / -1; }
-      .study-action-bar .selection-action button { min-width: 0; }
-      .table-footer { align-items: flex-start; flex-direction: column; }
-      .table-footer .selection-action { width: 100%; flex-wrap: wrap; }
-      .table-footer .selection-action button { flex: 1 1 150px; min-width: 0; }
-      .pager { width: 100%; justify-content: space-between; }
-      .pager span { min-width: 0; }
       .section-head { align-items: flex-start; }
       .section-title-group { align-items: flex-start; flex-direction: column; gap: 5px; }
       .sample-groups { grid-template-columns: 1fr; }
-      .gene-scroll-hint {
-        display: block;
-        margin: 0;
-        padding: 7px 14px;
-        border-bottom: 1px solid var(--line);
-        background: #f7faf9;
-        color: var(--muted);
-        font-size: 11px;
-      }
-      .mobile-study-tools {
-        display: flex;
-        align-items: end;
-        gap: 8px;
-        padding: 10px 0;
-      }
-      .mobile-study-tools label { flex: 1; min-width: 0; color: var(--muted); font-size: 12px; }
-      .mobile-study-tools select { width: 100%; margin-top: 4px; }
-      .mobile-study-tools button { width: auto; min-width: 118px; }
-      .results-scroll { overflow: visible; }
-      .study-table { display: block; min-width: 0; }
-      .study-table thead { display: none; }
-      .study-table tbody { display: grid; gap: 10px; }
-      .study-table tr {
-        display: grid;
-        grid-template-columns: 32px minmax(0, 1fr) auto;
-        gap: 5px 9px;
-        padding: 12px;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        background: #fff;
-      }
-      .study-table td {
-        display: block;
-        padding: 0;
-        border: 0;
-        white-space: normal;
-        overflow: visible;
-        text-overflow: clip;
-        overflow-wrap: anywhere;
-      }
-      .study-table td:nth-child(1) { grid-column: 1; grid-row: 1 / span 3; padding-top: 3px; }
-      .study-table td:nth-child(2) { grid-column: 2 / 4; grid-row: 1; }
-      .study-table td:nth-child(3),
-      .study-table td:nth-child(4),
-      .study-table td:nth-child(5) { display: none; }
-      .study-table td:nth-child(6) { grid-column: 2; grid-row: 2; }
-      .study-table td:nth-child(7) { grid-column: 2; grid-row: 3; color: var(--muted); font-size: 12px; }
-      .study-table td:nth-child(8) { grid-column: 3; grid-row: 2 / span 2; align-self: center; }
-      .study-mobile-meta, .study-publication-meta { display: block; margin-top: 6px; color: var(--muted); font-size: 12px; line-height: 1.4; }
-      .mobile-field-label { display: block; margin-bottom: 3px; color: var(--muted); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
     }
     @media (max-width: 420px) {
       .meta { flex-wrap: wrap; overflow-x: visible; row-gap: 4px; }
       .policy-row { flex-wrap: wrap; overflow: visible; }
       .policy-chip { white-space: normal; }
+      .sample-item {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-areas: "id" "label" "traits" "select";
+        align-items: start;
+      }
+      .sample-item select { width: 100%; margin-top: 4px; }
     }
   </style>
 </head>
@@ -2811,8 +2850,44 @@ INDEX_HTML = """<!doctype html>
       state.draft = draft;
     }
 
+    const MAX_BIOLOGICAL_GROUP_SIZE = 10000;
+
     function isPositiveWholeNumber(value) {
-      return /^[1-9][0-9]*$/.test(String(value || "").trim());
+      const text = String(value || "").trim();
+      return /^[1-9][0-9]*$/.test(text) && Number(text) <= MAX_BIOLOGICAL_GROUP_SIZE;
+    }
+
+    /* API workflow codes are useful for provenance, but they are not labels a
+       first-time reviewer should have to decode. Keep raw values in data-* and
+       payloads while translating every place that presents one as prose. */
+    const WORKFLOW_LABELS = Object.freeze({
+      ready_for_review: "Ready for review",
+      requires_column_mapping: "Column choices need review",
+      requires_lfc_confirmation: "Confirm the fold-change scale",
+      requires_pvalue_mapping: "Choose the p-value column",
+      candidate_header: "Candidate table header needs review",
+      upstream_matrix_ready_for_contrast: "Expression matrix - choose control and treatment samples",
+      upstream_matrix_requires_contrast: "Expression matrix - contrast setup required",
+      upstream_matrix: "Expression matrix - contrast setup required",
+      author_deg_ready_for_contrast_review: "Author DEG table - review the contrast",
+      author_table_requires_mapping_review: "Author DEG table - check the columns",
+      no_usable_table_resolved: "No usable DEG table or expression matrix found",
+      requires_manual_review: "Manual review required",
+      author_deg_table: "Author DEG table",
+      count_matrix: "Raw count matrix",
+      estimated_count_matrix: "Estimated count matrix",
+      normalized_expression_matrix: "Normalized expression matrix",
+      unknown_matrix: "Matrix type needs confirmation",
+      unknown_table: "Table type not identified",
+      unsupported: "Unsupported file type"
+    });
+
+    function workflowLabel(value, fallback = "Review required") {
+      const key = String(value || "").trim();
+      if (!key) return fallback;
+      if (WORKFLOW_LABELS[key]) return WORKFLOW_LABELS[key];
+      const words = key.replace(/_/g, " ");
+      return words.charAt(0).toUpperCase() + words.slice(1);
     }
 
     const AUTHOR_REVIEWABLE_STATUSES = new Set([
@@ -2849,7 +2924,7 @@ INDEX_HTML = """<!doctype html>
       if (candidate.tier === "reject" || candidate.role === "unsupported") {
         return candidate.reason || "not a DEG table or expression matrix";
       }
-      if (status && status !== "not_inspected") return inspection.reason || status;
+      if (status && status !== "not_inspected") return inspection.reason || workflowLabel(status);
       return inspection.reason || candidate.reason || "not inspected within the safety limits";
     }
 
@@ -2964,11 +3039,11 @@ INDEX_HTML = """<!doctype html>
       ) || duplicateGenePolicy === "keep_first";
       return `<div class="candidate-row" data-candidate-id="${esc(candidate.candidate_id)}" data-activation-key="${esc(activationKey)}" data-clone="${clone ? "true" : "false"}" data-accession="${esc(study.accession)}" data-source-unit="${esc(study.source_unit_id || study.accession)}" data-mode="author" data-author-status="${esc(status)}" data-series-samples="${esc(String(seriesSamples || ""))}" data-detected-sheet-name="${esc(detectedAuthorValue(candidate, "sheet_name"))}" data-detected-gene-column="${esc(detectedAuthorValue(candidate, "gene_column"))}" data-detected-lfc-column="${esc(detectedAuthorValue(candidate, "lfc_column"))}" data-detected-p-column="${esc(detectedAuthorValue(candidate, "p_column"))}" data-detected-padj-column="${esc(detectedAuthorValue(candidate, "padj_column"))}">
         <input class="candidate-enable" type="checkbox" aria-label="Use ${esc(candidate.name)}" ${checked ? "checked" : ""}>
-        <div><span class="candidate-name">${esc(candidate.name)}${clone ? " · additional cohort/contrast" : ""}</span><span class="candidate-note">Author DEG candidate · ${esc(status)} · ${esc(geneColumn)} / ${esc(lfcColumn)} / ${esc(pColumn)}${identifierSpaceNote(candidate)}</span><div class="candidate-tools"><span class="status-pill">${status === "ready_for_review" ? "One-click mapping accepted" : "Mapping review required"}</span><button class="action-secondary clone-author-candidate clone-candidate" type="button">Add cohort/contrast</button></div></div>
+        <div><span class="candidate-name">${esc(candidate.name)}${clone ? " · additional cohort/contrast" : ""}</span><span class="candidate-note">Author DEG candidate · ${esc(workflowLabel(status, "Review status unavailable"))} · ${esc(geneColumn)} / ${esc(lfcColumn)} / ${esc(pColumn)}${identifierSpaceNote(candidate)}</span><div class="candidate-tools"><span class="status-pill">${status === "ready_for_review" ? "One-click mapping accepted" : "Mapping review required"}</span><button class="action-secondary clone-author-candidate clone-candidate" type="button">Add cohort/contrast</button></div></div>
         <div class="candidate-fields">
           <label>Contrast label<input class="contrast-label" value="${esc(contrast)}" placeholder="Enter exact paper/GEO contrast" autocomplete="off"></label>
-          <label>Control biological n<input class="n-ctrl" type="number" min="1" step="1" inputmode="numeric" value="${esc(nCtrl)}" required title="Independent biological control samples in this exact contrast, not total GEO samples"></label>
-          <label>Treatment biological n<input class="n-treat" type="number" min="1" step="1" inputmode="numeric" value="${esc(nTreat)}" required title="Independent biological treatment/case samples in this exact contrast, not total GEO samples"></label>
+          <label>Control biological n<input class="n-ctrl" type="number" min="1" max="10000" step="1" inputmode="numeric" value="${esc(nCtrl)}" required title="Independent biological control samples in this exact contrast (1 to 10,000), not total GEO samples"></label>
+          <label>Treatment biological n<input class="n-treat" type="number" min="1" max="10000" step="1" inputmode="numeric" value="${esc(nTreat)}" required title="Independent biological treatment/case samples in this exact contrast (1 to 10,000), not total GEO samples"></label>
         </div>
         ${seriesSampleNote}
         <details class="candidate-advanced" ${columnsOpen ? "open" : ""}>
@@ -3299,6 +3374,27 @@ INDEX_HTML = """<!doctype html>
       return `<option value="${value}" ${selected === value ? "selected" : ""}>${label}</option>`;
     }
 
+    function measurementFamilyGuidance(inspection) {
+      const warning = String(inspection.measurement_family_warning || "").trim();
+      const note = String(inspection.measurement_family_note || "").trim();
+      const raw = warning || note;
+      if (!raw) return "";
+      // Inspection provenance names machine-facing roles. Preserve the meaning,
+      // but do not make a first-time reviewer decode those enum values.
+      let message = raw;
+      [
+        ["declared_role=normalized_expression_matrix", "its normalized-expression classification"],
+        ["declared_role=estimated_count_matrix", "its estimated-count classification"],
+        ["declared_role=count_matrix", "its raw-count classification"],
+        ["normalized_expression_matrix", "normalized expression matrix"],
+        ["estimated_count_matrix", "estimated count matrix"],
+        ["count_matrix", "raw count matrix"],
+        ["unknown_matrix", "matrix type needing confirmation"]
+      ].forEach(([code, label]) => { message = message.replaceAll(code, label); });
+      const heading = warning ? "Use one column family only:" : "Automatic column-family choice:";
+      return `<span class="candidate-note measurement-family-guidance${warning ? " warning" : ""}" role="note"><strong>${heading}</strong> ${esc(message)}</span>`;
+    }
+
     function fallbackCandidateHtml(study, candidate, activationKey, clone) {
       activationKey = activationKey || candidate.candidate_id;
       const inspection = candidate.inspection || {};
@@ -3350,7 +3446,7 @@ INDEX_HTML = """<!doctype html>
       }).join("");
       return `<div class="candidate-row" data-candidate-id="${esc(candidate.candidate_id)}" data-activation-key="${esc(activationKey)}" data-clone="${clone ? "true" : "false"}" data-accession="${esc(study.accession)}" data-source-unit="${esc(study.source_unit_id || study.accession)}" data-mode="fallback" data-role="${esc(role)}">
         <input class="candidate-enable" type="checkbox" aria-label="Use ${esc(candidate.name)}" ${draft.enabled ? "checked" : ""}>
-        <div><span class="candidate-name">${esc(candidate.name)}${clone ? " · additional contrast" : ""}</span><span class="candidate-note">Labeled fallback · ${esc(role)} · choose biological groups explicitly${identifierSpaceNote(candidate)}</span><div class="candidate-tools"><button class="action-secondary clone-candidate" type="button" data-tip="A shared control against another treatment arm is a second contrast from the same file. Both count as one source unit.">Add another contrast from this matrix</button></div></div>
+        <div><span class="candidate-name">${esc(candidate.name)}${clone ? " · additional contrast" : ""}</span><span class="candidate-note">Labeled fallback · ${esc(workflowLabel(role, "Matrix type needs confirmation"))} · choose biological groups explicitly${identifierSpaceNote(candidate)}</span>${measurementFamilyGuidance(inspection)}<div class="candidate-tools"><button class="action-secondary clone-candidate" type="button" data-tip="A shared control against another treatment arm is a second contrast from the same file. Both count as one source unit.">Add another contrast from this matrix</button></div></div>
         <div class="candidate-fields">
           <label>Contrast label<input class="contrast-label" value="${esc(contrast)}" placeholder="Enter exact paper/GEO contrast" autocomplete="off"></label>
           ${matrixTypeControl}
@@ -3477,7 +3573,7 @@ INDEX_HTML = """<!doctype html>
             + others.map((candidate, offset) => renderCandidate(candidate, offset + 1)).join("") + `</details>`
           : "";
         const rows = preferredNote + primary + alternatives;
-        return `<div class="candidate-study"><h4>${esc([study.accession, study.paper_title || study.title || "Untitled study"].filter(Boolean).join(" · "))}</h4><p>${esc(study.preparation_status || "review required")}</p>${rows || unusableStudyHtml(study)}</div>`;
+        return `<div class="candidate-study"><h4>${esc([study.accession, study.paper_title || study.title || "Untitled study"].filter(Boolean).join(" · "))}</h4><p>${esc(workflowLabel(study.preparation_status))}</p>${rows || unusableStudyHtml(study)}</div>`;
       };
       const html = analyzable.map(renderStudy).join("")
         + (unanalyzable.length
@@ -3946,7 +4042,7 @@ INDEX_HTML = """<!doctype html>
             + "and choose another study."
           : hasFallback
           ? "Complete each exact contrast and direction confirmation; fallback matrices also require scale, biological-replicate attestation, and 2 + 2 sample assignment."
-          : "Enter exact contrasts, mappings, positive whole-number biological group sizes, and all required author-table confirmations.";
+          : "Enter exact contrasts, mappings, whole-number biological group sizes from 1 to 10,000, and all required author-table confirmations.";
       } else {
         $("analysisEligibility").textContent = `${rows.length} candidate${rows.length === 1 ? "" : "s"} from ${units.size} independent ${speciesLabel(activeSpecies)} studies; review complete.`;
       }

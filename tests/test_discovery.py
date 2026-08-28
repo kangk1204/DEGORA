@@ -321,6 +321,240 @@ def test_upstream_inspection_prefers_gene_symbol_over_identifier_and_excludes_co
     assert result["sample_columns"] == ["ctrl_1", "ctrl_2", "treat_1", "treat_2"]
 
 
+def test_upstream_matrix_prefers_tab_gene_header_over_comma_rich_description() -> None:
+    """GEO annotation text must not make commas outrank the real TSV delimiter."""
+
+    description = ", ".join(f"annotation term {index}" for index in range(40))
+    payload = (
+        "GeneID\tgene_sym\tDescription\tm9474\tm9477\tm9478\tm9408\n"
+        f"ENSMUSG00000000001\tGnai3\t{description}\t10\t12\t20\t22\n"
+        f"ENSMUSG00000000003\tPbsn\t{description}\t2\t4\t8\t9\n"
+    ).encode()
+
+    result = inspect_upstream_bytes("GSE328603_RawCount_Matrix_ann.txt", payload, declared_role="count_matrix")
+
+    assert result["status"] == "upstream_matrix_ready_for_contrast"
+    assert result["gene_column"] == "GeneID"
+    assert result["sample_columns"] == ["m9474", "m9477", "m9478", "m9408"]
+
+
+@pytest.mark.parametrize(
+    ("separator", "description"),
+    [(",", "alpha;beta;gamma"), (";", "alpha,beta,gamma")],
+)
+def test_upstream_matrix_keeps_csv_and_semicolon_delimiters(separator: str, description: str) -> None:
+    rows = [
+        separator.join(["gene", "description", "ctrl_1", "ctrl_2", "treat_1", "treat_2"]),
+        separator.join(["A", description, "10", "12", "20", "22"]),
+        separator.join(["B", description, "2", "4", "8", "9"]),
+    ]
+
+    result = inspect_upstream_bytes("matrix.txt", "\n".join(rows).encode(), declared_role="count_matrix")
+
+    assert result["status"] == "upstream_matrix_ready_for_contrast"
+    assert result["gene_column"] == "gene"
+    assert result["sample_columns"] == ["ctrl_1", "ctrl_2", "treat_1", "treat_2"]
+
+
+def _paired_count_fpkm_matrix() -> bytes:
+    columns = [
+        "ctrl_1_FPKM",
+        "ctrl_2_FPKM",
+        "treat_1_FPKM",
+        "treat_2_FPKM",
+        "ctrl_1_count",
+        "ctrl_2_count",
+        "treat_1_count",
+        "treat_2_count",
+    ]
+    return (
+        "gene\t" + "\t".join(columns) + "\n"
+        "A\t1.1\t1.2\t2.1\t2.2\t10\t12\t20\t22\n"
+        "B\t0.2\t0.4\t0.8\t0.9\t2\t4\t8\t9\n"
+    ).encode()
+
+
+def test_raw_count_filename_keeps_only_count_columns_from_paired_measurements() -> None:
+    result = inspect_upstream_bytes(
+        "GSE338031_Raw_gene_counts_matrix.txt",
+        _paired_count_fpkm_matrix(),
+        declared_role="unknown_matrix",
+    )
+
+    assert result["sample_columns"] == ["ctrl_1_count", "ctrl_2_count", "treat_1_count", "treat_2_count"]
+    assert result["whole_number_share"] == 1.0
+    assert result["sample_column_families"]["selected_family"] == "count"
+    assert "offered once" in result["measurement_family_note"]
+
+
+def test_normalized_role_keeps_only_normalized_columns_from_paired_measurements() -> None:
+    result = inspect_upstream_bytes(
+        "GSE338031_expression_matrix.txt",
+        _paired_count_fpkm_matrix(),
+        declared_role="normalized_expression_matrix",
+    )
+
+    assert result["sample_columns"] == ["ctrl_1_FPKM", "ctrl_2_FPKM", "treat_1_FPKM", "treat_2_FPKM"]
+    assert result["whole_number_share"] == 0.0
+    assert result["sample_column_families"]["selected_family"] == "normalized"
+
+
+def test_ambiguous_paired_measurements_keep_columns_and_record_warning() -> None:
+    result = inspect_upstream_bytes(
+        "GSE338031_matrix.txt",
+        _paired_count_fpkm_matrix(),
+        declared_role="unknown_matrix",
+    )
+
+    assert len(result["sample_columns"]) == 8
+    assert result["sample_column_families"]["selected_family"] == ""
+    assert result["sample_column_families"]["paired_base_samples"] == ["ctrl_1", "ctrl_2", "treat_1", "treat_2"]
+    assert "independent biological replicates" in result["measurement_family_warning"]
+
+
+def test_explicit_family_and_unclassified_columns_remain_separate_pools() -> None:
+    payload = (
+        b"gene\tc1_FPKM\tc2_FPKM\tt1_FPKM\tt2_FPKM\tx1\tx2\n"
+        b"A\t1.0\t1.2\t2.0\t2.2\t100\t120\n"
+        b"B\t0.2\t0.4\t0.8\t0.9\t110\t130\n"
+    )
+
+    result = inspect_upstream_bytes(
+        "mixed_matrix.txt",
+        payload,
+        declared_role="normalized_expression_matrix",
+    )
+
+    assert result["status"] == "upstream_matrix_ready_for_contrast"
+    families = result["sample_column_families"]
+    assert families["normalized"] == ["c1_FPKM", "c2_FPKM", "t1_FPKM", "t2_FPKM"]
+    assert families["unclassified"] == ["x1", "x2"]
+    assert families["compatible_pools"] == {"normalized:fpkm": 4, "unknown": 2}
+    assert families["requires_column_selection"] is True
+    assert "unclassified sample column" in result["measurement_family_warning"]
+
+
+def test_unpaired_measurement_families_without_a_four_sample_pool_are_not_ready() -> None:
+    payload = (
+        b"gene\tc1_count\tc2_count\tt1_FPKM\tt2_FPKM\n"
+        b"A\t10\t12\t2.1\t2.2\n"
+        b"B\t2\t4\t0.8\t0.9\n"
+    )
+
+    result = inspect_upstream_bytes("ambiguous_matrix.txt", payload, declared_role="unknown_matrix")
+
+    assert result["status"] == "not_upstream_matrix"
+    assert result["sample_columns"] == ["c1_count", "c2_count", "t1_FPKM", "t2_FPKM"]
+    assert result["sample_column_families"]["families_present"] == ["count", "normalized"]
+    assert result["sample_column_families"]["paired_base_samples"] == []
+    assert result["sample_column_families"]["selected_family"] == ""
+    assert result["sample_column_families"]["largest_compatible_pool"] == 2
+    assert "four compatible sample columns" in result["reason"]
+    assert "both count and normalized" in result["measurement_family_warning"]
+
+
+def test_decisive_raw_count_filename_filters_unpaired_measurement_families() -> None:
+    payload = (
+        b"gene\tc1_count\tc2_count\tc3_count\tc4_count\tn1_FPKM\tn2_FPKM\tn3_FPKM\tn4_FPKM\n"
+        b"A\t10\t12\t20\t22\t1.0\t1.2\t2.0\t2.2\n"
+        b"B\t2\t4\t8\t9\t0.2\t0.4\t0.8\t0.9\n"
+    )
+
+    result = inspect_upstream_bytes(
+        "study_Raw_counts_matrix.txt",
+        payload,
+        declared_role="unknown_matrix",
+    )
+
+    assert result["status"] == "upstream_matrix_ready_for_contrast"
+    assert result["sample_columns"] == ["c1_count", "c2_count", "c3_count", "c4_count"]
+    assert result["sample_column_families"]["paired_base_samples"] == []
+    assert result["sample_column_families"]["selected_family"] == "count"
+    assert result["sample_column_families"]["requires_column_selection"] is False
+    assert "measurement_family_warning" not in result
+
+
+@pytest.mark.parametrize(
+    ("columns", "family"),
+    [
+        (
+            [
+                "c1_FPKM", "c1_TPM", "c2_FPKM", "c2_TPM",
+                "t1_FPKM", "t1_TPM", "t2_FPKM", "t2_TPM",
+            ],
+            "normalized",
+        ),
+        (
+            [
+                "c1_raw_count", "c1_count", "c2_raw_count", "c2_count",
+                "t1_raw_count", "t1_count", "t2_raw_count", "t2_count",
+            ],
+            "count",
+        ),
+    ],
+)
+def test_same_family_subtypes_keep_columns_but_warn_about_duplicate_bases(
+    columns: list[str], family: str
+) -> None:
+    payload = (
+        "gene\t" + "\t".join(columns) + "\n"
+        "A\t" + "\t".join(str(index + 1) for index in range(len(columns))) + "\n"
+        "B\t" + "\t".join(str(index + 2) for index in range(len(columns))) + "\n"
+    ).encode()
+
+    result = inspect_upstream_bytes("study_matrix.txt", payload, declared_role="unknown_matrix")
+
+    assert result["sample_columns"] == columns
+    assert result["sample_column_families"]["families_present"] == [family]
+    assert result["sample_column_families"]["selected_family"] == ""
+    duplicates = result["sample_column_families"]["duplicate_base_samples"][family]
+    assert set(duplicates) == {"c1", "c2", "t1", "t2"}
+    assert "multiple columns" in result["measurement_family_warning"]
+
+
+@pytest.mark.parametrize("declared_role", ["unknown_matrix", "normalized_expression_matrix"])
+def test_normalized_subtypes_on_distinct_bases_still_require_one_scale(declared_role: str) -> None:
+    payload = (
+        b"gene\tc1_FPKM\tc2_FPKM\tt1_TPM\tt2_TPM\n"
+        b"A\t1.0\t1.2\t2.0\t2.2\n"
+        b"B\t0.2\t0.4\t0.8\t0.9\n"
+    )
+
+    result = inspect_upstream_bytes("study_matrix.txt", payload, declared_role=declared_role)
+
+    assert result["status"] == "not_upstream_matrix"
+    assert result["sample_column_families"]["families_present"] == ["normalized"]
+    assert result["sample_column_families"]["subtypes_present"]["normalized"] == ["fpkm", "tpm"]
+    assert result["sample_column_families"]["requires_column_selection"] is True
+    assert result["sample_column_families"]["largest_compatible_pool"] == 2
+    assert "four compatible sample columns" in result["reason"]
+    assert "multiple measurement subtypes" in result["measurement_family_warning"]
+
+
+@pytest.mark.parametrize(
+    ("columns", "expected_pool"),
+    [
+        (["c1_count", "c2_count", "t1_count", "t2_count", "n1_FPKM", "n2_FPKM"], "count"),
+        (["c1_FPKM", "c2_FPKM", "t1_FPKM", "t2_FPKM", "n1_TPM", "n2_TPM"], "normalized:fpkm"),
+    ],
+)
+def test_ambiguous_measurements_are_ready_when_one_compatible_pool_has_four_distinct_bases(
+    columns: list[str], expected_pool: str
+) -> None:
+    payload = (
+        "gene\t" + "\t".join(columns) + "\n"
+        "A\t" + "\t".join(str(index + 1) for index in range(len(columns))) + "\n"
+        "B\t" + "\t".join(str(index + 2) for index in range(len(columns))) + "\n"
+    ).encode()
+
+    result = inspect_upstream_bytes("study_matrix.txt", payload, declared_role="unknown_matrix")
+
+    assert result["status"] == "upstream_matrix_ready_for_contrast"
+    assert result["sample_column_families"]["compatible_pools"][expected_pool] == 4
+    assert result["sample_column_families"]["largest_compatible_pool"] == 4
+    assert "measurement_family_warning" in result
+
+
 def test_upstream_inspection_recognises_ensembl_gene_id_version_header() -> None:
     payload = (
         b"ensembl_gene_id_version\tctrl_1\tctrl_2\ttreat_1\ttreat_2\n"

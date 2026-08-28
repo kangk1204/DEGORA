@@ -958,6 +958,49 @@ def default_study_id(path: Path, taken: Iterable[str]) -> str:
     return f"{stem}_{suffix}"
 
 
+def default_source_unit_id(path: Path) -> str:
+    """Return a shared public-study accession when one is present in *path*.
+
+    A contrast id is deliberately unique per table, but a source unit identifies
+    the independent paper or dataset behind one or more contrasts. Reusing a
+    recognised accession keeps files such as ``GSE123_4h.csv`` and
+    ``GSE123_12h.csv`` from being counted as two independent studies when a
+    beginner accepts the suggested value.
+    """
+
+    accession_patterns = (
+        r"(?<![A-Za-z0-9])(GSE\d+)(?!\d)",
+        r"(?<![A-Za-z0-9])(GDS\d+)(?!\d)",
+        r"(?<![A-Za-z0-9])(E[-_]?(?:MTAB|GEOD)[-_]?\d+)(?!\d)",
+        r"(?<![A-Za-z0-9])((?:PRJNA|PRJEB|PRJDB|SRP|ERP|DRP)\d+)(?!\d)",
+        r"(?<![A-Za-z0-9])((?:PMID|PMC)[-_: ]?\d+)(?!\d)",
+    )
+    # Prefer the file name, then nearby parent folders. A download folder is
+    # often named for the accession even when individual files are not.
+    candidates = (path.name, *reversed(path.parts[-4:-1]))
+    for candidate in candidates:
+        for pattern in accession_patterns:
+            match = re.search(pattern, candidate, flags=re.IGNORECASE)
+            if match:
+                raw_accession = match.group(1).upper()
+                compact = re.sub(r"[-_: ]+", "", raw_accession)
+                arrayexpress = re.fullmatch(r"E(MTAB|GEOD)(\d+)", compact)
+                publication = re.fullmatch(r"(PMID|PMC)(\d+)", compact)
+                if arrayexpress:
+                    normalized = f"E-{arrayexpress.group(1)}-{arrayexpress.group(2)}"
+                elif publication:
+                    normalized = f"{publication.group(1)}-{publication.group(2)}"
+                else:
+                    normalized = compact
+                # ArrayExpress mirrors GEO Series as E-GEOD-N. Treating that
+                # alias and GSE<N> as independent sources lets the same public
+                # dataset satisfy min_studies=2 merely because it was downloaded
+                # from two repositories.
+                geo_alias = re.fullmatch(r"E-GEOD-(\d+)", normalized)
+                return f"GSE{geo_alias.group(1)}" if geo_alias else normalized
+    return ""
+
+
 Ask = Callable[[str, str], str]
 
 
@@ -1103,6 +1146,11 @@ def run_init(
     active_spaces: dict[str, list[str]] = {}
     skipped: list[dict[str, str]] = []
     taken: list[str] = []
+    source_unit_by_accession: dict[str, str] = {}
+    n_candidate_tables = sum(
+        inference.looks_like_a_deg_table and not _has_no_effect_size_column(inference)
+        for _, inference in inferences
+    )
 
     species = ask("Which species are these tables from? (human / mouse / other)", "human").strip()
 
@@ -1198,12 +1246,40 @@ def run_init(
 
         study_id = default_study_id(path, taken)
         taken.append(study_id)
+        condition = ask("  What was compared? (e.g. hypoxia vs normoxia)", "")
+        accession_default = default_source_unit_id(path)
+        if accession_default and accession_default in source_unit_by_accession:
+            # One public accession is one provenance source even when it contains
+            # several contrasts, cohorts, time points or processed tables. Asking
+            # again let a beginner split GSE123_4h and GSE123_12h into two source
+            # units and falsely satisfy min_studies=2. Reuse the first confirmed
+            # label; separate accessions may still be merged under one PMID/paper.
+            source_unit_id = source_unit_by_accession[accession_default]
+            echo(
+                f"  Detected {accession_default} again; this related table is grouped with "
+                f"source unit {source_unit_id!r}."
+            )
+        else:
+            source_unit_default = accession_default or (study_id if n_candidate_tables == 1 else "")
+            source_unit_id = _ask_source_unit_id(
+                ask,
+                echo,
+                source_unit_default,
+                required=not source_unit_default,
+            )
+        if source_unit_id is None:
+            echo("  -> skipped; the independent paper or dataset was not identified.")
+            echo("")
+            skipped.append({"path": path.name, "reason": "source unit not confirmed"})
+            continue
+        if accession_default:
+            source_unit_by_accession[accession_default] = source_unit_id
         answers = ContrastAnswers(
             positive_means_up_in_treated=direction,
             effect_is_log2=effect_is_log2,
-            condition=ask("  What was compared? (e.g. hypoxia vs normoxia)", ""),
+            condition=condition,
             species=species,
-            source_unit_id=_ask_source_unit_id(ask, echo, study_id),
+            source_unit_id=source_unit_id,
             n_ctrl=_ask_sample_count(ask, echo, "  How many control samples? (blank if unknown)"),
             n_treat=_ask_sample_count(ask, echo, "  How many treated samples? (blank if unknown)"),
             overrides=overrides,
@@ -1324,15 +1400,32 @@ def _effect_scale_evidence(path: Path, inference: SourceInference, column: str) 
     return shape
 
 
-def _ask_source_unit_id(ask: Ask, echo: Callable[[str], None], default: str) -> str:
-    """Ask for the source unit, refusing the one character that breaks identifier lists."""
+def _ask_source_unit_id(
+    ask: Ask,
+    echo: Callable[[str], None],
+    default: str,
+    *,
+    required: bool = False,
+) -> str | None:
+    """Ask for the independent source, without inventing one for each table."""
 
-    for _attempt in range(3):
+    for attempt in range(1, 4):
         answer = ask("  Which paper or dataset is this from? (same answer groups related tables)", default).strip()
-        if ";" not in answer:
-            return answer or default
-        echo("  A source unit id cannot contain ';' (it separates identifier lists in the results). Try again.")
-    return default
+        value = answer or default
+        if value and ";" not in value:
+            return value
+        if ";" in value:
+            echo("  A source unit id cannot contain ';' (it separates identifier lists in the results). Try again.")
+            continue
+        if required:
+            remaining = 3 - attempt
+            suffix = f" ({remaining} tries left)" if remaining else ""
+            echo(
+                "  This is required when several tables are present: use the same short label for "
+                "tables from one paper or dataset, and different labels only for independent sources"
+                f"{suffix}."
+            )
+    return None if required else default
 
 
 def _ask_sample_count(ask: Ask, echo: Callable[[str], None], question: str) -> str:

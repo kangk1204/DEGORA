@@ -773,10 +773,23 @@ STRONG_RE = re.compile(
     r"gene[_\-.]?exp\.diff|toptable|(?:^|[_\-.])dge(?:[_\-.]|$)|(?:^|[_\-.])dea(?:[_\-.]|$)",
     re.I,
 )
-UPSTREAM_COUNT_RE = re.compile(r"raw[_\-.]?counts?|count[_\-.]?matrix|counts?[_\-.]?(?:table|data)|_counts?\.", re.I)
-UPSTREAM_EXPRESSION_RE = re.compile(
-    r"series[_-]?matrix|normalized[_\-.]?(?:expression|intensity)|expression[_\-.]?matrix|rlog|vst|fpkm|rpkm|tpm",
+UPSTREAM_COUNT_RE = re.compile(
+    r"raw[_\-.]?counts?|gene[_\-.]?counts?[_\-.]?mat(?:rix)?|"
+    r"count[_\-.]?matrix|counts?[_\-.]?(?:table|data)|_counts?\.|"
+    r"(?:^|[_\-.])counts?(?:[_\-.]|$)",
     re.I,
+)
+UPSTREAM_EXPRESSION_RE = re.compile(
+    r"series[_-]?matrix|expression[_\-.]?matrix|"
+    r"(?:^|[_\-.])normal(?:ized|ised)(?:[_\-.]|$)|"
+    r"(?:^|[_\-.])(?:log(?:2)?[_\-.]?cpm|counts?[_\-.]?per[_\-.]?million|cpm|rlog|vst|"
+    r"fpkm(?:[_\-.]?uq)?|rpkm|tpm|tmm|voom)"
+    r"(?:[_\-.]|$)",
+    re.I,
+)
+NEGATED_NORMALIZATION_RE = re.compile(
+    r"(?:^|[_\-.])(?:non|not|un)[_\-.]*normal(?:ized|ised)(?=[_\-.]|$)",
+    re.IGNORECASE,
 )
 WEAK_RE = re.compile(r"processed|compare|table[_\-.]?s?\d*|results?|supplement|analysis", re.I)
 SUPPORTED_TEXT_RE = re.compile(r"\.(csv|tsv|txt)(\.gz)?$", re.I)
@@ -804,7 +817,25 @@ def classify_filename(name_or_url: str) -> dict[str, Any]:
             "reason": "sequence, archive, sparse-matrix, or metadata file",
             "inspectable": False,
         }
-    if UPSTREAM_COUNT_RE.search(lower):
+    count_hint = bool(UPSTREAM_COUNT_RE.search(lower))
+    # "non/not/un-normalized counts" says the opposite of normalized. Remove
+    # only that negated token before looking for independent scale signals such
+    # as FPKM or CPM elsewhere in the same filename.
+    expression_hint_text = NEGATED_NORMALIZATION_RE.sub("_", lower)
+    expression_hint = bool(UPSTREAM_EXPRESSION_RE.search(expression_hint_text))
+    explicit_raw_count = bool(re.search(r"(?:^|[_\-.])raw[_\-.]?counts?(?:[_\-.]|$)", lower, re.I))
+    # An explicit FPKM/TPM/normalised token identifies the value scale even if
+    # the rest of the filename also says "gene_counts_matrix". Only a clear raw
+    # count token takes precedence over such an expression-scale hint.
+    if expression_hint and not explicit_raw_count:
+        return {
+            "name": name,
+            "tier": "upstream",
+            "role": "normalized_expression_matrix",
+            "reason": "filename indicates an expression matrix; scale, annotation, and sample groups are required",
+            "inspectable": supported,
+        }
+    if count_hint:
         return {
             "name": name,
             "tier": "upstream",
@@ -812,7 +843,7 @@ def classify_filename(name_or_url: str) -> dict[str, Any]:
             "reason": "filename indicates a public count matrix; contrast and sample groups are required",
             "inspectable": supported,
         }
-    if UPSTREAM_EXPRESSION_RE.search(lower):
+    if expression_hint:
         return {
             "name": name,
             "tier": "upstream",
@@ -855,10 +886,22 @@ def classify_filename(name_or_url: str) -> dict[str, Any]:
 
 GENE_EXACT_RE = re.compile(
     r"^(gene|gene[_. ]?id|gene[_. ]?name|gene[_. ]?symbol|symbol|hgnc.*|hugo.*|"
+    r"ensembl[_. ]?gene(?:[_. ]?gene)?[_. ]?symbol|"
     r"ensembl(?:[_. ]?(?:gene|id|version))*|geneid|entrez(?:[_. ]?(?:gene|id))*|"
-    r"probe(?:[_. ]?id)?|transcript(?:[_. ]?id)?|id_ref)$",
+    r"probe(?:[_. ]?id)?|transcript(?:[_. ]?id)?|row[_. ]?name(?:[_. ]?\d+)?|id_ref)$",
     re.I,
 )
+ENSEMBL_SYMBOL_COMPOSITE_HEADER_RE = re.compile(
+    r"^ensembl[_. ]?gene(?:[_. ]?gene)?[_. ]?symbol$",
+    re.I,
+)
+ENSEMBL_SYMBOL_COMPOSITE_VALUE_RE = re.compile(
+    r"^(?P<ensembl>ENS[A-Z]*G\d+(?:\.\d+)?)_"
+    r"(?P<symbol>(?=[A-Za-z0-9_.@-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_.@-]*)$"
+)
+ENSEMBL_GENE_ID_RE = re.compile(r"^ENS[A-Z]*G\d+(?:\.\d+)?$")
+ENSEMBL_SYMBOL_SUFFIX_TRANSFORM = "ensembl_gene_symbol_suffix_v1"
+ENSEMBL_PREFIX_TRANSFORM = "ensembl_gene_prefix_v1"
 # row_name is DEGORA's own name for the identifier column it recovers from an R
 # write.csv export, where the gene names arrive as an unnamed index. Leaving it
 # out meant DEGORA could not recognise a column it had just created itself.
@@ -1053,6 +1096,67 @@ def _name_row_label_column(header: list[Any], following: list[list[Any]]) -> lis
     return repaired
 
 
+def _name_upstream_row_label_column(header: list[Any], following: list[list[Any]]) -> list[Any]:
+    """Recover R row names only when the remaining columns form a numeric matrix."""
+
+    repaired = _name_row_label_column(header, following)
+    if any(is_gene_identifier_header(value) for value in repaired):
+        return repaired
+    if len(repaired) < 4 or len(following) < 2:
+        return repaired
+
+    # write.table(..., row.names=TRUE) can omit the leading header cell entirely,
+    # so data rows are exactly one field wider than the header. Require that shape
+    # consistently, non-numeric labels in the added field, and at least four
+    # numeric sample columns. Numeric row numbers remain deliberately ambiguous.
+    one_wider = [row for row in following if len(row) == len(repaired) + 1]
+    if len(one_wider) < max(2, math.ceil(len(following) * 0.8)):
+        return repaired
+    labels = [str(row[0]).strip() for row in one_wider if row and str(row[0]).strip()]
+    if len(labels) < len(one_wider) * 0.9 or any(_is_number(label) for label in labels):
+        return repaired
+    numeric_sample_columns = sum(
+        _numeric_fraction(row[position] for row in one_wider) >= 0.7
+        for position in range(1, len(repaired) + 1)
+    )
+    recognizable_sample_headers = sum(_looks_like_sample_column(value) for value in repaired)
+    if numeric_sample_columns < 4 or recognizable_sample_headers < 4:
+        return repaired
+    return ["row_name", *repaired]
+
+
+def _composite_gene_value_transform(column: str, values: list[Any]) -> dict[str, Any] | None:
+    """Choose one uniform identifier space for a validated composite column."""
+
+    if not ENSEMBL_SYMBOL_COMPOSITE_HEADER_RE.fullmatch(str(column).strip()):
+        return None
+    labels = [str(value).strip() for value in values if value is not None and str(value).strip()]
+    matches = [value for value in labels if ENSEMBL_SYMBOL_COMPOSITE_VALUE_RE.fullmatch(value)]
+    fraction = len(matches) / len(labels) if labels else 0.0
+    if len(labels) < 2 or fraction < 0.9:
+        return None
+    from .harmonize import canonical_gene_symbol
+
+    symbol_suffixes: list[str] = []
+    for value in matches:
+        match = ENSEMBL_SYMBOL_COMPOSITE_VALUE_RE.fullmatch(value)
+        if not match or ENSEMBL_GENE_ID_RE.fullmatch(match.group("symbol")):
+            continue
+        canonical = canonical_gene_symbol(match.group("symbol"))
+        if canonical:
+            symbol_suffixes.append(canonical)
+    symbol_fraction = len(symbol_suffixes) / len(labels)
+    use_symbol_suffix = symbol_fraction >= 0.9
+    return {
+        "name": ENSEMBL_SYMBOL_SUFFIX_TRANSFORM if use_symbol_suffix else ENSEMBL_PREFIX_TRANSFORM,
+        "source_header": str(column).strip(),
+        "match_fraction": round(fraction, 3),
+        "sample_symbol_suffix_fraction": round(symbol_fraction, 3),
+        "output_identifier_space": "gene symbol" if use_symbol_suffix else "Ensembl gene ID",
+        "sample_rows": len(labels),
+    }
+
+
 def _is_number(text: str) -> bool:
     try:
         float(text)
@@ -1192,6 +1296,12 @@ def _inspect_rows(rows: list[list[Any]], *, sheet: str = "") -> dict[str, Any]:
                 return []
             return [values[position] for values in following if position < len(values)]
 
+        def all_column_values(name: str) -> list[Any]:
+            position = name_to_index.get(name)
+            if position is None:
+                return []
+            return [values[position] for values in rows[index + 1 :] if position < len(values)]
+
         lfc_fraction = _numeric_fraction(column_values(mapping["lfc_column"])) if mapping["lfc_column"] else 0.0
         p_fraction = _numeric_fraction(column_values(mapping["p_column"]), unit_interval=True) if mapping["p_column"] else 0.0
         gene_fraction = (
@@ -1199,9 +1309,15 @@ def _inspect_rows(rows: list[list[Any]], *, sheet: str = "") -> dict[str, Any]:
             if mapping["gene_column"]
             else 0.0
         )
-        gene_space = (
-            identifier_space(column_values(mapping["gene_column"])) if mapping["gene_column"] else ""
+        gene_column = str(mapping["gene_column"] or "")
+        gene_space = identifier_space(column_values(gene_column)) if gene_column else ""
+        composite_header = bool(ENSEMBL_SYMBOL_COMPOSITE_HEADER_RE.fullmatch(gene_column))
+        gene_value_transform = _composite_gene_value_transform(
+            gene_column,
+            all_column_values(gene_column),
         )
+        if gene_value_transform:
+            gene_space = str(gene_value_transform["output_identifier_space"])
         header.update(
             {
                 "header_row": index + 1,
@@ -1218,8 +1334,11 @@ def _inspect_rows(rows: list[list[Any]], *, sheet: str = "") -> dict[str, Any]:
                 },
             }
         )
+        if gene_value_transform:
+            header["gene_value_transform"] = gene_value_transform
         if (
             header["status"] == "candidate_header"
+            and not (composite_header and not gene_value_transform)
             and len(following) >= 2
             and gene_fraction >= 0.5
             and lfc_fraction >= 0.5
@@ -1228,6 +1347,11 @@ def _inspect_rows(rows: list[list[Any]], *, sheet: str = "") -> dict[str, Any]:
             header["status"] = "ready_for_review"
             header["reason"] = "header and sampled values match the DEGORA gene/log2FC/p-value contract"
             score += 3
+        if composite_header and not gene_value_transform:
+            header["status"] = "not_deg_table"
+            header["reason"] = (
+                "composite Ensembl/gene-symbol identifiers did not pass a validated uniform identifier transform"
+            )
         best = header
         best_score = score
     return best or classify_header([])
@@ -1262,19 +1386,68 @@ def _validate_full_gzip(payload: bytes) -> None:
 
 
 def _delimited_rows(text: str) -> list[list[str]]:
-    lines = text.splitlines()[:80]
-    candidates: list[tuple[int, list[list[str]]]] = []
+    lines = text.splitlines()
+    preview_lines = lines[:80]
+    candidates: list[tuple[tuple[int, int, int, int, int, int], str, list[list[str]]]] = []
     for separator in ("\t", ",", ";"):
         try:
-            parsed = list(csv.reader(lines, delimiter=separator))
+            parsed = list(csv.reader(preview_lines, delimiter=separator))
         except csv.Error:
             # A single field past csv's 128 KiB limit is not a DEG table, and this
             # runs on files fetched from public repositories - so it has to read as
             # "no usable table here", not as a traceback out of a whole preparation.
             continue
-        width = max((len(row) for row in parsed[:10]), default=0)
-        candidates.append((width, parsed))
-    return max(candidates, key=lambda item: item[0])[1] if candidates else []
+        candidates.append((_author_delimited_parse_score(parsed), separator, parsed))
+    if not candidates:
+        return []
+    _, separator, preview = max(candidates, key=lambda item: item[0])
+    try:
+        return list(csv.reader(lines, delimiter=separator))
+    except csv.Error:
+        return preview
+
+
+def _author_delimited_parse_score(parsed: list[list[Any]]) -> tuple[int, int, int, int, int, int]:
+    """Prefer a real author DEG header over a wider annotation-field parse."""
+
+    width = max((len(row) for row in parsed[:10]), default=0)
+    fallback = (0, 0, 0, 0, 0, width)
+    best = fallback
+    for index, raw_row in enumerate(parsed[:12]):
+        following = parsed[index + 1 : index + 21]
+        row = _name_row_label_column(raw_row, following)
+        header = classify_header(row)
+        mapping = header["mapping"]
+        significance_column = mapping["p_column"] or mapping["padj_column"]
+        selected = [mapping["gene_column"], mapping["lfc_column"], significance_column]
+        if not all(selected) or len(set(selected)) != 3:
+            continue
+        columns = [str(value).strip() for value in row]
+        positions = {name: columns.index(name) for name in selected if name in columns}
+        if len(positions) != 3:
+            continue
+
+        def values(name: str) -> list[Any]:
+            position = positions[name]
+            return [entry[position] for entry in following if position < len(entry)]
+
+        gene_values = values(mapping["gene_column"])
+        gene_fraction = sum(bool(str(value).strip()) for value in gene_values) / max(len(following), 1)
+        lfc_fraction = _numeric_fraction(values(mapping["lfc_column"]))
+        significance_fraction = _numeric_fraction(values(significance_column), unit_interval=True)
+        minimum_fraction = min(gene_fraction, lfc_fraction, significance_fraction)
+        validated = len(following) >= 2 and minimum_fraction >= 0.5
+        score = (
+            int(validated),
+            1,
+            int(bool(mapping["p_column"])),
+            round(minimum_fraction * 1000),
+            len(row),
+            width,
+        )
+        if score > best:
+            best = score
+    return best
 
 
 def _validate_xlsx_archive(payload: bytes) -> None:
@@ -1393,25 +1566,309 @@ def _matrix_rows_from_text(text: str) -> list[list[str]]:
         if line.strip().lower() == "!series_matrix_table_begin":
             lines = lines[index + 1 :]
             break
-    data_lines = [line for line in lines if line.strip() and not line.startswith("!")][:40]
-    candidates: list[tuple[int, list[list[str]]]] = []
-    for separator in ("\t", ",", ";"):
+    data_lines = [line for line in lines if line.strip() and not line.startswith("!")]
+    preview_lines = data_lines[:40]
+    candidates: list[tuple[tuple[int, int, int], str, list[list[str]]]] = []
+    for separator in ("\t", ",", ";", " "):
         try:
-            parsed = list(csv.reader(data_lines, delimiter=separator))
+            parsed = list(csv.reader(preview_lines, delimiter=separator, skipinitialspace=separator == " "))
         except csv.Error:
             # Same guard as _delimited_rows: a field past csv's 128 KiB limit in
             # a supplementary file is "no usable table here", not a traceback
             # that ends the preparation of every other selected study.
             continue
-        width = max((len(row) for row in parsed[:10]), default=0)
-        candidates.append((width, parsed))
-    return max(candidates, key=lambda item: item[0])[1] if candidates else []
+        widths = [len(row) for row in parsed[:10]]
+        width = max(widths, default=0)
+        # A free-text annotation field can contain dozens of commas. Choosing
+        # only the widest parse then mistakes a valid tab-separated matrix for
+        # comma-separated data even though its real header contains the gene
+        # column. Prefer the delimiter that yields a recognizable matrix header;
+        # retain the old widest-parse fallback for files whose gene header is
+        # not one of DEGORA's supported identifiers.
+        gene_header_width = 0
+        for index, row in enumerate(parsed[:12]):
+            repaired = _name_upstream_row_label_column(row, parsed[index + 1 : index + 21])
+            if any(is_gene_identifier_header(value) for value in repaired):
+                gene_header_width = max(gene_header_width, len(repaired))
+        candidates.append(((int(gene_header_width > 0), gene_header_width, width), separator, parsed))
+    if not candidates:
+        return []
+    _, separator, preview = max(candidates, key=lambda item: item[0])
+    try:
+        return list(csv.reader(data_lines, delimiter=separator, skipinitialspace=separator == " "))
+    except csv.Error:
+        return preview
 
 
-def _inspect_upstream_rows(rows: list[list[Any]], *, declared_role: str, sheet: str = "") -> dict[str, Any]:
+MEASUREMENT_FAMILY_SUFFIX_RE = re.compile(
+    r"^(?P<base>.+?)[_. -]+(?P<suffix>"
+    r"raw[_. -]?counts?|counts?[_. -]?per[_. -]?million|"
+    r"log(?:2)?[_. -]?cpm|fpkm(?:[_. -]?uq)?|counts?|tpm|rpkm|cpm|tmm|voom|vst|rlog"
+    r")$",
+    re.IGNORECASE,
+)
+EXPLICIT_RAW_COUNT_SUFFIX_RE = re.compile(
+    r"^.+?[_. -]+raw[_. -]?counts?$",
+    re.IGNORECASE,
+)
+
+
+def _measurement_column_parts(column: str) -> tuple[str, str, str] | None:
+    """Return the explicit measurement family, biological base and scale."""
+
+    match = MEASUREMENT_FAMILY_SUFFIX_RE.match(column)
+    if not match:
+        return None
+    suffix = re.sub(r"[_. -]+", "", match.group("suffix").lower())
+    family = "count" if suffix in {"count", "counts", "rawcount", "rawcounts"} else "normalized"
+    subtype_aliases = {
+        "countspermillion": "cpm",
+        "countpermillion": "cpm",
+        "log2cpm": "logcpm",
+        "fpkmuq": "fpkm_uq",
+    }
+    subtype = "count" if family == "count" else subtype_aliases.get(suffix, suffix)
+    return family, match.group("base").strip(), subtype
+
+
+def _is_explicit_raw_count_column(column: str) -> bool:
+    return bool(EXPLICIT_RAW_COUNT_SUFFIX_RE.fullmatch(column))
+
+
+def _explicit_content_measurement_role(sample_columns: list[str]) -> str:
+    """Resolve a misleading filename only from an unambiguous column family.
+
+    A filename such as ``gene_counts_matrix.csv`` can still contain only FPKM
+    columns. Conversely, an explicit ``*_raw_count`` suffix is safe evidence
+    that a file called normalized contains raw counts. Bare ``*_count`` remains
+    reviewable under a declared normalized role because size-factor-normalized
+    count matrices commonly retain that suffix.
+    """
+
+    parts = [_measurement_column_parts(column) for column in sample_columns]
+    if not parts or any(part is None for part in parts):
+        return ""
+    resolved_parts = [part for part in parts if part is not None]
+    families = {family for family, _, _ in resolved_parts}
+    if families == {"normalized"}:
+        return "normalized_expression_matrix"
+    if families != {"count"}:
+        return ""
+    if all(_is_explicit_raw_count_column(column) for column in sample_columns):
+        return "count_matrix"
+    return ""
+
+
+def _compatible_measurement_pools(sample_columns: list[str]) -> dict[str, int]:
+    """Count distinct bases that may legally form one four-sample contrast.
+
+    Count columns share one scale. Normalized suffixes such as FPKM and TPM do
+    not. Columns with no explicit suffix remain one manual-review pool so the
+    ordinary ``ctrl_1``/``treat_1`` matrix workflow keeps working.
+    """
+
+    pools: dict[str, set[str]] = {}
+    for column in sample_columns:
+        parts = _measurement_column_parts(column)
+        if parts is None:
+            pool, base = "unknown", column.strip()
+        else:
+            family, base, subtype = parts
+            pool = "count" if family == "count" else f"normalized:{subtype}"
+        pools.setdefault(pool, set()).add(base.casefold())
+    return {pool: len(bases) for pool, bases in sorted(pools.items())}
+
+
+def _measurement_family_columns(
+    sample_columns: list[str],
+    *,
+    declared_role: str,
+    source_name: str,
+) -> tuple[list[str], dict[str, Any], str]:
+    """Keep one measurement per sample when a file declares its value family.
+
+    Some GEO tables put ``sample_count`` and ``sample_FPKM`` side by side. They
+    are two representations of one biological sample, not two replicates. A
+    clear role or filename can select the matching family safely; an ambiguous
+    file keeps every column and records why a reviewer must choose manually.
+    """
+
+    family_by_column: dict[str, tuple[str, str, str]] = {}
+    display_base: dict[str, str] = {}
+    bases_by_family: dict[str, set[str]] = {"count": set(), "normalized": set()}
+    columns_by_family: dict[str, list[str]] = {"count": [], "normalized": []}
+    columns_by_family_base: dict[str, dict[str, list[str]]] = {
+        "count": {},
+        "normalized": {},
+    }
+    for column in sample_columns:
+        parts = _measurement_column_parts(column)
+        if parts is None:
+            continue
+        family, base, subtype = parts
+        key = base.casefold()
+        display_base.setdefault(key, base)
+        family_by_column[column] = (family, key, subtype)
+        bases_by_family[family].add(key)
+        columns_by_family[family].append(column)
+        columns_by_family_base[family].setdefault(key, []).append(column)
+    paired = bases_by_family["count"] & bases_by_family["normalized"]
+    duplicate_keys = {
+        family: {
+            key: columns
+            for key, columns in columns_by_family_base[family].items()
+            if len(columns) > 1
+        }
+        for family in ("count", "normalized")
+    }
+    families_present = [family for family in ("count", "normalized") if columns_by_family[family]]
+    has_duplicate_bases = any(duplicate_keys[family] for family in duplicate_keys)
+    subtypes_by_family = {
+        family: sorted(
+            {
+                subtype
+                for column_family, _, subtype in family_by_column.values()
+                if column_family == family
+            }
+        )
+        for family in ("count", "normalized")
+    }
+    has_mixed_normalized_subtypes = len(subtypes_by_family["normalized"]) > 1
+    unclassified = [column for column in sample_columns if column not in family_by_column]
+    if (
+        len(families_present) < 2
+        and not has_duplicate_bases
+        and not has_mixed_normalized_subtypes
+        and (not families_present or not unclassified)
+    ):
+        return sample_columns, {}, ""
+
+    path = urllib.parse.urlsplit(str(source_name)).path.lower()
+    filename = path.rsplit("/", 1)[-1]
+    preferred = ""
+    basis = ""
+    if declared_role == "count_matrix":
+        preferred, basis = "count", "declared_role=count_matrix"
+    elif declared_role == "normalized_expression_matrix":
+        preferred, basis = "normalized", "declared_role=normalized_expression_matrix"
+    else:
+        count_hint = bool(
+            UPSTREAM_COUNT_RE.search(filename)
+            or re.search(r"(?:raw.*counts?|counts?.*matrix)", filename, re.IGNORECASE)
+        )
+        normalized_hint = bool(UPSTREAM_EXPRESSION_RE.search(filename))
+        if count_hint and not normalized_hint:
+            preferred, basis = "count", "raw/count filename"
+        elif normalized_hint and not count_hint:
+            preferred, basis = "normalized", "normalized-expression filename"
+
+    metadata: dict[str, Any] = {
+        "count": columns_by_family["count"],
+        "normalized": columns_by_family["normalized"],
+        "families_present": families_present,
+        "subtypes_present": subtypes_by_family,
+        "base_by_column": {
+            column: display_base[key]
+            for column, (_, key, _) in family_by_column.items()
+        },
+        "subtype_by_column": {
+            column: subtype
+            for column, (_, _, subtype) in family_by_column.items()
+        },
+        "paired_base_samples": [display_base[key] for key in sorted(paired)],
+        "duplicate_base_samples": {
+            family: {
+                display_base[key]: columns
+                for key, columns in sorted(duplicate_keys[family].items())
+            }
+            for family in ("count", "normalized")
+        },
+        "selected_family": "",
+        "selection_basis": basis,
+        "requires_column_selection": True,
+    }
+    if len(families_present) == 2 and preferred and not unclassified:
+        selected = columns_by_family[preferred]
+        metadata["selected_family"] = preferred
+        selected_duplicates = duplicate_keys[preferred]
+        selected_mixed_subtypes = preferred == "normalized" and has_mixed_normalized_subtypes
+        if selected_duplicates or selected_mixed_subtypes:
+            examples = "; ".join(
+                f"{display_base[key]}: {', '.join(columns)}"
+                for key, columns in sorted(selected_duplicates.items())
+            )
+            problems: list[str] = []
+            if selected_mixed_subtypes:
+                problems.append(
+                    "it contains multiple normalized subtypes "
+                    f"({', '.join(subtypes_by_family['normalized'])}) that must not be mixed in one contrast"
+                )
+            if selected_duplicates:
+                problems.append(
+                    f"it has multiple columns for {len(selected_duplicates)} base sample(s) ({examples})"
+                )
+            warning = f"{basis} selected the {preferred} measurement family, but " + " and ".join(problems) + ". "
+            warning += (
+                "Choose one normalized subtype for the whole contrast and exactly one column per biological sample; "
+                "measurement variants are not independent replicates."
+            )
+            return selected, metadata, warning
+        metadata["requires_column_selection"] = False
+        note = (
+            f"The matrix contains count and normalized columns; {basis} selected the {preferred} family so each "
+            "recognized biological sample is offered once."
+        )
+        return selected, metadata, note
+
+    warnings: list[str] = []
+    if len(families_present) == 2:
+        warnings.append(
+            "The matrix contains both count and normalized measurement families, but its role/name does not "
+            "identify one family safely. Choose exactly one measurement family for the whole contrast."
+        )
+        if paired:
+            warnings.append(
+                f"{len(paired)} base sample(s) occur in both families; paired columns are not independent "
+                "biological replicates."
+            )
+    if has_duplicate_bases:
+        examples = "; ".join(
+            f"{family} {display_base[key]}: {', '.join(columns)}"
+            for family in ("count", "normalized")
+            for key, columns in sorted(duplicate_keys[family].items())
+        )
+        warnings.append(
+            "The same measurement family has multiple columns for "
+            f"{sum(len(values) for values in duplicate_keys.values())} base sample(s) ({examples}). Choose exactly "
+            "one column per biological sample; subtype variants are not independent replicates."
+        )
+    if has_mixed_normalized_subtypes:
+        warnings.append(
+            "The normalized columns contain multiple measurement subtypes "
+            f"({', '.join(subtypes_by_family['normalized'])}). Choose one subtype for the whole contrast; mixing "
+            "FPKM, TPM, RPKM, CPM, VST or rlog scales can create an artificial contrast."
+        )
+    if unclassified:
+        metadata["unclassified"] = unclassified
+        warnings.append(
+            f"The matrix also has {len(unclassified)} unclassified sample column(s), so DEGORA did not remove "
+            "columns automatically."
+        )
+    return sample_columns, metadata, " ".join(warnings)
+
+
+def _inspect_upstream_rows(
+    rows: list[list[Any]],
+    *,
+    declared_role: str,
+    sheet: str = "",
+    source_name: str = "",
+) -> dict[str, Any]:
     best: dict[str, Any] | None = None
     best_score = -1
-    for index, row in enumerate(rows[:12]):
+    for index, raw_row in enumerate(rows[:12]):
+        following = rows[index + 1 : index + 21]
+        row = _name_upstream_row_label_column(raw_row, following)
         columns = [str(value).strip().strip('"') for value in row]
         if len(columns) < 3:
             continue
@@ -1425,7 +1882,6 @@ def _inspect_upstream_rows(rows: list[list[Any]], *, declared_role: str, sheet: 
         # each value can also be parsed as a numeric "column name".
         if non_numeric_labels < 2:
             continue
-        following = rows[index + 1 : index + 21]
         numeric_columns: list[str] = []
         numeric_fractions: dict[str, float] = {}
         for position, name in enumerate(columns):
@@ -1442,16 +1898,36 @@ def _inspect_upstream_rows(rows: list[list[Any]], *, declared_role: str, sheet: 
         # matrix candidates as it already was on author tables, so the reader
         # sees an Ensembl matrix beside a symbol table at selection, not after a run.
         gene_position = columns.index(gene_column) if gene_column in columns else -1
+        gene_values = [entry[gene_position] for entry in following if gene_position < len(entry)]
+        full_gene_values = [
+            entry[gene_position]
+            for entry in rows[index + 1 :]
+            if gene_position < len(entry)
+        ]
+        composite_header = bool(ENSEMBL_SYMBOL_COMPOSITE_HEADER_RE.fullmatch(gene_column))
+        gene_value_transform = _composite_gene_value_transform(gene_column, full_gene_values)
         gene_space = (
-            identifier_space([values[gene_position] for values in following if gene_position < len(values)])
+            identifier_space(gene_values)
             if gene_position >= 0
             else ""
         )
+        if gene_value_transform:
+            gene_space = str(gene_value_transform["output_identifier_space"])
         statistic_columns = [name for name in numeric_columns if DE_STAT_COLUMN_RE.search(name)]
         sample_columns = [name for name in numeric_columns if name != gene_column and _looks_like_sample_column(name)]
         blocked_unknown_statistics = declared_role == "unknown_matrix" and bool(statistic_columns)
         if blocked_unknown_statistics:
             sample_columns = []
+        sample_columns, family_metadata, family_message = _measurement_family_columns(
+            sample_columns,
+            declared_role=declared_role,
+            source_name=source_name,
+        )
+        compatible_pools = _compatible_measurement_pools(sample_columns)
+        largest_compatible_pool = max(compatible_pools.values(), default=0)
+        if family_metadata:
+            family_metadata["compatible_pools"] = compatible_pools
+            family_metadata["largest_compatible_pool"] = largest_compatible_pool
         # Whole-number share of the sample values in the rows read: raw counts
         # are whole, Salmon/RSEM/kallisto estimated counts are fractional by
         # design, and the card must not call the latter "raw counts".
@@ -1463,9 +1939,20 @@ def _inspect_upstream_rows(rows: list[list[Any]], *, declared_role: str, sheet: 
         reason = "a gene/probe identifier and at least four numeric sample columns are required"
         if blocked_unknown_statistics:
             reason = "unknown table contains differential-expression statistic columns; sample identity is not confirmed"
-        elif gene_column and len(sample_columns) >= 4 and len(following) >= 2:
+        elif composite_header and not gene_value_transform:
+            reason = (
+                "composite Ensembl/gene-symbol identifiers require the validated ENS...G..._SYMBOL normalization"
+            )
+        elif gene_column and largest_compatible_pool >= 4 and len(following) >= 2:
             status = "upstream_matrix_ready_for_contrast"
             reason = "matrix columns were detected; choose at least two control and two treatment samples"
+        elif gene_column and len(sample_columns) >= 4 and len(following) >= 2:
+            reason = (
+                "no four compatible sample columns were found: the largest single count family or normalized "
+                f"subtype has {largest_compatible_pool} distinct sample(s). A contrast needs at least two controls "
+                "and two treatments from one measurement scale; do not combine counts with FPKM/TPM or mix "
+                "normalized scales."
+            )
         best = {
             "status": status,
             "reason": reason,
@@ -1481,13 +1968,23 @@ def _inspect_upstream_rows(rows: list[list[Any]], *, declared_role: str, sheet: 
             "sample_rows": len(following),
             "requires": ["control_samples", "treatment_samples", "contrast_direction"],
         }
+        if gene_value_transform:
+            best["gene_value_transform"] = gene_value_transform
+        if family_metadata:
+            best["sample_column_families"] = family_metadata
+            message_key = (
+                "measurement_family_warning"
+                if family_metadata.get("requires_column_selection")
+                else "measurement_family_note"
+            )
+            best[message_key] = family_message
         best_score = score
     return best or {
         "status": "not_upstream_matrix",
         "reason": "no tabular matrix header was detected",
         "declared_role": declared_role,
         "gene_column": "",
-            "gene_identifier_space": "",
+        "gene_identifier_space": "",
         "sample_columns": [],
         "requires": ["control_samples", "treatment_samples", "contrast_direction"],
     }
@@ -1495,39 +1992,94 @@ def _inspect_upstream_rows(rows: list[list[Any]], *, declared_role: str, sheet: 
 
 def inspect_upstream_bytes(name_or_url: str, payload: bytes, *, declared_role: str) -> dict[str, Any]:
     lower = urllib.parse.urlsplit(str(name_or_url)).path.lower()
+    original_payload = payload
     if SUPPORTED_TEXT_RE.search(lower):
         text = _decode_text_payload(payload, compressed=lower.endswith(".gz"))
-        result = _inspect_upstream_rows(_matrix_rows_from_text(text), declared_role=declared_role)
-    elif lower.endswith(".xlsx"):
-        _validate_xlsx_archive(payload)
-        from openpyxl import load_workbook
+        result = _inspect_upstream_rows(
+            _matrix_rows_from_text(text),
+            declared_role=declared_role,
+            source_name=name_or_url,
+        )
+    elif SUPPORTED_WORKBOOK_RE.search(lower):
+        payload = _decompressed_workbook(payload, lower)
+        workbook_name = lower.removesuffix(".gz")
+        if workbook_name.endswith(".xls"):
+            if not payload.startswith(b"\xd0\xcf\x11\xe0"):
+                raise DiscoveryError("legacy workbook does not carry the OLE2 signature a .xls file has")
+            try:
+                import pandas as pd
 
-        workbook = None
-        try:
-            workbook = load_workbook(io.BytesIO(payload), read_only=True, data_only=True)
+                sheets = pd.read_excel(io.BytesIO(payload), sheet_name=None, header=None, nrows=2000)
+            except ImportError as exc:  # pragma: no cover - xlrd ships as a runtime dependency
+                raise DiscoveryError(f"legacy workbook reader is unavailable: {exc}") from exc
+            except Exception as exc:
+                raise DiscoveryError(f"legacy workbook matrix could not be read: {exc}") from exc
             best: dict[str, Any] | None = None
             best_rank = -1
-            for sheet_name in workbook.sheetnames[:8]:
-                rows = [list(row) for row in workbook[sheet_name].iter_rows(max_row=32, max_col=120, values_only=True)]
-                current = _inspect_upstream_rows(rows, declared_role=declared_role, sheet=sheet_name)
+            for sheet_name, frame in list(sheets.items())[:8]:
+                rows = [list(row) for row in frame.itertuples(index=False, name=None)]
+                current = _inspect_upstream_rows(
+                    rows,
+                    declared_role=declared_role,
+                    sheet=str(sheet_name),
+                    source_name=name_or_url,
+                )
                 current_rank = len(current.get("sample_columns", [])) + (
                     100 if current.get("status") == "upstream_matrix_ready_for_contrast" else 0
                 )
                 if current_rank > best_rank:
-                    best = current
-                    best_rank = current_rank
-            result = best or _inspect_upstream_rows([], declared_role=declared_role)
-        except DiscoveryError:
-            raise
-        except Exception as exc:
-            raise DiscoveryError(f"XLSX matrix inspection failed: {type(exc).__name__}: {exc}") from exc
-        finally:
-            if workbook is not None:
-                workbook.close()
+                    best, best_rank = current, current_rank
+            result = best or _inspect_upstream_rows(
+                [],
+                declared_role=declared_role,
+                source_name=name_or_url,
+            )
+        else:
+            _validate_xlsx_archive(payload)
+            from openpyxl import load_workbook
+
+            workbook = None
+            try:
+                workbook = load_workbook(io.BytesIO(payload), read_only=True, data_only=True)
+                best = None
+                best_rank = -1
+                for sheet_name in workbook.sheetnames[:8]:
+                    rows = [
+                        list(row)
+                        for row in workbook[sheet_name].iter_rows(
+                            max_row=2000,
+                            max_col=120,
+                            values_only=True,
+                        )
+                    ]
+                    current = _inspect_upstream_rows(
+                        rows,
+                        declared_role=declared_role,
+                        sheet=sheet_name,
+                        source_name=name_or_url,
+                    )
+                    current_rank = len(current.get("sample_columns", [])) + (
+                        100 if current.get("status") == "upstream_matrix_ready_for_contrast" else 0
+                    )
+                    if current_rank > best_rank:
+                        best = current
+                        best_rank = current_rank
+                result = best or _inspect_upstream_rows(
+                    [],
+                    declared_role=declared_role,
+                    source_name=name_or_url,
+                )
+            except DiscoveryError:
+                raise
+            except Exception as exc:
+                raise DiscoveryError(f"XLSX matrix inspection failed: {type(exc).__name__}: {exc}") from exc
+            finally:
+                if workbook is not None:
+                    workbook.close()
     else:
         raise DiscoveryError("upstream candidate type is not supported for automatic inspection")
-    result["payload_sha256"] = hashlib.sha256(payload).hexdigest()
-    result["payload_bytes"] = len(payload)
+    result["payload_sha256"] = hashlib.sha256(original_payload).hexdigest()
+    result["payload_bytes"] = len(original_payload)
     return result
 
 
@@ -2184,6 +2736,58 @@ def _file_priority(item: dict[str, Any]) -> tuple[int, str]:
     return ({"strong": 0, "weak": 1, "upstream": 2}.get(str(item.get("tier")), 9), str(item.get("name", "")))
 
 
+AUTHOR_TABLE_INSPECTION_STATUSES = frozenset(
+    {
+        "ready_for_review",
+        "candidate_header",
+        "requires_column_mapping",
+        "requires_lfc_confirmation",
+        "requires_pvalue_mapping",
+    }
+)
+
+
+def _inspect_preparation_candidate_bytes(
+    name_or_url: str,
+    payload: bytes,
+    *,
+    declared_role: str,
+) -> tuple[dict[str, Any], str]:
+    """Inspect tabular content without letting filename scale hints hide DEG results."""
+
+    role = str(declared_role or "unknown_table")
+    author = inspect_candidate_bytes(name_or_url, payload)
+    author_status = str(author.get("status") or "")
+    matrix_role = role in {"count_matrix", "normalized_expression_matrix", "unknown_matrix"}
+    # candidate_header has not passed sampled value review and the activation
+    # server deliberately refuses it. For a file already classified as a
+    # matrix, do not let that weak author-table hint hide a usable matrix.
+    if author_status in AUTHOR_TABLE_INSPECTION_STATUSES and not (
+        matrix_role and author_status == "candidate_header"
+    ):
+        return author, "deg_table"
+    if matrix_role:
+        upstream = inspect_upstream_bytes(name_or_url, payload, declared_role=role)
+        content_role = _explicit_content_measurement_role(
+            [str(column) for column in upstream.get("sample_columns", [])]
+        )
+        if content_role and content_role != role:
+            corrected = inspect_upstream_bytes(name_or_url, payload, declared_role=content_role)
+            corrected["role_resolution"] = {
+                "declared_role": role,
+                "resolved_role": content_role,
+                "basis": "all detected sample columns use one explicit measurement-family suffix",
+            }
+            return corrected, content_role
+        if upstream.get("status") != "upstream_matrix_ready_for_contrast" and author_status == "candidate_header":
+            return author, "deg_table"
+        return upstream, role
+    upstream = inspect_upstream_bytes(name_or_url, payload, declared_role="unknown_matrix")
+    if upstream.get("status") == "upstream_matrix_ready_for_contrast":
+        return upstream, "unknown_matrix"
+    return author, role
+
+
 def _inspect_preparation_file(
     file_record: dict[str, Any],
     *,
@@ -2195,17 +2799,19 @@ def _inspect_preparation_file(
     source_url = str(file_record["source_url"])
     if fetch_scope == "full" and urllib.parse.urlsplit(source_url).path.lower().endswith(".gz"):
         _validate_full_gzip(payload)
-    role = str(file_record.get("role", "unknown_table"))
-    if role in {"count_matrix", "normalized_expression_matrix"}:
-        inspection = inspect_upstream_bytes(source_url, payload, declared_role=role)
-    else:
-        inspection = inspect_candidate_bytes(source_url, payload)
-        if inspection.get("status") == "not_deg_table":
-            upstream = inspect_upstream_bytes(source_url, payload, declared_role="unknown_matrix")
-            if upstream.get("status") == "upstream_matrix_ready_for_contrast":
-                inspection = upstream
-                file_record["role"] = "unknown_matrix"
-                file_record["tier"] = "upstream"
+    inspection, resolved_role = _inspect_preparation_candidate_bytes(
+        source_url,
+        payload,
+        declared_role=str(file_record.get("role", "unknown_table")),
+    )
+    if resolved_role != str(file_record.get("role", "unknown_table")):
+        file_record["role"] = resolved_role
+        file_record["tier"] = "strong" if resolved_role == "deg_table" else "upstream"
+        file_record["reason"] = (
+            "content inspection found an author differential-expression table"
+            if resolved_role == "deg_table"
+            else "content inspection found an upstream expression matrix"
+        )
     inspection["fetch_scope"] = fetch_scope
     if target_dir is not None:
         local_path = target_dir / _safe_materialized_name(accession, source_url)

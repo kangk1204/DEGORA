@@ -12,6 +12,7 @@ from degora.beginner import (
     _write_catalog_atomic,
     build_catalog,
     catalog_row,
+    default_source_unit_id,
     default_study_id,
     describe_inference,
     find_source_tables,
@@ -369,6 +370,18 @@ def test_study_ids_are_readable_and_unique(tmp_path) -> None:
     assert default_study_id(Path("GSE123 hypoxia (4h).csv"), []) == "GSE123_hypoxia_4h"
     assert default_study_id(Path("a.csv"), ["a"]) == "a_2"
     assert default_study_id(Path("a.csv"), ["a", "a_2"]) == "a_3"
+
+
+def test_public_accessions_make_safe_shared_source_unit_defaults(tmp_path) -> None:
+    assert default_source_unit_id(Path("GSE123_hypoxia_4h.csv")) == "GSE123"
+    assert default_source_unit_id(Path("E-GEOD-123/results.csv")) == "GSE123"
+    assert default_source_unit_id(Path("E-MTAB-456/results.csv")) == "E-MTAB-456"
+    assert default_source_unit_id(Path("EMTAB456/results.csv")) == "E-MTAB-456"
+    assert default_source_unit_id(Path("study/PMID_123456/table.csv")) == "PMID-123456"
+    assert default_source_unit_id(Path("study/PMID123456/table.csv")) == "PMID-123456"
+    assert default_source_unit_id(Path("study/PMC_123456/table.csv")) == "PMC-123456"
+    assert default_source_unit_id(Path("study/PMC123456/table.csv")) == "PMC-123456"
+    assert default_source_unit_id(Path("unlabelled_results.csv")) == ""
 
 
 def test_a_reversed_direction_is_excluded_rather_than_flipped(tmp_path) -> None:
@@ -1379,6 +1392,91 @@ def test_tables_from_one_study_cannot_meet_the_replication_rule(tmp_path) -> Non
     assert summary["n_source_units"] == 1
     assert "scores zero genes" in summary["replication_warning"]
     assert any("WARNING" in line and "independent source unit" in line for line in lines)
+
+
+def test_geo_tables_share_accession_default_instead_of_counting_as_independent(tmp_path) -> None:
+    deg = tmp_path / "deg"
+    deg.mkdir()
+    for name in ("GSE123_hypoxia_4h.csv", "E-GEOD-123_hypoxia_12h.csv"):
+        _clean_table(deg / name)
+
+    def accept_safe_defaults(question: str, default: str = "") -> str:
+        if "species" in question:
+            return "human"
+        if "yes / no / unsure" in question:
+            return "yes"
+        if "What was compared" in question:
+            return "hypoxia vs normoxia"
+        if "paper or dataset" in question:
+            return ""  # Press Enter: the detected GSE accession must be reused.
+        if "How many" in question:
+            return "3"
+        return default
+
+    summary = run_init(
+        tmp_path / "config.csv",
+        deg,
+        ask=accept_safe_defaults,
+        echo=lambda _line: None,
+    )
+
+    config = pd.read_csv(tmp_path / "config.csv")
+    assert config["source_unit_id"].tolist() == ["GSE123", "GSE123"]
+    assert summary["n_source_units"] == 1
+    assert "scores zero genes" in summary["replication_warning"]
+
+
+def test_one_geo_accession_cannot_be_split_into_independent_sources(tmp_path) -> None:
+    deg = tmp_path / "deg"
+    deg.mkdir()
+    for name in ("GSE123_part_a.csv", "GSE123_part_b.csv"):
+        _clean_table(deg / name)
+
+    answers = iter(["human", "yes", "a vs b", "PAPER_A", "3", "3", "yes", "c vs d", "3", "3"])
+    lines: list[str] = []
+    summary = run_init(
+        tmp_path / "config.csv",
+        deg,
+        ask=lambda question, default="": next(answers),
+        echo=lines.append,
+    )
+
+    config = pd.read_csv(tmp_path / "config.csv")
+    assert config["source_unit_id"].tolist() == ["PAPER_A", "PAPER_A"]
+    assert summary["n_source_units"] == 1
+    assert any("Detected GSE123 again" in line and "PAPER_A" in line for line in lines)
+
+
+def test_unlabelled_multiple_tables_require_an_explicit_source_unit(tmp_path) -> None:
+    deg = tmp_path / "deg"
+    deg.mkdir()
+    for name in ("contrast_a.csv", "contrast_b.csv"):
+        _clean_table(deg / name)
+
+    lines: list[str] = []
+
+    def leave_source_unknown(question: str, default: str = "") -> str:
+        if "species" in question:
+            return "human"
+        if "yes / no / unsure" in question:
+            return "yes"
+        if "What was compared" in question:
+            return "a vs b"
+        if "paper or dataset" in question:
+            return ""
+        return default
+
+    with pytest.raises(BeginnerInitError, match="no table was confirmed"):
+        run_init(
+            tmp_path / "config.csv",
+            deg,
+            ask=leave_source_unknown,
+            echo=lines.append,
+        )
+
+    assert not (tmp_path / "config.csv").exists()
+    assert sum("required when several tables are present" in line for line in lines) == 6
+    assert sum("independent paper or dataset was not identified" in line for line in lines) == 2
 
 
 def test_two_source_units_raise_no_replication_warning(tmp_path) -> None:

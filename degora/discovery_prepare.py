@@ -26,10 +26,9 @@ from .discovery import (
     DiscoveryError,
     DiscoveryUnavailableError,
     DiscoveryUnsafeArchiveError,
+    _inspect_preparation_candidate_bytes,
     classify_filename,
     export_discovery_bundle,
-    inspect_candidate_bytes,
-    inspect_upstream_bytes,
     normalize_species,
     prepare_geo_studies,
 )
@@ -645,15 +644,7 @@ def _file_entry(
     if not classified.get("inspectable"):
         return None
     role = declared_role or str(classified.get("role") or "")
-    if role in {"count_matrix", "normalized_expression_matrix", "unknown_matrix"}:
-        inspection = inspect_upstream_bytes(name, payload, declared_role=role)
-    else:
-        inspection = inspect_candidate_bytes(name, payload)
-        if inspection.get("status") == "not_deg_table":
-            upstream = inspect_upstream_bytes(name, payload, declared_role="unknown_matrix")
-            if upstream.get("status") == "upstream_matrix_ready_for_contrast":
-                role = "unknown_matrix"
-                inspection = upstream
+    inspection, role = _inspect_preparation_candidate_bytes(name, payload, declared_role=role)
     inspection = dict(inspection)
     inspection.update(
         {
@@ -668,8 +659,12 @@ def _file_entry(
         "source_url": source_url,
         "name": Path(name).name,
         "role": role or classified["role"],
-        "tier": classified["tier"],
-        "reason": classified["reason"],
+        "tier": "strong" if role == "deg_table" else "upstream" if role == "unknown_matrix" else classified["tier"],
+        "reason": (
+            "content inspection found an author differential-expression table"
+            if role == "deg_table"
+            else classified["reason"]
+        ),
         "inspection": inspection,
     }
 

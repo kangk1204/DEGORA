@@ -177,21 +177,21 @@ def test_local_api_serves_health_gene_list_and_detail(tmp_path, monkeypatch) -> 
     assert 'state.sort = { key: "readiness", order: "desc" };' in html
     assert "Prepare selection" in html
     assert "Enter exact paper/GEO contrast" in html
-    assert 'class="n-ctrl" type="number" min="1" step="1"' in html
-    assert 'class="n-treat" type="number" min="1" step="1"' in html
+    assert 'class="n-ctrl" type="number" min="1" max="10000" step="1"' in html
+    assert 'class="n-treat" type="number" min="1" max="10000" step="1"' in html
     assert 'class="cell-system"' in html
     assert 'class="duration-h"' in html
     assert 'class="platform"' in html
     assert "function isPositiveWholeNumber(value)" in html
     assert 'common.n_ctrl = Number(row.querySelector(".n-ctrl")?.value || 0);' in html
     assert 'common.n_treat = Number(row.querySelector(".n-treat")?.value || 0);' in html
-    assert "positive whole-number biological group sizes" in html
+    assert "whole-number biological group sizes from 1 to 10,000" in html
     assert "Choose confirmed scale" in html
     assert "biological-replicates-confirmed" in html
     # The assertion still has to be made; it is phrased for a reader who does not
     # already know what "independent biological replicate" rules out.
     assert "each column is a separate biological sample" in html
-    assert "Enter exact contrasts, mappings, positive whole-number biological group sizes" in html
+    assert "Enter exact contrasts, mappings, whole-number biological group sizes from 1 to 10,000" in html
     assert "fallback matrices also require scale, biological-replicate attestation, and 2 + 2 sample assignment" in html
     assert "data-source-unit" in html
     assert "row.dataset.sourceUnit || row.dataset.accession" in html
@@ -1329,13 +1329,24 @@ def test_dashboard_stops_a_review_that_can_never_be_analysed() -> None:
     assert "Not analysable: " in html
 
 
-def test_mobile_dashboard_explains_horizontal_gene_columns_and_wraps_status() -> None:
-    """Narrow screens must not look as if Score/LFC or species state vanished."""
+def test_gene_scroll_hint_tracks_the_panel_width_not_the_viewport() -> None:
+    """The desktop splitter can make the gene panel scroll at any viewport size."""
 
     from degora.api import INDEX_HTML
 
     assert "Swipe the table sideways to see Top, Score, Units, Sign and LFC." in INDEX_HTML
-    assert ".gene-scroll-hint {" in INDEX_HTML
+    assert ".genes-panel { container-type: inline-size; }" in INDEX_HTML
+    assert "@container (max-width: 759px)" in INDEX_HTML
+    container_rules = INDEX_HTML.split("@container (max-width: 759px)", 1)[1].split("}", 2)[0]
+    assert ".gene-scroll-hint" in container_rules
+    assert "display: block" in container_rules
+
+
+def test_mobile_dashboard_wraps_status_and_table_cells() -> None:
+    """Narrow screens must not look as if publication metadata vanished."""
+
+    from degora.api import INDEX_HTML
+
     assert ".meta { flex-wrap: wrap; overflow-x: visible; row-gap: 4px; }" in INDEX_HTML
     assert (
         ".study-table td {\n"
@@ -1349,6 +1360,37 @@ def test_mobile_dashboard_explains_horizontal_gene_columns_and_wraps_status() ->
         "      }"
     ) in INDEX_HTML
     assert '<span class="prepared-blocked-next"><b>Next:</b>' in INDEX_HTML
+
+
+def test_narrow_discovery_card_switches_to_cards_and_stacks_actions() -> None:
+    """A sub-1120px card must not hide result columns or action labels."""
+
+    from degora.api import INDEX_HTML
+
+    assert "container-type: inline-size" in INDEX_HTML.split(".discovery-card {", 1)[1].split("}", 1)[0]
+    card = INDEX_HTML.split("@container (max-width: 1119px)", 1)[1].split("@media (max-width: 1120px)", 1)[0]
+    assert ".study-table { display: block; min-width: 0; }" in card
+    assert ".study-table thead { display: none; }" in card
+    assert ".study-table td:nth-child(8)" in card  # Inspect remains on the card.
+    assert ".mobile-study-tools" in card
+    assert ".study-action-bar { align-items: flex-start; flex-direction: column;" in card
+    assert ".table-footer { align-items: flex-start; flex-direction: column; }" in card
+
+
+def test_sample_characteristics_wrap_instead_of_hiding_group_metadata() -> None:
+    """Treatment/time traits must remain readable on touch and narrow screens."""
+
+    from degora.api import INDEX_HTML
+
+    rules = INDEX_HTML.split(".sample-item .sample-traits {", 1)[1].split("}", 1)[0]
+    assert "white-space: normal" in rules
+    assert "overflow: visible" in rules
+    assert "text-overflow: clip" in rules
+    assert "overflow-wrap: anywhere" in rules
+    assert '<span class="sample-traits">${esc(traits)}</span>' in INDEX_HTML
+    phone = INDEX_HTML.split("@media (max-width: 420px)", 1)[1].split("</style>", 1)[0]
+    assert 'grid-template-areas: "id" "label" "traits" "select";' in phone
+    assert ".sample-item select { width: 100%; margin-top: 4px; }" in phone
 
 
 def test_a_browser_page_holds_ten_publications() -> None:
@@ -1662,8 +1704,70 @@ def test_group_sizes_are_bounded_by_the_series_rather_than_guessed() -> None:
     assert "isPositiveWholeNumber(nCtrl?.value) && fitsSeries" in INDEX_HTML
     assert "isPositiveWholeNumber(nTreat?.value) && fitsSeries" in INDEX_HTML
 
-    # And nothing prefills them: a guessed group size is not an improvement.
-    assert 'class="n-ctrl" type="number" min="1" step="1" inputmode="numeric" value="${esc(nCtrl)}"' in INDEX_HTML
+    # The browser and server agree on the upper bound; 10,001 cannot look valid
+    # until the server rejects it. Nothing prefills the field, because a guessed
+    # group size is not an improvement.
+    assert "const MAX_BIOLOGICAL_GROUP_SIZE = 10000;" in INDEX_HTML
+    assert "Number(text) <= MAX_BIOLOGICAL_GROUP_SIZE" in INDEX_HTML
+    assert 'class="n-ctrl" type="number" min="1" max="10000" step="1" inputmode="numeric" value="${esc(nCtrl)}"' in INDEX_HTML
+    assert 'class="n-treat" type="number" min="1" max="10000" step="1" inputmode="numeric" value="${esc(nTreat)}"' in INDEX_HTML
+
+
+def test_workflow_codes_are_humanized_everywhere_they_are_presented() -> None:
+    """Provenance keeps enum values, but beginner-facing labels must be prose."""
+
+    from degora.api import INDEX_HTML
+
+    for code, label in (
+        ("ready_for_review", "Ready for review"),
+        ("upstream_matrix_requires_contrast", "Expression matrix - contrast setup required"),
+        ("author_deg_ready_for_contrast_review", "Author DEG table - review the contrast"),
+        ("normalized_expression_matrix", "Normalized expression matrix"),
+        ("unknown_matrix", "Matrix type needs confirmation"),
+    ):
+        assert f'{code}: "{label}"' in INDEX_HTML
+
+    assert 'esc(workflowLabel(status, "Review status unavailable"))' in INDEX_HTML
+    assert 'esc(workflowLabel(role, "Matrix type needs confirmation"))' in INDEX_HTML
+    assert "esc(workflowLabel(study.preparation_status))" in INDEX_HTML
+    assert "inspection.reason || workflowLabel(status)" in INDEX_HTML
+    assert 'Author DEG candidate · ${esc(status)}' not in INDEX_HTML
+    assert 'Labeled fallback · ${esc(role)}' not in INDEX_HTML
+    assert 'esc(study.preparation_status || "review required")' not in INDEX_HTML
+
+
+def test_fallback_card_explains_paired_measurement_families_safely() -> None:
+    """Automatic family selection and one-family warnings must be visible prose."""
+
+    from degora.api import INDEX_HTML
+
+    helper = INDEX_HTML.split("function measurementFamilyGuidance(inspection)", 1)[1].split(
+        "function fallbackCandidateHtml", 1
+    )[0]
+    assert "inspection.measurement_family_note" in helper
+    assert "inspection.measurement_family_warning" in helper
+    assert '"Automatic column-family choice:"' in helper
+    assert '"Use one column family only:"' in helper
+    # The discovery audit keeps its raw role, but the card substitutes readable
+    # wording before escaping the complete server-provided sentence.
+    assert '["declared_role=count_matrix", "its raw-count classification"]' in helper
+    assert (
+        '["declared_role=normalized_expression_matrix", "its normalized-expression classification"]'
+        in helper
+    )
+    assert "${esc(message)}" in helper
+    assert "${esc(raw)}" not in helper
+    assert "${inspection.measurement_family_note}" not in helper
+    assert "${inspection.measurement_family_warning}" not in helper
+
+    fallback = INDEX_HTML.split("function fallbackCandidateHtml", 1)[1].split(
+        "function candidatePreferenceRank", 1
+    )[0]
+    note_at = fallback.index("Labeled fallback")
+    guidance_at = fallback.index("${measurementFamilyGuidance(inspection)}")
+    tools_at = fallback.index('<div class="candidate-tools">')
+    assert note_at < guidance_at < tools_at
+    assert ".measurement-family-guidance.warning" in INDEX_HTML
 
 
 def test_the_stop_button_is_wired_to_something_that_exists() -> None:

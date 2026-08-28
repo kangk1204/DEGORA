@@ -571,6 +571,38 @@ make smoke
 <!--
 ## Release notes
 
+### 0.4.35
+
+The scoring and aggregation contract is unchanged at v1.3:
+`SCORE_VERSION` remains `degora_score_v1_3_source_unit_mean`. This patch changes
+only public-data discovery, review, and fallback-input validation; it does not
+change score components, weights, aggregation, eligibility, or rank semantics.
+
+**Public matrix activation now keeps measurement scales and biological samples
+separate.** Count, FPKM, TPM, CPM, logCPM, FPKM-UQ, TMM, voom, VST, and rlog
+suffixes are classified consistently. One contrast cannot mix count and
+normalized families, normalized subtypes, explicit and unclassified columns,
+or several measurement variants of one base sample or GEO accession. Filename
+and prepared-bundle role hints cannot override an explicit incompatible suffix.
+
+**Common public table exports reopen exactly as inspected.** Delimiter choice
+prefers a validated gene/effect/p-value or gene/sample header over comma-rich
+annotation text. Quoted whitespace matrices, R row names, gzipped XLS/XLSX
+workbooks, and validated `EnsemblGene_GeneSymbol` composite identifiers survive
+inspection and materialization with bounded readers and transform provenance.
+
+**Independent evidence units fail closed earlier.** `degora init` reuses a
+canonical GSE, ArrayExpress, project, PMID, or PMC source-unit default across
+related tables, including separator variants, and requires an explicit source
+unit when several unlabelled tables are present. Author-table group sizes cannot
+exceed a known study sample total.
+
+**Review status is accurate and readable.** The browser applies the server's
+group-size ceiling, exposes measurement-family warnings, keeps sample traits and
+result actions visible in narrow panels, and presents workflow codes as prose.
+The CLI reports exact, review-required, and upstream candidates separately and
+does not hide a usable matrix behind a non-activatable header candidate.
+
 ### 0.4.34
 
 This release intentionally advances `SCORE_VERSION` to

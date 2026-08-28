@@ -334,6 +334,37 @@ def test_author_candidate_requires_positive_whole_number_group_sizes(
         run_discovery_analysis(_prepared_bundle(bundle), selections, tmp_path / "analysis", species="human")
 
 
+def test_author_group_sizes_cannot_exceed_known_study_sample_total(tmp_path: Path) -> None:
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    prepared = _prepared_bundle(bundle)
+    prepared["studies"][0]["n_samples"] = 5
+
+    with pytest.raises(DiscoveryError, match=r"n_ctrl\+n_treat=6 exceeds.*n_samples=5.*evidence weight"):
+        run_discovery_analysis(prepared, _selections(), tmp_path / "analysis", species="human")
+
+
+@pytest.mark.parametrize("study_sample_total", [6, "unknown"])
+def test_author_group_sizes_allow_exact_or_unknown_study_sample_total(
+    tmp_path: Path,
+    study_sample_total: object,
+) -> None:
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    prepared = _prepared_bundle(bundle)
+    prepared["studies"][0]["n_samples"] = study_sample_total
+    prepared["studies"][1]["n_samples"] = 8 if study_sample_total == 6 else "unknown"
+
+    result = run_discovery_analysis(
+        prepared,
+        _selections(),
+        tmp_path / "analysis",
+        species="human",
+    )
+
+    assert result["status"] == "complete"
+
+
 @pytest.mark.parametrize(
     ("status", "message"),
     [
@@ -987,6 +1018,433 @@ def test_a_fractional_matrix_is_refused_as_raw_counts(tmp_path: Path) -> None:
             study=study, candidate=candidate, entry=_fallback_entry(matrix_type="count_matrix"),
             spec=normalize_species("human"), bundle_root=bundle, derived_dir=tmp_path / "derived",
             sequence=1, replay_command="degora",
+        )
+
+
+def test_fallback_rejects_two_columns_from_the_same_geo_sample(tmp_path: Path) -> None:
+    """Count and FPKM columns for one GSM are not two biological replicates."""
+
+    from degora.discovery import normalize_species
+    from degora.discovery_run import DiscoveryError, _fallback_row
+
+    values = {
+        "c1_count": [10.0] * 30,
+        "c1_FPKM": [1.0] * 30,
+        "t1_count": [20.0] * 30,
+        "t1_FPKM": [2.0] * 30,
+    }
+    study, candidate, bundle = _matrix_candidate(tmp_path, values)
+    candidate["inspection"]["sample_labels"] = {
+        "c1_count": {"accession": "GSM1001"},
+        "c1_FPKM": {"accession": "GSM1001"},
+        "t1_count": {"accession": "GSM1002"},
+        "t1_FPKM": {"accession": "GSM1002"},
+    }
+    entry = _fallback_entry(
+        control_samples=["c1_count", "c1_FPKM"],
+        treatment_samples=["t1_count", "t1_FPKM"],
+    )
+
+    with pytest.raises(DiscoveryError, match="same GEO biological sample accession"):
+        _fallback_row(
+            study=study,
+            candidate=candidate,
+            entry=entry,
+            spec=normalize_species("human"),
+            bundle_root=bundle,
+            derived_dir=tmp_path / "derived",
+            sequence=1,
+            replay_command="degora",
+        )
+
+
+def test_fallback_rejects_paired_measurement_families_without_geo_labels(tmp_path: Path) -> None:
+    """Family metadata protects an ambiguous older bundle with no GSM mapping."""
+
+    from degora.discovery import normalize_species
+    from degora.discovery_run import DiscoveryError, _fallback_row
+
+    values = {
+        "c1_count": [10.0] * 30,
+        "c2_count": [12.0] * 30,
+        "t1_count": [20.0] * 30,
+        "t2_count": [22.0] * 30,
+        "c1_FPKM": [1.0] * 30,
+        "c2_FPKM": [1.2] * 30,
+        "t1_FPKM": [2.0] * 30,
+        "t2_FPKM": [2.2] * 30,
+    }
+    study, candidate, bundle = _matrix_candidate(tmp_path, values)
+    candidate["inspection"]["sample_column_families"] = {
+        "count": ["c1_count", "c2_count", "t1_count", "t2_count"],
+        "normalized": ["c1_FPKM", "c2_FPKM", "t1_FPKM", "t2_FPKM"],
+        "paired_base_samples": ["c1", "c2", "t1", "t2"],
+        "selected_family": "",
+        "selection_basis": "",
+    }
+    entry = _fallback_entry(
+        control_samples=["c1_count", "c1_FPKM"],
+        treatment_samples=["t1_count", "t2_count"],
+    )
+
+    with pytest.raises(DiscoveryError, match="same biological sample base"):
+        _fallback_row(
+            study=study,
+            candidate=candidate,
+            entry=entry,
+            spec=normalize_species("human"),
+            bundle_root=bundle,
+            derived_dir=tmp_path / "derived",
+            sequence=1,
+            replay_command="degora",
+        )
+
+
+def test_fallback_rejects_mixed_measurement_families_across_different_samples(tmp_path: Path) -> None:
+    """Count controls versus FPKM treatments would compare scales, not biology."""
+
+    from degora.discovery import normalize_species
+    from degora.discovery_run import DiscoveryError, _fallback_row
+
+    values = {
+        "c1_count": [10.0] * 30,
+        "c2_count": [12.0] * 30,
+        "t1_FPKM": [2.0] * 30,
+        "t2_FPKM": [2.2] * 30,
+    }
+    study, candidate, bundle = _matrix_candidate(tmp_path, values)
+    candidate["inspection"]["sample_column_families"] = {
+        "count": ["c1_count", "c2_count"],
+        "normalized": ["t1_FPKM", "t2_FPKM"],
+        "paired_base_samples": [],
+        "selected_family": "",
+        "selection_basis": "",
+    }
+    entry = _fallback_entry(
+        control_samples=["c1_count", "c2_count"],
+        treatment_samples=["t1_FPKM", "t2_FPKM"],
+    )
+
+    with pytest.raises(DiscoveryError, match="mix count and normalized measurement families"):
+        _fallback_row(
+            study=study,
+            candidate=candidate,
+            entry=entry,
+            spec=normalize_species("human"),
+            bundle_root=bundle,
+            derived_dir=tmp_path / "derived",
+            sequence=1,
+            replay_command="degora",
+        )
+
+
+def test_fallback_rejects_explicit_and_unclassified_measurement_mix(tmp_path: Path) -> None:
+    """An unlabeled column cannot silently form a contrast with known FPKM columns."""
+
+    from degora.discovery import inspect_upstream_bytes, normalize_species
+    from degora.discovery_run import DiscoveryError, _fallback_row
+
+    values = {
+        "c1_FPKM": [1.0] * 30,
+        "c2_FPKM": [1.2] * 30,
+        "t1_FPKM": [2.0] * 30,
+        "t2_FPKM": [2.2] * 30,
+        "x1": [100.0] * 30,
+        "x2": [120.0] * 30,
+    }
+    study, candidate, bundle = _matrix_candidate(tmp_path, values)
+    source_path = Path(candidate["inspection"]["local_path"])
+    inspected = inspect_upstream_bytes(
+        source_path.name,
+        source_path.read_bytes(),
+        declared_role="normalized_expression_matrix",
+    )
+    candidate["role"] = "normalized_expression_matrix"
+    candidate["inspection"] = {**candidate["inspection"], **inspected}
+    entry = _fallback_entry(
+        control_samples=["c1_FPKM", "c2_FPKM"],
+        treatment_samples=["x1", "x2"],
+    )
+
+    with pytest.raises(DiscoveryError, match="explicitly labeled measurement columns with unclassified columns"):
+        _fallback_row(
+            study=study,
+            candidate=candidate,
+            entry=entry,
+            spec=normalize_species("human"),
+            bundle_root=bundle,
+            derived_dir=tmp_path / "derived",
+            sequence=1,
+            replay_command="degora",
+        )
+
+
+def test_fallback_rederives_mixed_families_when_legacy_bundle_has_no_metadata(tmp_path: Path) -> None:
+    """Clear suffixes remain fail-closed when an old prepared card lacks family metadata."""
+
+    from degora.discovery import normalize_species
+    from degora.discovery_run import DiscoveryError, _fallback_row
+
+    values = {
+        "c1_count": [10.0] * 30,
+        "c2_count": [12.0] * 30,
+        "t1_FPKM": [2.0] * 30,
+        "t2_FPKM": [2.2] * 30,
+    }
+    study, candidate, bundle = _matrix_candidate(tmp_path, values)
+    entry = _fallback_entry(
+        control_samples=["c1_count", "c2_count"],
+        treatment_samples=["t1_FPKM", "t2_FPKM"],
+    )
+
+    with pytest.raises(DiscoveryError, match="mix count and normalized measurement families"):
+        _fallback_row(
+            study=study,
+            candidate=candidate,
+            entry=entry,
+            spec=normalize_species("human"),
+            bundle_root=bundle,
+            derived_dir=tmp_path / "derived",
+            sequence=1,
+            replay_command="degora",
+        )
+
+
+@pytest.mark.parametrize("matrix_type", ["count_matrix", "estimated_count_matrix"])
+def test_fallback_rejects_integer_normalized_suffix_as_a_count_role_without_metadata(
+    tmp_path: Path, matrix_type: str
+) -> None:
+    """Integer-looking FPKM values must not pass either count path."""
+
+    from degora.discovery import normalize_species
+    from degora.discovery_run import DiscoveryError, _fallback_row
+
+    values = {
+        "c1_FPKM": [10.0] * 30,
+        "c2_FPKM": [12.0] * 30,
+        "t1_FPKM": [20.0] * 30,
+        "t2_FPKM": [22.0] * 30,
+    }
+    study, candidate, bundle = _matrix_candidate(tmp_path, values)
+    entry = _fallback_entry(
+        control_samples=["c1_FPKM", "c2_FPKM"],
+        treatment_samples=["t1_FPKM", "t2_FPKM"],
+        matrix_type=matrix_type,
+        contrast_label="FPKM treatment vs control",
+    )
+
+    with pytest.raises(DiscoveryError, match="normalized-suffix sample columns cannot use a count matrix role"):
+        _fallback_row(
+            study=study,
+            candidate=candidate,
+            entry=entry,
+            spec=normalize_species("human"),
+            bundle_root=bundle,
+            derived_dir=tmp_path / "derived",
+            sequence=1,
+            replay_command="degora",
+        )
+
+
+def test_fallback_rejects_count_suffix_as_a_normalized_role_without_metadata(tmp_path: Path) -> None:
+    """An explicit count suffix overrides an unsafe manual normalized role."""
+
+    from degora.discovery import normalize_species
+    from degora.discovery_run import DiscoveryError, _fallback_row
+
+    values = {
+        "c1_count": [10.0] * 30,
+        "c2_count": [12.0] * 30,
+        "t1_count": [20.0] * 30,
+        "t2_count": [22.0] * 30,
+    }
+    study, candidate, bundle = _matrix_candidate(tmp_path, values)
+    entry = _fallback_entry(
+        control_samples=["c1_count", "c2_count"],
+        treatment_samples=["t1_count", "t2_count"],
+        matrix_type="normalized_expression_matrix",
+        normalized_scale="linear",
+        contrast_label="count treatment vs control",
+    )
+
+    with pytest.raises(DiscoveryError, match="count-suffix sample columns cannot use a normalized matrix role"):
+        _fallback_row(
+            study=study,
+            candidate=candidate,
+            entry=entry,
+            spec=normalize_species("human"),
+            bundle_root=bundle,
+            derived_dir=tmp_path / "derived",
+            sequence=1,
+            replay_command="degora",
+        )
+
+
+def test_declared_normalized_counts_filename_allows_count_suffix_with_explicit_scale(tmp_path: Path) -> None:
+    """A `_count` suffix does not prove raw counts when the file declares normalization."""
+
+    from degora.discovery import classify_filename, inspect_upstream_bytes, normalize_species
+    from degora.discovery_run import _fallback_row
+
+    rows = 40
+    values = {
+        "c1_count": [1.5 + index * 0.10 for index in range(rows)],
+        "c2_count": [1.8 + index * 0.10 for index in range(rows)],
+        "t1_count": [3.0 + index * 0.20 for index in range(rows)],
+        "t2_count": [3.4 + index * 0.20 for index in range(rows)],
+    }
+    study, candidate, bundle = _matrix_candidate(tmp_path, values)
+    old_path = Path(candidate["inspection"]["local_path"])
+    source_path = old_path.with_name("normalized_counts.csv")
+    old_path.rename(source_path)
+    assessment = classify_filename(source_path.name)
+    assert assessment["role"] == "normalized_expression_matrix"
+    inspected = inspect_upstream_bytes(
+        source_path.name,
+        source_path.read_bytes(),
+        declared_role=assessment["role"],
+    )
+    assert inspected["status"] == "upstream_matrix_ready_for_contrast"
+    candidate["name"] = source_path.name
+    candidate["role"] = assessment["role"]
+    candidate["inspection"] = {
+        **candidate["inspection"],
+        **inspected,
+        "fetch_scope": "full",
+        "local_path": str(source_path),
+        "full_file_sha256": hashlib.sha256(source_path.read_bytes()).hexdigest(),
+    }
+    row, _summary = _fallback_row(
+        study=study,
+        candidate=candidate,
+        entry=_fallback_entry(
+            control_samples=["c1_count", "c2_count"],
+            treatment_samples=["t1_count", "t2_count"],
+            matrix_type="normalized_expression_matrix",
+            normalized_scale="linear",
+            contrast_label="normalized-count treatment vs control",
+        ),
+        spec=normalize_species("human"),
+        bundle_root=bundle,
+        derived_dir=tmp_path / "derived",
+        sequence=1,
+        replay_command="degora",
+    )
+
+    assert row["source_input_type"] == "normalized_expression_matrix"
+    assert Path(row["source_path"]).is_file()
+
+
+def test_fallback_rejects_inspected_normalized_subtype_mix_across_distinct_bases(tmp_path: Path) -> None:
+    """Inspector metadata and the server agree that FPKM-versus-TPM is not biology."""
+
+    from degora.discovery import inspect_upstream_bytes, normalize_species
+    from degora.discovery_run import DiscoveryError, _fallback_row
+
+    values = {
+        "c1_FPKM": [1.0] * 30,
+        "c2_FPKM": [1.2] * 30,
+        "x1_FPKM": [1.4] * 30,
+        "x2_FPKM": [1.6] * 30,
+        "t1_TPM": [2.0] * 30,
+        "t2_TPM": [2.2] * 30,
+    }
+    study, candidate, bundle = _matrix_candidate(tmp_path, values)
+    source_path = Path(candidate["inspection"]["local_path"])
+    inspected = inspect_upstream_bytes(
+        source_path.name,
+        source_path.read_bytes(),
+        declared_role="normalized_expression_matrix",
+    )
+    candidate["inspection"] = {**candidate["inspection"], **inspected}
+    assert candidate["inspection"]["status"] == "upstream_matrix_ready_for_contrast"
+    assert candidate["inspection"]["sample_column_families"]["subtypes_present"]["normalized"] == ["fpkm", "tpm"]
+    entry = _fallback_entry(
+        control_samples=["c1_FPKM", "c2_FPKM"],
+        treatment_samples=["t1_TPM", "t2_TPM"],
+    )
+
+    with pytest.raises(DiscoveryError, match="mix normalized measurement subtypes"):
+        _fallback_row(
+            study=study,
+            candidate=candidate,
+            entry=entry,
+            spec=normalize_species("human"),
+            bundle_root=bundle,
+            derived_dir=tmp_path / "derived",
+            sequence=1,
+            replay_command="degora",
+        )
+
+
+@pytest.mark.parametrize(
+    ("family", "values", "control_samples", "treatment_samples", "base_by_column"),
+    [
+        (
+            "normalized",
+            {
+                "c1_FPKM": [1.0] * 30,
+                "c1_TPM": [1.1] * 30,
+                "c2_FPKM": [1.2] * 30,
+                "t1_FPKM": [2.0] * 30,
+                "t2_FPKM": [2.2] * 30,
+            },
+            ["c1_FPKM", "c1_TPM"],
+            ["t1_FPKM", "t2_FPKM"],
+            {"c1_FPKM": "c1", "c1_TPM": "c1", "c2_FPKM": "c2", "t1_FPKM": "t1", "t2_FPKM": "t2"},
+        ),
+        (
+            "count",
+            {
+                "c1_raw_count": [10.0] * 30,
+                "c1_count": [11.0] * 30,
+                "c2_count": [12.0] * 30,
+                "t1_count": [20.0] * 30,
+                "t2_count": [22.0] * 30,
+            },
+            ["c1_raw_count", "c1_count"],
+            ["t1_count", "t2_count"],
+            {"c1_raw_count": "c1", "c1_count": "c1", "c2_count": "c2", "t1_count": "t1", "t2_count": "t2"},
+        ),
+    ],
+)
+def test_fallback_rejects_same_family_subtypes_for_one_base_without_geo_labels(
+    tmp_path: Path,
+    family: str,
+    values: dict[str, list[float]],
+    control_samples: list[str],
+    treatment_samples: list[str],
+    base_by_column: dict[str, str],
+) -> None:
+    """FPKM+TPM or raw-count+count for one base are not extra replicates."""
+
+    from degora.discovery import normalize_species
+    from degora.discovery_run import DiscoveryError, _fallback_row
+
+    study, candidate, bundle = _matrix_candidate(tmp_path, values)
+    candidate["inspection"]["sample_column_families"] = {
+        "count": list(values) if family == "count" else [],
+        "normalized": list(values) if family == "normalized" else [],
+        "base_by_column": base_by_column,
+        "selected_family": family,
+        "selection_basis": f"declared_role={family}",
+    }
+    entry = _fallback_entry(
+        control_samples=control_samples,
+        treatment_samples=treatment_samples,
+        matrix_type="count_matrix" if family == "count" else "normalized_expression_matrix",
+    )
+
+    with pytest.raises(DiscoveryError, match="same biological sample base"):
+        _fallback_row(
+            study=study,
+            candidate=candidate,
+            entry=entry,
+            spec=normalize_species("human"),
+            bundle_root=bundle,
+            derived_dir=tmp_path / "derived",
+            sequence=1,
+            replay_command="degora",
         )
 
 

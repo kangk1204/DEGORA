@@ -227,10 +227,26 @@ def _prepare_record_lines(studies: list[Any]) -> list[str]:
                 f"{name}: a results table with adjusted p-values only - confirm in the browser that padj "
                 "may stand in for the p-value, then it can be activated."
             )
+        elif "requires_lfc_confirmation" in statuses:
+            lines.append(
+                f"{name}: an author results table was found - confirm whether its fold-change column is "
+                "already log2 scale, then it can be activated."
+            )
+        elif "requires_column_mapping" in statuses:
+            lines.append(
+                f"{name}: an author results table was found - confirm its gene, fold-change, and p-value "
+                "columns in the browser, then it can be activated."
+            )
         elif upstream or any("matrix" in str((item.get("inspection") or {}).get("reason") or "") for item in files):
             lines.append(
                 f"{name}: only expression matrices were found (no author DEG table) - open it in the browser "
                 "and choose at least two control and two treatment samples to derive a contrast."
+            )
+        elif "candidate_header" in statuses:
+            lines.append(
+                f"{name}: only a possible results header was found; sampled values did not pass author-table "
+                "readiness, so it cannot be activated as prepared. Inspect another file or provide a manually "
+                "cleaned DEG table."
             )
         elif files:
             reasons = sorted({str((item.get("inspection") or {}).get("reason") or "") for item in files} - {""})
@@ -238,6 +254,32 @@ def _prepare_record_lines(studies: list[Any]) -> list[str]:
         else:
             lines.append(f"{name}: no supplementary files were found for this record.")
     return lines
+
+
+AUTHOR_REVIEW_REQUIRED_STATUSES = {
+    "requires_column_mapping",
+    "requires_lfc_confirmation",
+    "requires_pvalue_mapping",
+}
+
+
+def _prepared_candidate_counts(studies: list[Any]) -> tuple[int, int, int]:
+    """Count exact author, review-required author, and upstream candidates."""
+
+    exact_author = 0
+    review_author = 0
+    upstream = 0
+    for study in studies:
+        if not isinstance(study, dict):
+            continue
+        files = [item for item in study.get("files", []) if isinstance(item, dict)]
+        statuses = [str((item.get("inspection") or {}).get("status") or "") for item in files]
+        exact_from_files = sum(status == "ready_for_review" for status in statuses)
+        upstream_from_files = sum(status == "upstream_matrix_ready_for_contrast" for status in statuses)
+        exact_author += exact_from_files or int(study.get("ready_for_review_count", 0) or 0)
+        upstream += upstream_from_files or int(study.get("upstream_matrix_count", 0) or 0)
+        review_author += sum(status in AUTHOR_REVIEW_REQUIRED_STATUSES for status in statuses)
+    return exact_author, review_author, upstream
 
 
 def _print_publication_page(
@@ -1012,7 +1054,27 @@ def main(argv: list[str] | None = None) -> int:
                         materialize_dir=output,
                         force=args.force,
                     )
+                    studies = [study for study in result.get("studies", []) if isinstance(study, dict)]
+                    ready, author_review, upstream = _prepared_candidate_counts(studies)
+                    usable = ready + author_review + upstream
                     print(f"Prepared {result['returned_studies']} {args.species} GEO studies: {output}")
+                    print(
+                        f"Ready for review: {ready} table(s); "
+                        f"upstream matrices awaiting contrast: {upstream}."
+                    )
+                    print(f"Author tables awaiting column/scale review: {author_review}.")
+                    if usable:
+                        print(
+                            f"Usable candidates: {usable} - all remain inactive until their required review "
+                            "or contrast setup is completed."
+                        )
+                    else:
+                        print(
+                            "Usable candidates: 0 - nothing can be activated yet; "
+                            "see discovery_audit.json for the per-file reason."
+                        )
+                    for line in _prepare_record_lines(studies):
+                        print(f"  {line}")
                     print(f"Draft catalog (inactive): {result['exports']['draft_catalog_csv']}")
                     print("Review contrast direction and table scope before activation; Human and Mouse remain separate.")
                 else:
@@ -1100,16 +1162,15 @@ def main(argv: list[str] | None = None) -> int:
                 # "Prepared 8 record(s)" alone reads as success even when every one
                 # of them resolved to an upstream matrix or no usable table, and the
                 # draft catalog is a header with no rows under it.
-                ready = sum(
-                    int(study.get("ready_for_review_count", 0) or 0)
-                    for study in result.get("studies", [])
-                    if isinstance(study, dict)
-                )
+                ready, author_review, upstream = _prepared_candidate_counts(result.get("studies", []))
+                usable = ready + author_review + upstream
                 print(f"Prepared {prepared_count} {args.species} publication/source-unit record(s): {output}")
                 print(
-                    f"Ready for review: {ready} table(s) across those records"
-                    + ("" if ready else " - nothing can be activated yet; see discovery_audit.json for the per-file reason")
+                    f"Ready for review: {ready} table(s); author tables awaiting column/scale review: "
+                    f"{author_review}; upstream matrices awaiting contrast: {upstream}."
                 )
+                if not usable:
+                    print("No activatable candidate was resolved; see discovery_audit.json for the per-file reason.")
                 # The judgement behind "0 table(s)" is right and sits in the JSON; a
                 # reader needs the one line per record that says what to do next.
                 for line in _prepare_record_lines(result.get("studies", [])):

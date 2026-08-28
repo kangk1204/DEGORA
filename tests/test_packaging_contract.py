@@ -56,6 +56,7 @@ def test_manifest_declares_every_release_support_file() -> None:
         "include .gitattributes",
         "include .gitignore",
         "recursive-include tests *.py *.json",
+        "include tests/test_live_discovery_regressions.py",
     } <= manifest_lines
 
 
