@@ -36,6 +36,88 @@ def test_identifier_graph_deduplicates_connected_publication_records() -> None:
     assert row["sources"] == ["geo", "pmc", "pubmed"]
 
 
+@pytest.mark.parametrize(
+    ("left", "right", "expected"),
+    [
+        ({"accession": "GSE123"}, {"accession": "E-GEOD-123"}, {"geo_accessions": ["GSE123"]}),
+        ({"accession": "E-MTAB-456"}, {"accession": "EMTAB456"}, {"geo_accessions": ["E-MTAB-456"]}),
+        (
+            {"pubmed_ids": "PMID:123; PMID:456"},
+            {"pmid": "PMID-456"},
+            {"pubmed_ids": ["123", "456"]},
+        ),
+        ({"pmcid": "PMCID:PMC789"}, {"pmcid": "PMC-789"}, {"pmcid": "PMC789"}),
+        (
+            {"source_unit_id": "GSE321"},
+            {"source_unit_id": "E-GEOD-321"},
+            {"source_unit_id": "GSE321", "source_unit_conflict": []},
+        ),
+        (
+            {"source_unit_id": "123"},
+            {"source_unit_id": "PMID:123"},
+            {"source_unit_id": "PMID:123", "source_unit_conflict": []},
+        ),
+    ],
+)
+def test_identifier_graph_merges_public_identifier_aliases(
+    left: dict[str, str],
+    right: dict[str, str],
+    expected: dict[str, object],
+) -> None:
+    left = {"paper_title": "left record", **left}
+    right = {"paper_title": "right record", **right}
+
+    merged = merge_publication_records([left, right], "Human")
+
+    assert len(merged) == 1
+    for field, value in expected.items():
+        assert merged[0][field] == value
+
+
+@pytest.mark.parametrize(
+    ("left", "right"),
+    [
+        ({"accession": "GSE123"}, {"accession": "GSE124"}),
+        ({"accession": "E-MTAB-456"}, {"accession": "EMTAB457"}),
+        ({"pmid": "PMID:123"}, {"pmid": "PMID:124"}),
+        ({"pmcid": "PMC123"}, {"pmcid": "PMCID:PMC124"}),
+    ],
+)
+def test_identifier_graph_keeps_distinct_public_identifiers_separate(
+    left: dict[str, str],
+    right: dict[str, str],
+) -> None:
+    left = {"paper_title": "left record", **left}
+    right = {"paper_title": "right record", **right}
+
+    assert len(merge_publication_records([left, right], "Human")) == 2
+
+
+def test_contradictory_source_unit_does_not_bridge_two_pubmed_records() -> None:
+    records = [
+        {"paper_title": "record with contradictory metadata", "pmid": "111", "source_unit_id": "PMID:222"},
+        {"paper_title": "publication 111", "pmid": "111"},
+        {"paper_title": "publication 222", "pmid": "222"},
+    ]
+
+    merged = merge_publication_records(records, "Human")
+
+    assert sorted(row["pubmed_ids"] for row in merged) == [["111"], ["222"]]
+
+
+def test_source_unit_can_still_connect_different_identifier_namespaces() -> None:
+    records = [
+        {"paper_title": "publication record", "pmid": "111", "source_unit_id": "GSE123"},
+        {"paper_title": "repository record", "accession": "GSE123"},
+    ]
+
+    merged = merge_publication_records(records, "Human")
+
+    assert len(merged) == 1
+    assert merged[0]["pubmed_ids"] == ["111"]
+    assert merged[0]["geo_accessions"] == ["GSE123"]
+
+
 def test_canonical_record_id_normalizes_doi_before_accession() -> None:
     row = {"doi": " DOI: https://doi.org/10.1093/NAR/GKAA000. ", "accession": "GSE1"}
 

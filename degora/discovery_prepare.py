@@ -27,6 +27,7 @@ from .discovery import (
     DiscoveryUnavailableError,
     DiscoveryUnsafeArchiveError,
     _inspect_preparation_candidate_bytes,
+    _validate_full_gzip,
     classify_filename,
     export_discovery_bundle,
     normalize_species,
@@ -583,9 +584,17 @@ def _materialize_archive_tables(
                         continue
                     if len(files) >= max_files:
                         continue
-                    raw_member = read_archive_member(
-                        archive, info, max_bytes=MAX_ARCHIVE_MEMBER_BYTES
-                    )
+                    try:
+                        raw_member = read_archive_member(
+                            archive, info, max_bytes=MAX_ARCHIVE_MEMBER_BYTES
+                        )
+                    except DiscoveryUnsafeArchiveError:
+                        raise
+                    except DiscoveryError as exc:
+                        nested_notes.append(
+                            f"archive member {member_name} could not be inspected: {exc}"
+                        )
+                        continue
                     if is_nested_archive:
                         visit(raw_member, f"{member_name}!/", depth + 1)
                         continue
@@ -643,6 +652,15 @@ def _file_entry(
     classified = classify_filename(name)
     if not classified.get("inspectable"):
         return None
+    candidate_paths = (
+        urllib.parse.urlsplit(str(name)).path.lower(),
+        urllib.parse.urlsplit(str(source_url)).path.lower(),
+    )
+    if any(path.endswith(".gz") for path in candidate_paths):
+        # GEO preparation already performs this check. Publication-linked
+        # direct files and archive members must enforce the same complete-stream
+        # and expanded-size contract before being stamped fetch_scope=full.
+        _validate_full_gzip(payload)
     role = declared_role or str(classified.get("role") or "")
     inspection, role = _inspect_preparation_candidate_bytes(name, payload, declared_role=role)
     inspection = dict(inspection)

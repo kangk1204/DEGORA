@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import gzip
 import hashlib
 import io
 import json
+import struct
 import urllib.error
 import zipfile
 from pathlib import Path
@@ -69,6 +71,23 @@ def _zip(entries: dict[str, bytes]) -> bytes:
     return buffer.getvalue()
 
 
+def _zip_with_corrupt_compressed_member(compression: int) -> bytes:
+    """Return a valid ZIP directory with one stream corrupted in place."""
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=compression) as archive:
+        archive.writestr("author_DESeq2_results.csv", _deg_table())
+        archive.writestr("corrupt_DEG.csv", _deg_table() * 500)
+    raw = bytearray(buffer.getvalue())
+    with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+        info = archive.getinfo("corrupt_DEG.csv")
+        filename_size, extra_size = struct.unpack_from("<HH", raw, info.header_offset + 26)
+        compressed_start = info.header_offset + 30 + filename_size + extra_size
+        corrupt_offset = 0 if compression == zipfile.ZIP_DEFLATED else info.compress_size // 2
+    raw[compressed_start + corrupt_offset] ^= 0xFF
+    return bytes(raw)
+
+
 def test_no_geo_author_deg_table_materializes_full_bundle(tmp_path: Path) -> None:
     result = prepare_publication_records(
         [_record()],
@@ -91,6 +110,48 @@ def test_no_geo_author_deg_table_materializes_full_bundle(tmp_path: Path) -> Non
     assert (tmp_path / "prepared" / ".degora-discovery-bundle.json").is_file()
     audit = json.loads(Path(result["exports"]["audit_json"]).read_text(encoding="utf-8"))
     assert audit["studies"][0]["files"][0]["inspection"]["local_path"] == candidate["inspection"]["local_path"]
+
+
+def test_direct_truncated_gzip_is_rejected_before_full_bundle_stamp(tmp_path: Path) -> None:
+    broken_url = "https://zenodo.org/files/author_DESeq2_results.csv.gz"
+    healthy = _record(
+        canonical_id="pmid:2",
+        source_unit_id="PMID:2",
+        pmid="2",
+        direct_file_candidates=[
+            {
+                "url": "https://zenodo.org/files/deg.csv",
+                "name": "author_DESeq2_results.csv",
+                "role": "deg_table",
+            }
+        ],
+    )
+    truncated = gzip.compress(_deg_table())[:-8]
+
+    result = prepare_publication_records(
+        [
+            _record(
+                direct_file_candidates=[
+                    {"url": broken_url, "name": "author_DESeq2_results.csv.gz", "role": "deg_table"}
+                ]
+            ),
+            healthy,
+        ],
+        "human",
+        materialize_dir=tmp_path / "prepared",
+        transport=FakeTransport(
+            {
+                broken_url: truncated,
+                "https://zenodo.org/files/deg.csv": _deg_table(),
+            }
+        ),
+    )
+
+    assert result["returned_studies"] == 1
+    excluded = {item["canonical_id"]: item for item in result["excluded_studies"]}
+    assert excluded["pmid:1"]["candidate_errors"][0]["status"] == "rejected"
+    assert "valid complete stream" in excluded["pmid:1"]["candidate_errors"][0]["error"]
+    assert not list((tmp_path / "prepared").rglob("*.csv.gz"))
 
 
 def test_zero_inspection_budget_skips_real_direct_downloads(tmp_path: Path) -> None:
@@ -701,6 +762,72 @@ def test_a_corrupt_member_does_not_discard_the_tables_beside_it(tmp_path: Path) 
     names = [item["name"] for item in study["files"]]
     assert len(names) == 1 and names[0].endswith("author_DESeq2_results.csv"), names
     assert any("extra.zip" in item["error"] for item in study["candidate_errors"])
+
+
+@pytest.mark.parametrize(
+    "compression",
+    [zipfile.ZIP_DEFLATED, zipfile.ZIP_LZMA],
+    ids=["deflate", "lzma"],
+)
+def test_a_corrupt_compressed_member_does_not_discard_a_valid_peer(
+    tmp_path: Path,
+    compression: int,
+) -> None:
+    bundle = _zip_with_corrupt_compressed_member(compression)
+    result = prepare_publication_records(
+        [
+            _record(
+                direct_file_candidates=[
+                    _zip_candidate("https://zenodo.org/files/bundle.zip", name="bundle.zip")
+                ]
+            )
+        ],
+        "human",
+        materialize_dir=tmp_path / "prepared",
+        transport=FakeTransport({"https://zenodo.org/files/bundle.zip": bundle}),
+    )
+
+    study = result["studies"][0]
+    assert [item["name"] for item in study["files"]] == ["author_DESeq2_results.csv"]
+    assert any("corrupt_DEG.csv" in item["error"] for item in study["candidate_errors"])
+
+
+def test_an_unreadable_archive_member_does_not_discard_a_valid_peer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import degora.discovery_prepare as prepare_module
+
+    real_read = prepare_module.read_archive_member
+
+    def reject_encrypted(archive, info, *, max_bytes: int) -> bytes:
+        if info.filename == "encrypted_DEG.csv":
+            raise DiscoveryError("archive member is encrypted and cannot be inspected")
+        return real_read(archive, info, max_bytes=max_bytes)
+
+    monkeypatch.setattr(prepare_module, "read_archive_member", reject_encrypted)
+    bundle = _zip(
+        {
+            "author_DESeq2_results.csv": _deg_table(),
+            "encrypted_DEG.csv": b"not opened",
+        }
+    )
+    result = prepare_publication_records(
+        [
+            _record(
+                direct_file_candidates=[
+                    _zip_candidate("https://zenodo.org/files/bundle.zip", name="bundle.zip")
+                ]
+            )
+        ],
+        "human",
+        materialize_dir=tmp_path / "prepared",
+        transport=FakeTransport({"https://zenodo.org/files/bundle.zip": bundle}),
+    )
+
+    study = result["studies"][0]
+    assert [item["name"] for item in study["files"]] == ["author_DESeq2_results.csv"]
+    assert any("encrypted_DEG.csv" in item["error"] for item in study["candidate_errors"])
 
 
 def test_an_archive_safety_violation_still_refuses_the_whole_run(tmp_path: Path) -> None:

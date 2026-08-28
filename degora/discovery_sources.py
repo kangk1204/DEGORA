@@ -12,6 +12,7 @@ import http.client
 import io
 import ipaddress
 import json
+import lzma
 import mimetypes
 import os
 import re
@@ -24,6 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import zipfile
+import zlib
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Iterable
@@ -880,6 +882,24 @@ def read_archive_member(archive: zipfile.ZipFile, info: zipfile.ZipInfo, *, max_
         # size, not the archive being unreadable.
         raise DiscoveryUnsafeArchiveError(
             f"archive member {info.filename!r} does not match its declared size or checksum"
+        ) from exc
+    # NotImplementedError is a RuntimeError subclass, so handle unsupported ZIP
+    # codecs first or they are mislabeled as password/encryption failures.
+    except NotImplementedError as exc:
+        raise DiscoveryError(
+            f"archive member {info.filename!r} uses an unreadable or unsupported compression format"
+        ) from exc
+    except RuntimeError as exc:
+        if info.flag_bits & 0x1:
+            raise DiscoveryError(
+                f"archive member {info.filename!r} is encrypted and cannot be inspected"
+            ) from exc
+        raise DiscoveryError(
+            f"archive member {info.filename!r} could not be decompressed"
+        ) from exc
+    except (EOFError, OSError, lzma.LZMAError, zlib.error) as exc:
+        raise DiscoveryError(
+            f"archive member {info.filename!r} uses an unreadable or unsupported compression format"
         ) from exc
     return b"".join(chunks)
 

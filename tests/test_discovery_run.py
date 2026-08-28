@@ -828,6 +828,76 @@ def test_inconsistent_prepared_units_cannot_split_one_shared_pubmed_source(tmp_p
     assert not output.exists()
 
 
+@pytest.mark.parametrize(
+    ("left_identity", "right_identity", "message"),
+    [
+        ({"accession": "GSE123"}, {"accession": "E-GEOD-123"}, "public study accession"),
+        ({"accession": "E-MTAB-456"}, {"accession": "EMTAB456"}, "public study accession"),
+        (
+            {"pubmed_ids": "PMID:123; PMID:456"},
+            {"pubmed_ids": ["PMID-456"]},
+            "PubMed ID",
+        ),
+        ({"pmcid": "PMCID:PMC789"}, {"pmcids": ["PMC-789"]}, "PMC ID"),
+        (
+            {"doi": "10.1000/Same.DOI"},
+            {"publication_doi": "https://doi.org/10.1000/same.doi"},
+            "DOI",
+        ),
+    ],
+)
+def test_prepared_unit_validation_rejects_public_identifier_aliases_split_across_units(
+    left_identity: dict[str, object],
+    right_identity: dict[str, object],
+    message: str,
+) -> None:
+    studies = [
+        {"source_unit_id": "OPAQUE-UNIT-A", **left_identity},
+        {"source_unit_id": "OPAQUE-UNIT-B", **right_identity},
+    ]
+
+    with pytest.raises(DiscoveryError, match=message):
+        discovery_run._validate_prepared_source_units(studies)
+
+
+def test_prepared_unit_validation_keeps_truly_distinct_public_units() -> None:
+    studies = [
+        {"source_unit_id": "OPAQUE-UNIT-A", "accession": "GSE123", "pmid": "PMID:100"},
+        {"source_unit_id": "OPAQUE-UNIT-B", "accession": "E-GEOD-124", "pmid": "PMID:101"},
+        {"source_unit_id": "OPAQUE-UNIT-C", "accession": "EMTAB456", "pmcid": "PMC200"},
+        {"source_unit_id": "OPAQUE-UNIT-D", "accession": "E-MTAB-457", "pmcid": "PMCID:PMC201"},
+    ]
+
+    discovery_run._validate_prepared_source_units(studies)
+
+
+@pytest.mark.parametrize(
+    ("study", "expected"),
+    [
+        ({"source_unit_id": "E-GEOD-123"}, "GSE123"),
+        ({"source_unit_id": "EMTAB456"}, "E-MTAB-456"),
+        ({"source_unit_id": "PMID-789"}, "PMID:789"),
+        ({"source_unit_id": "PMCID:PMC321"}, "PMCID:PMC321"),
+        ({"source_unit_id": "PMC-741"}, "PMCID:PMC741"),
+        ({"source_unit_id": "12345"}, "PMID:12345"),
+        ({"pubmed_ids": "PMID:654; PMID-987"}, "PMID:654"),
+    ],
+)
+def test_paper_source_unit_uses_canonical_public_identifier(study: dict[str, object], expected: str) -> None:
+    assert discovery_run._paper_source_unit(study) == expected
+
+
+def test_bare_and_prefixed_pmid_source_units_collapse_before_counting() -> None:
+    studies = [
+        {"source_unit_id": "12345"},
+        {"source_unit_id": "PMID:12345"},
+    ]
+
+    discovery_run._validate_prepared_source_units(studies)
+
+    assert {discovery_run._paper_source_unit(study) for study in studies} == {"PMID:12345"}
+
+
 def test_failed_late_fallback_activation_leaves_no_partial_run(tmp_path: Path) -> None:
     bundle = tmp_path / "bundle"
     bundle.mkdir()

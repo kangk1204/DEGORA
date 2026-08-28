@@ -571,6 +571,31 @@ make smoke
 <!--
 ## Release notes
 
+### 0.4.36
+
+The scoring and aggregation contract is unchanged at v1.3:
+`SCORE_VERSION` remains `degora_score_v1_3_source_unit_mean`. This patch is
+limited to public-data discovery and input validation; it does not change score
+components, weights, aggregation, eligibility, or rank semantics.
+
+**Public source-unit aliases can no longer satisfy independence twice.** GEO
+`GSE`/`E-GEOD`, ArrayExpress `E-MTAB`/`EMTAB`, PMID/PMCID prefix variants, and
+delimited publication-ID lists are canonicalized before record merging and
+prepared-bundle validation. Opaque user-defined source-unit identifiers remain
+unchanged, and genuinely distinct public identifiers remain distinct.
+
+**Qualified measurement columns retain their true scale.** Technical suffixes
+such as `unstranded`, `stranded_first`, `sense`, and `reverse` no longer hide an
+earlier FPKM, TPM, count, or other supported scale label. Inspection and
+activation therefore reject mixed normalized subtypes and count/normalized
+families even when public exports append strandedness qualifiers.
+
+**Compressed inputs fail closed without discarding valid peers.** Direct gzip
+tables and gzip archive members must pass complete-stream and expanded-size
+validation before they are marked as fully fetched. Encrypted, unsupported, or
+otherwise unreadable ZIP members produce controlled candidate errors, while a
+hostile checksum or size violation still refuses the archive.
+
 ### 0.4.35
 
 The scoring and aggregation contract is unchanged at v1.3:

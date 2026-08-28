@@ -35,7 +35,18 @@ from .reanalysis import (
     sniff_delimited_separator,
 )
 from .score_db import write_score_database
-from .slice_runner import CATALOG_COLUMNS, run_slice, run_warning_messages, validate_catalog_inputs
+from .slice_runner import (
+    CATALOG_COLUMNS,
+    run_slice,
+    run_warning_messages,
+    validate_catalog_inputs,
+)
+from .source_units import (
+    canonical_source_unit_id,
+    normalize_pmcids,
+    normalize_pmids,
+    recognized_source_unit_key,
+)
 
 MAX_ACTIVE_CANDIDATES = 40
 MAX_CONTRAST_LABEL = 180
@@ -146,6 +157,8 @@ def _provider_accession_unit(study: dict[str, Any]) -> str:
     canonical_id = _first_text(study.get("canonical_id"), study.get("provider_accession"), study.get("accession"))
     if not canonical_id:
         return ""
+    if recognized_source_unit_key(canonical_id):
+        return canonical_source_unit_id(canonical_id)
     provider = _first_text(study.get("provider"), study.get("source_provider"))
     if provider and not str(canonical_id).upper().startswith(("GSE", "PMID:", "DOI:", "PMC")):
         return f"{provider.upper()}:{canonical_id}"
@@ -189,14 +202,14 @@ def _without_list_delimiter(value: str) -> str:
 def _paper_source_unit(study: dict[str, Any]) -> str:
     explicit = str(study.get("source_unit_id") or "").strip()
     if explicit:
-        return _without_list_delimiter(
-            _text(explicit, field="source_unit_id", required=True, maximum=160)
+        return canonical_source_unit_id(
+            _without_list_delimiter(
+                _text(explicit, field="source_unit_id", required=True, maximum=160)
+            )
         )
-    pmids = [
-        str(value).strip()
-        for value in [*study.get("source_unit_pubmed_ids", []), *study.get("pubmed_ids", [])]
-        if str(value).strip()
-    ]
+    pmids = normalize_pmids(
+        [study.get("source_unit_pubmed_ids"), study.get("pubmed_ids"), study.get("pmid")]
+    )
     if pmids:
         return _without_list_delimiter(f"PMID:{pmids[0]}")
     doi = _doi_unit(_first_text(study.get("doi"), study.get("dois"), study.get("publication_doi")))
@@ -221,12 +234,11 @@ def _study_accession_key(study: dict[str, Any]) -> str:
 def _publication_metadata_note(study: dict[str, Any]) -> str:
     parts = []
     doi = _doi_unit(_first_text(study.get("doi"), study.get("dois"), study.get("publication_doi")))
-    pmcid = _first_text(study.get("pmcid"), study.get("pmcids"))
+    pmcids = normalize_pmcids([study.get("pmcid"), study.get("pmcids")])
     if doi:
         parts.append(doi)
-    if pmcid:
-        pmcid = pmcid.removeprefix("PMCID:").removeprefix("PMC")
-        parts.append(f"PMCID:PMC{pmcid}")
+    if pmcids:
+        parts.append(f"PMCID:{pmcids[0]}")
     return "; ".join(parts)
 
 
@@ -279,19 +291,46 @@ def _validate_mixed_activation(study: dict[str, Any]) -> None:
 
 
 def _validate_prepared_source_units(studies: Iterable[dict[str, Any]]) -> None:
-    pmid_units: dict[str, str] = {}
+    identity_units: dict[str, str] = {}
     for study in studies:
         source_unit = _paper_source_unit(study)
-        pmids = [
-            str(value).strip()
-            for value in [*study.get("source_unit_pubmed_ids", []), *study.get("pubmed_ids", [])]
-            if str(value).strip()
-        ]
-        for pmid in pmids:
-            previous = pmid_units.setdefault(pmid, source_unit)
+        identity_keys = {
+            *(f"pmid:{value}" for value in normalize_pmids(
+                [study.get("source_unit_pubmed_ids"), study.get("pubmed_ids"), study.get("pmid")]
+            )),
+            *(f"pmcid:{value}" for value in normalize_pmcids([study.get("pmcid"), study.get("pmcids")])),
+        }
+        for field in (
+            "source_unit_id",
+            "accession",
+            "canonical_id",
+            "provider_accession",
+            "geo_accessions",
+            "accessions",
+            "doi",
+            "dois",
+            "publication_doi",
+        ):
+            values = study.get(field)
+            if not isinstance(values, (list, tuple, set, frozenset)):
+                values = [values]
+            identity_keys.update(
+                key
+                for value in values
+                if (key := recognized_source_unit_key(value))
+            )
+        for identity_key in identity_keys:
+            previous = identity_units.setdefault(identity_key, source_unit)
             if previous != source_unit:
+                kind = identity_key.split(":", 1)[0]
+                label = {
+                    "pmid": "PubMed ID",
+                    "pmcid": "PMC ID",
+                    "accession": "public study accession",
+                    "doi": "DOI",
+                }.get(kind, "public identifier")
                 raise DiscoveryError(
-                    "prepared studies sharing a PubMed ID must share one source_unit_id; prepare the bundle again"
+                    f"prepared studies sharing a {label} must share one source_unit_id; prepare the bundle again"
                 )
 
 

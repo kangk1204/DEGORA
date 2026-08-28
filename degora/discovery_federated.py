@@ -6,24 +6,31 @@ paper-level records used by DEGORA's discovery UI.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import hashlib
 import math
 import re
+from datetime import datetime, timezone
 from typing import Any, Callable, Iterable
 
 from . import runtime_version_info
-from .provenance import redact_secrets_in_text
 from .discovery import (
-    classify_filename,
+    SEARCH_ASSESSMENT_VERSION,
     DiscoveryError,
     DiscoveryUnavailableError,
     SpeciesSpec,
     _query_terms,
+    classify_filename,
+    ignored_query_terms,
     network_failure_message,
     normalize_species as _normalize_species,
-    SEARCH_ASSESSMENT_VERSION,
-    ignored_query_terms,
+)
+from .provenance import redact_secrets_in_text
+from .source_units import (
+    canonical_source_unit_id,
+    normalize_pmcids,
+    normalize_pmids,
+    normalize_study_accession,
+    recognized_source_unit_key,
 )
 
 
@@ -56,8 +63,8 @@ def normalize_species(species: str | SpeciesSpec) -> SpeciesSpec:
 def canonical_record_id(record: dict[str, Any]) -> str:
     """Return the preferred stable identifier: PMID, normalized DOI, accession."""
 
-    pmids = _as_list(record.get("pmid")) + _as_list(record.get("pubmed_ids"))
-    pmid = _first_sorted(_normalize_pmid(value) for value in pmids)
+    pmids = normalize_pmids(_as_list(record.get("pmid")) + _as_list(record.get("pubmed_ids")))
+    pmid = _first_sorted(pmids)
     if pmid:
         return f"pmid:{pmid}"
     doi = _first_sorted(_normalize_doi(value) for value in _as_list(record.get("doi")) + _as_list(record.get("dois")))
@@ -518,13 +525,16 @@ def _prepare_record(record: dict[str, Any], target: SpeciesSpec) -> dict[str, An
         row["relevance_rank"] = row.get("rank")
     if row.get("quarantined") is True:
         row["mixed_quarantined"] = True
-    row["pubmed_ids"] = sorted(set(filter(None, (_normalize_pmid(value) for value in _as_list(row.get("pubmed_ids")) + _as_list(row.get("pmid"))))))
+    row["pubmed_ids"] = normalize_pmids(_as_list(row.get("pubmed_ids")) + _as_list(row.get("pmid")))
     row["pmid"] = row["pubmed_ids"][0] if row["pubmed_ids"] else ""
     dois = sorted(set(filter(None, (_normalize_doi(value) for value in _as_list(row.get("doi")) + _as_list(row.get("dois"))))))
     row["doi"] = dois[0] if dois else ""
     if dois:
         row["dois"] = dois
-    row["pmcid"] = _first_sorted(_normalize_pmcid(value) for value in _as_list(row.get("pmcid")) + _as_list(row.get("pmcids"))) or ""
+    pmcids = normalize_pmcids(_as_list(row.get("pmcid")) + _as_list(row.get("pmcids")))
+    row["pmcid"] = pmcids[0] if pmcids else ""
+    if pmcids:
+        row["pmcids"] = pmcids
     row["geo_accessions"] = _collect_accessions(row)
     row["accession"] = row["geo_accessions"][0] if row["geo_accessions"] else ""
     row["provider_ids"] = _collect_provider_ids(row)
@@ -598,7 +608,9 @@ def _merge_group(group: list[dict[str, Any]], target: SpeciesSpec) -> dict[str, 
     merged["data_readiness"] = _with_likely_input(_merged_readiness(ordered, merged, target), merged)
     merged["source_unit_id"] = _merged_source_unit_id(ordered, merged)
     explicit_source_units = _sorted_strings(
-        row.get("source_unit_id") for row in ordered if _clean_text(row.get("source_unit_id"))
+        canonical_source_unit_id(row.get("source_unit_id"))
+        for row in ordered
+        if _clean_text(row.get("source_unit_id"))
     )
     merged["source_unit_conflict"] = explicit_source_units if len(explicit_source_units) > 1 else []
     resolution_states = _sorted_strings(row.get("resolution_state") for row in ordered)
@@ -841,11 +853,30 @@ def _species_labels(evidence: Iterable[dict[str, str]]) -> list[str]:
 
 def _graph_identifiers(record: dict[str, Any]) -> list[str]:
     identifiers: list[str] = []
-    identifiers.extend(f"pmid:{normalized}" for value in _as_list(record.get("pubmed_ids")) + _as_list(record.get("pmid")) if (normalized := _normalize_pmid(value)))
+    identifiers.extend(
+        f"pmid:{normalized}"
+        for normalized in normalize_pmids(_as_list(record.get("pubmed_ids")) + _as_list(record.get("pmid")))
+    )
     identifiers.extend(f"doi:{normalized}" for value in _as_list(record.get("doi")) + _as_list(record.get("dois")) if (normalized := _normalize_doi(value)))
-    identifiers.extend(f"pmcid:{normalized}" for value in _as_list(record.get("pmcid")) + _as_list(record.get("pmcids")) if (normalized := _normalize_pmcid(value)))
+    identifiers.extend(
+        f"pmcid:{normalized}"
+        for normalized in normalize_pmcids(_as_list(record.get("pmcid")) + _as_list(record.get("pmcids")))
+    )
     identifiers.extend(f"accession:{value}" for value in _collect_accessions(record))
     identifiers.extend(f"provider:{value}" for value in _collect_provider_ids(record))
+    if source_unit_key := recognized_source_unit_key(record.get("source_unit_id")):
+        # A source unit may legitimately connect identifier namespaces (for
+        # example a PMID record to its GSE deposit). It must not contradict an
+        # identifier of the same kind on the record, because that turns one bad
+        # field into a graph bridge between two unrelated publications.
+        source_kind = source_unit_key.split(":", 1)[0]
+        same_kind = {
+            identifier
+            for identifier in identifiers
+            if identifier.split(":", 1)[0] == source_kind
+        }
+        if not same_kind or source_unit_key in same_kind:
+            identifiers.append(source_unit_key)
     return _sorted_strings(identifiers)
 
 
@@ -1032,7 +1063,7 @@ def flag_shared_submission_records(records: list[dict[str, Any]]) -> list[dict[s
 def _source_unit_id(record: dict[str, Any]) -> str:
     explicit = _clean_text(record.get("source_unit_id"))
     if explicit:
-        return explicit
+        return canonical_source_unit_id(explicit)
     pmid = _first_sorted(_normalize_pmid(value) for value in _as_list(record.get("pubmed_ids")) + _as_list(record.get("pmid")))
     if pmid:
         return f"PMID:{pmid}"
@@ -1046,7 +1077,11 @@ def _source_unit_id(record: dict[str, Any]) -> str:
 
 
 def _merged_source_unit_id(ordered: list[dict[str, Any]], merged: dict[str, Any]) -> str:
-    explicit = _sorted_strings(row.get("source_unit_id") for row in ordered if _clean_text(row.get("source_unit_id")))
+    explicit = _sorted_strings(
+        canonical_source_unit_id(row.get("source_unit_id"))
+        for row in ordered
+        if _clean_text(row.get("source_unit_id"))
+    )
     if len(explicit) == 1:
         return explicit[0]
     if len(merged.get("geo_accessions", [])) == 1:
@@ -1131,24 +1166,17 @@ def _normalize_doi(value: Any) -> str:
 
 
 def _normalize_pmid(value: Any) -> str:
-    text = _clean_text(value)
-    match = re.search(r"\d+", text)
-    return match.group(0) if match else ""
+    values = normalize_pmids(value)
+    return values[0] if values else ""
 
 
 def _normalize_pmcid(value: Any) -> str:
-    text = _clean_text(value).upper()
-    if not text:
-        return ""
-    match = re.search(r"(?:PMC)?(\d+)", text)
-    return f"PMC{match.group(1)}" if match else text
+    values = normalize_pmcids(value)
+    return values[0] if values else ""
 
 
 def _normalize_accession(value: Any) -> str:
-    text = _clean_text(value).upper()
-    if not text:
-        return ""
-    return re.sub(r"\s+", "", text)
+    return normalize_study_accession(value)
 
 
 def _as_list(value: Any) -> list[Any]:

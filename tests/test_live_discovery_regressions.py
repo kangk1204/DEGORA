@@ -279,9 +279,12 @@ def test_nonactivatable_author_header_does_not_hide_a_ready_count_matrix() -> No
         ("sample_logCPM", ("normalized", "sample", "logcpm")),
         ("sample_log2CPM", ("normalized", "sample", "logcpm")),
         ("sample_FPKM-UQ", ("normalized", "sample", "fpkm_uq")),
+        ("sample_FPKM_unstranded", ("normalized", "sample", "fpkm")),
+        ("sample_TPM_stranded_first", ("normalized", "sample", "tpm")),
         ("sample_TMM", ("normalized", "sample", "tmm")),
         ("sample_voom", ("normalized", "sample", "voom")),
         ("sample_raw_count", ("count", "sample", "count")),
+        ("sample_raw_count_stranded_second", ("count", "sample", "count")),
     ],
 )
 def test_measurement_suffixes_share_one_canonical_vocabulary(
@@ -291,6 +294,89 @@ def test_measurement_suffixes_share_one_canonical_vocabulary(
     from degora.discovery import _measurement_column_parts
 
     assert _measurement_column_parts(column) == expected
+
+
+def test_qualified_fpkm_and_tpm_columns_do_not_form_one_ready_pool() -> None:
+    payload = (
+        b"gene,c1_FPKM_unstranded,c2_FPKM_unstranded,t1_TPM_unstranded,t2_TPM_unstranded\n"
+        b"TP53,1,1.2,200,220\n"
+        b"VEGFA,2,2.2,400,420\n"
+    )
+
+    inspected = inspect_upstream_bytes(
+        "mixed_normalized_matrix.csv",
+        payload,
+        declared_role="unknown_matrix",
+    )
+
+    assert inspected["status"] == "not_upstream_matrix"
+    families = inspected["sample_column_families"]
+    assert families["subtypes_present"]["normalized"] == ["fpkm", "tpm"]
+    assert families["compatible_pools"] == {"normalized:fpkm": 2, "normalized:tpm": 2}
+    assert "multiple measurement subtypes" in inspected["measurement_family_warning"]
+
+
+def test_runtime_rederives_qualified_measurement_subtypes_from_an_old_bundle(tmp_path: Path) -> None:
+    from degora.discovery import normalize_species
+    from degora.discovery_run import DiscoveryError, _fallback_row
+
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    source = bundle / "mixed_normalized_matrix.csv"
+    sample_columns = [
+        "c1_FPKM_unstranded",
+        "c2_FPKM_unstranded",
+        "t1_TPM_unstranded",
+        "t2_TPM_unstranded",
+    ]
+    pd.DataFrame(
+        {
+            "gene": [f"GENE{i}" for i in range(30)],
+            sample_columns[0]: [1.0] * 30,
+            sample_columns[1]: [1.2] * 30,
+            sample_columns[2]: [200.0] * 30,
+            sample_columns[3]: [220.0] * 30,
+        }
+    ).to_csv(source, index=False)
+    candidate = {
+        "candidate_id": "matrix1",
+        "name": source.name,
+        "role": "normalized_expression_matrix",
+        # Simulate a bundle created before qualified scale names were parsed.
+        "inspection": {
+            "status": "upstream_matrix_ready_for_contrast",
+            "fetch_scope": "full",
+            "local_path": str(source),
+            "full_file_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+            "sample_columns": sample_columns,
+            "gene_column": "gene",
+            "header_row": 1,
+        },
+    }
+    entry = {
+        "candidate_id": "matrix1",
+        "mode": "fallback",
+        "direction_confirmed": True,
+        "biological_replicates_confirmed": True,
+        "control_samples": sample_columns[:2],
+        "treatment_samples": sample_columns[2:],
+        "matrix_type": "normalized_expression_matrix",
+        "normalized_scale": "linear",
+        "gene_column": "gene",
+        "contrast_label": "treatment versus control",
+    }
+
+    with pytest.raises(DiscoveryError, match="mix normalized measurement subtypes"):
+        _fallback_row(
+            study={"accession": "GSE1", "title": "qualified scale fixture", "files": [candidate]},
+            candidate=candidate,
+            entry=entry,
+            spec=normalize_species("human"),
+            bundle_root=bundle,
+            derived_dir=tmp_path / "derived",
+            sequence=1,
+            replay_command="degora discovery-analyze",
+        )
 
 
 def test_logcpm_pool_is_ready_but_warns_about_tpm_columns() -> None:

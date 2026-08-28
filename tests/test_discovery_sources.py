@@ -656,6 +656,31 @@ def test_a_failed_download_is_described_by_what_it_actually_is(payload: bytes, e
     assert expected in describe_unexpected_payload(payload)
 
 
+@pytest.mark.parametrize(
+    ("failure", "message"),
+    [
+        (RuntimeError("password required"), "encrypted"),
+        (NotImplementedError("compression method 99"), "unsupported compression"),
+    ],
+)
+def test_archive_member_reader_translates_format_errors(
+    failure: Exception,
+    message: str,
+) -> None:
+    from degora.discovery_sources import read_archive_member
+
+    class UnreadableArchive:
+        def open(self, info):
+            raise failure
+
+    info = zipfile.ZipInfo("author_DEG.csv")
+    if type(failure) is RuntimeError:
+        info.flag_bits |= 0x1
+
+    with pytest.raises(DiscoveryError, match=message):
+        read_archive_member(UnreadableArchive(), info, max_bytes=1024)
+
+
 def test_an_invalid_archive_reports_what_arrived_instead(tmp_path: Path) -> None:
     with pytest.raises(DiscoveryError, match="web page"):
         inspect_public_archive(b"<!DOCTYPE html><html><body>Not found</body></html>")

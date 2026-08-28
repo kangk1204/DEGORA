@@ -1607,16 +1607,35 @@ MEASUREMENT_FAMILY_SUFFIX_RE = re.compile(
     r")$",
     re.IGNORECASE,
 )
+MEASUREMENT_TECHNICAL_QUALIFIER_RE = re.compile(
+    r"(?:[_. -]+(?:"
+    r"unstranded|stranded(?:[_. -]+(?:first|second))?|"
+    r"sense|antisense|forward|reverse"
+    r"))+$",
+    re.IGNORECASE,
+)
 EXPLICIT_RAW_COUNT_SUFFIX_RE = re.compile(
     r"^.+?[_. -]+raw[_. -]?counts?$",
     re.IGNORECASE,
 )
 
 
+def _measurement_core_column(column: str) -> str:
+    """Remove only recognized technical qualifiers after a scale label.
+
+    Public matrix exports commonly append strandedness to the measurement,
+    for example ``sample_FPKM_unstranded`` or ``sample_TPM_stranded_first``.
+    The qualifier does not change the measurement scale and must not hide it
+    from either inspection or the activation-time fail-closed checks.
+    """
+
+    return MEASUREMENT_TECHNICAL_QUALIFIER_RE.sub("", str(column).strip())
+
+
 def _measurement_column_parts(column: str) -> tuple[str, str, str] | None:
     """Return the explicit measurement family, biological base and scale."""
 
-    match = MEASUREMENT_FAMILY_SUFFIX_RE.match(column)
+    match = MEASUREMENT_FAMILY_SUFFIX_RE.match(_measurement_core_column(column))
     if not match:
         return None
     suffix = re.sub(r"[_. -]+", "", match.group("suffix").lower())
@@ -1632,7 +1651,7 @@ def _measurement_column_parts(column: str) -> tuple[str, str, str] | None:
 
 
 def _is_explicit_raw_count_column(column: str) -> bool:
-    return bool(EXPLICIT_RAW_COUNT_SUFFIX_RE.fullmatch(column))
+    return bool(EXPLICIT_RAW_COUNT_SUFFIX_RE.fullmatch(_measurement_core_column(column)))
 
 
 def _explicit_content_measurement_role(sample_columns: list[str]) -> str:
