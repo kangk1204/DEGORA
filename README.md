@@ -539,6 +539,7 @@ make check
 make smoke
 ```
 
+<!--
 ## Release notes
 
 ### 0.4.33
@@ -1968,6 +1969,8 @@ ensures that stopping the local server records active fallback discovery work
 as interrupted instead of allowing it to appear complete after shutdown. The
 LOO nullable-field and rank-evaluable-fold semantics documented above are
 unchanged.
+
+-->
 
 ## License
 
