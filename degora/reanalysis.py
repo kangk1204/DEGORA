@@ -7,18 +7,25 @@ sample columns, with treatment-minus-control as the effect direction.
 
 from __future__ import annotations
 
+import csv
+import gzip
 import os
 import tempfile
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 import numpy as np
 import pandas as pd
 from scipy import stats
 
-from .derived_counts import attach_low_count_filter_metadata, low_count_filter_mask, low_count_filter_summary
+from .derived_counts import (
+    attach_low_count_filter_metadata,
+    low_count_filter_mask,
+    low_count_filter_summary,
+)
 from .formula_safety import formula_guard_metadata, neutralize_formula_text
-from .harmonize import WORKBOOK_SUFFIXES, _read_excel_any, _clean_gene_symbol
+from .harmonize import WORKBOOK_SUFFIXES, _clean_gene_symbol, _read_excel_any
 from .provenance import apply_default_file_mode, write_source_sidecar
 
 
@@ -41,14 +48,100 @@ VARIANCE_FLOOR_QUANTILE = 0.01
 VARIANCE_FLOOR_MINIMUM = 1e-8
 
 
-def _read_matrix(path: Path, *, sheet_name: str | int | None = None) -> pd.DataFrame:
+# The candidate inspector reads at most this much text; the sniffer below must
+# see the same bytes it saw or the two can disagree about the delimiter.
+SNIFF_TEXT_BYTES = 5 * 1024 * 1024
+
+
+def sniff_delimited_separator(path: Path, *, matrix_table: bool = False) -> str:
+    """Pick the delimiter exactly the way candidate inspection did.
+
+    Inspection tries tab, comma and semicolon and keeps the widest parse of the
+    first rows, so reading the same file back by its extension meant a
+    comma-delimited ``.txt`` (or a semicolon ``.csv``) that inspection had
+    presented as usable could never be activated: the columns inspection
+    offered came back as one glued-together name.
+    """
+
+    opener = gzip.open if "".join(path.suffixes).lower().endswith(".gz") else open
+    try:
+        with opener(path, "rb") as handle:
+            payload = handle.read(SNIFF_TEXT_BYTES)
+    except (OSError, EOFError):
+        # An unreadable file is reported by the pandas read itself.
+        return "\t"
+    lines = payload.decode("utf-8-sig", "replace").splitlines()
+    if matrix_table:
+        # Upstream-matrix inspection numbers headers inside the data table: it
+        # drops GEO metadata/comments and blank lines, and starts after the
+        # explicit series-matrix marker when one is present. Sniffing the raw
+        # preamble can otherwise select a delimiter the inspected table never
+        # used.
+        for index, line in enumerate(lines):
+            if line.strip().lower() == "!series_matrix_table_begin":
+                lines = lines[index + 1 :]
+                break
+        lines = [line for line in lines if line.strip() and not line.startswith("!")]
+    lines = lines[:80]
+    best = ("\t", 0)
+    for separator in ("\t", ",", ";"):
+        try:
+            parsed = list(csv.reader(lines, delimiter=separator))
+        except csv.Error:
+            continue
+        width = max((len(row) for row in parsed[:10]), default=0)
+        if width > best[1]:
+            best = (separator, width)
+    return best[0]
+
+
+def read_matrix_frame(
+    path: str | Path,
+    *,
+    sheet_name: str | int | None = None,
+    header_row: int | None = None,
+    nrows: int | None = None,
+) -> pd.DataFrame:
+    """Read the exact matrix table selected during discovery inspection.
+
+    ``header_row`` is 1-based and is interpreted inside the matrix data table.
+    For delimited files this is after blank lines and GEO ``!`` metadata have
+    been removed, matching :func:`discovery.inspect_upstream_bytes`.
+    """
+
+    path = Path(path)
+    if isinstance(header_row, bool):
+        raise TypeError("header_row must be a positive 1-based row number")
+    try:
+        resolved_header = 1 if header_row in (None, "") else int(header_row)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("header_row must be a positive 1-based row number") from exc
+    if resolved_header < 1:
+        raise ValueError("header_row must be a positive 1-based row number")
     suffixes = "".join(path.suffixes).lower()
     if suffixes.endswith(WORKBOOK_SUFFIXES):
         # .xls and gzipped workbooks were read as CSV here and died on a decode
         # error, after the inspector had opened the same file as a workbook.
-        return _read_excel_any(path, 0 if sheet_name in (None, "") else sheet_name)
-    separator = "\t" if suffixes.endswith((".tsv", ".txt", ".tsv.gz", ".txt.gz")) else ","
-    return pd.read_csv(path, sep=separator, low_memory=False)
+        frame = _read_excel_any(
+            path,
+            0 if sheet_name in (None, "") else sheet_name,
+            header_row=resolved_header,
+        )
+        return frame if nrows is None else frame.head(nrows)
+    # Delimiter and decoding must match what inspection saw (utf-8-sig with
+    # replacement). Blank lines and GEO metadata are excluded before the
+    # 1-based header is applied, just as upstream inspection excluded them.
+    return pd.read_csv(
+        path,
+        sep=sniff_delimited_separator(path, matrix_table=True),
+        header=resolved_header - 1,
+        comment="!",
+        skip_blank_lines=True,
+        low_memory=False,
+        encoding="utf-8-sig",
+        encoding_errors="replace",
+        nrows=nrows,
+    )
 
 
 def _clean_gene_ids(values: pd.Series) -> pd.Series:
@@ -197,6 +290,7 @@ def derive_welch_deg(
     treatment_samples: Iterable[str],
     normalized_scale: str | None = None,
     sheet_name: str | int | None = None,
+    header_row: int | None = None,
     command: str = "degora discovery analyze",
     metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -214,7 +308,7 @@ def derive_welch_deg(
     if str(gene_column).strip().upper() == "ID_REF":
         raise ValueError("ID_REF is a probe identifier; map probes to gene symbols before running the fallback")
 
-    matrix = _read_matrix(source, sheet_name=sheet_name)
+    matrix = read_matrix_frame(source, sheet_name=sheet_name, header_row=header_row)
     required = [gene_column, *control, *treatment]
     missing = [column for column in required if column not in matrix.columns]
     if missing:
@@ -317,6 +411,8 @@ def derive_welch_deg(
         "treatment_samples": treatment,
         "effect_direction": "treatment_minus_control",
         "normalized_scale": normalized_scale or "not_applicable",
+        "sheet_name": "" if sheet_name in (None, "") else sheet_name,
+        "header_row": 1 if header_row in (None, "") else int(header_row),
         **variance_summary,
         **filter_summary,
         **(metadata or {}),
@@ -342,9 +438,18 @@ def derive_welch_deg(
         "treatment_samples": treatment,
         "effect_direction": "treatment_minus_control",
         "normalized_scale": normalized_scale or "not_applicable",
+        "sheet_name": "" if sheet_name in (None, "") else sheet_name,
+        "header_row": 1 if header_row in (None, "") else int(header_row),
         **variance_summary,
         **filter_summary,
     }
 
 
-__all__ = ["SUPPORTED_MATRIX_ROLES", "derive_welch_deg", "validate_sample_groups", "welch_with_variance_floor"]
+__all__ = [
+    "SUPPORTED_MATRIX_ROLES",
+    "derive_welch_deg",
+    "read_matrix_frame",
+    "sniff_delimited_separator",
+    "validate_sample_groups",
+    "welch_with_variance_floor",
+]
