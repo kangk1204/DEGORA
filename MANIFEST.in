@@ -5,6 +5,7 @@
 include degora_quickstart.sh
 include scripts/degora_quickstart.sh
 include requirements.txt
+include CHANGELOG.md
 include .gitattributes
 include .gitignore
 recursive-include tests *.py *.json
