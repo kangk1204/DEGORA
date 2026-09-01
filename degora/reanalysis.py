@@ -220,11 +220,11 @@ def read_matrix_frame(
     return _recover_r_row_name_column(frame)
 
 
-def _clean_gene_ids(values: pd.Series) -> pd.Series:
+def _clean_gene_ids(values: pd.Series, *, species: str | None = None) -> pd.Series:
     # The one gene-identity rule DEGORA has (harmonize.canonical_gene_symbol):
     # a private copy here stripped `.\d+` from every label and merged NKX2.5
     # with NKX2.1 in matrices exactly as it once did in result tables.
-    return _clean_gene_symbol(values)
+    return _clean_gene_symbol(values, species=species)
 
 
 def _apply_gene_value_transform(
@@ -423,6 +423,7 @@ def derive_welch_deg(
     sheet_name: str | int | None = None,
     header_row: int | None = None,
     gene_value_transform: str | None = None,
+    species: str | None = None,
     command: str = "degora discovery analyze",
     metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -449,7 +450,7 @@ def derive_welch_deg(
         matrix[gene_column],
         gene_value_transform,
     )
-    genes = _clean_gene_ids(transformed_genes)
+    genes = _clean_gene_ids(transformed_genes, species=species)
     values = matrix[control + treatment].apply(pd.to_numeric, errors="coerce")
     finite = np.isfinite(values.to_numpy(dtype=float)).all(axis=1)
     valid = genes.notna().to_numpy() & finite
@@ -543,6 +544,7 @@ def derive_welch_deg(
         "pipeline": pipeline,
         "normalization": normalization,
         "gene_column": gene_column,
+        "species": str(species or ""),
         "control_samples": control,
         "treatment_samples": treatment,
         "effect_direction": "treatment_minus_control",
@@ -565,6 +567,7 @@ def derive_welch_deg(
         "pipeline": pipeline,
         "normalization": normalization,
         "gene_column": "gene_symbol",
+        "species": str(species or ""),
         "lfc_column": "log2FoldChange",
         "p_column": "pvalue",
         "padj_column": "padj",

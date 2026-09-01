@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import gzip
+import hashlib
 import io
 import re
 from collections.abc import Iterable
@@ -765,6 +766,118 @@ _VERSIONED_ACCESSION_RE = re.compile(
 # source tables, the GoldPanel and API lookups alike.
 _MISSING_GENE_LABELS = frozenset({"", "NAN", "NONE", "NA", "<NA>", "N/A", "NULL", "#N/A"})
 
+# Ordinary HGNC symbol retirements, the ones that separate an older paper from a
+# newer one (CTGF/CCN2, IL8/CXCL8, KIAA0101/PCLAF). The table is built by
+# scripts/build_hgnc_symbol_table.py and holds only unambiguous retirements: a
+# previous symbol that HGNC also uses as an approved symbol, or that names more
+# than one current gene, is deliberately absent, because a wrong merge is worse
+# than a missed one. The date-damage families (SEPT/MARCH/DEC) are resolved by
+# _repair_excel_date_gene_symbol before this table is consulted and are excluded
+# from it, so exactly one rule owns each of them.
+HGNC_SYMBOL_TABLE_PATH = Path(__file__).resolve().parent / "data" / "hgnc_previous_symbols.tsv"
+# HGNC really does retire "P" (to OCA2) and "STAT" (to SOAT1), but a cell reading P
+# or STAT in a results table is far more often a header fragment, a placeholder or a
+# statistic than the gene. The build script already leaves them out; the same set is
+# enforced here so the rule is visible to a reader of the resolver and survives a
+# hand-edited table.
+_NON_GENE_SYMBOL_TOKENS = frozenset(
+    {
+        "ALL", "FALSE", "FC", "GENE", "ID", "INF", "LFC", "MAX", "MEAN", "MIN", "N/A", "NA",
+        "NAME", "NAN", "NO", "NONE", "NULL", "P", "RANK", "REF", "STAT", "SUM", "TEST",
+        "TOTAL", "TRUE", "YES",
+    }
+)
+_RETIRED_SYMBOLS: dict[str, str] | None = None
+_RETIRED_SYMBOL_TABLE_METADATA: dict[str, str] = {}
+
+
+def _load_retired_symbols() -> tuple[dict[str, str], dict[str, str]]:
+    if not HGNC_SYMBOL_TABLE_PATH.exists():
+        raise FileNotFoundError(
+            f"DEGORA gene-symbol table is missing: {HGNC_SYMBOL_TABLE_PATH}. It ships inside the "
+            "package; reinstall DEGORA rather than running without it, because scoring without the "
+            "table silently splits genes whose symbol was retired."
+        )
+    mapping: dict[str, str] = {}
+    metadata = {
+        "gene_symbol_table_source": "",
+        "gene_symbol_table_snapshot_date": "",
+        "gene_symbol_table_source_sha256": "",
+        "gene_symbol_table_sha256": hashlib.sha256(HGNC_SYMBOL_TABLE_PATH.read_bytes()).hexdigest(),
+    }
+    with HGNC_SYMBOL_TABLE_PATH.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            line = line.rstrip("\n")
+            if line.startswith("#"):
+                header, _, value = line.removeprefix("# ").partition("\t")
+                if header == "source":
+                    metadata["gene_symbol_table_source"] = value.strip()
+                elif header in {"snapshot_date", "generated"}:
+                    metadata["gene_symbol_table_snapshot_date"] = value.strip()
+                elif header == "source_sha256":
+                    metadata["gene_symbol_table_source_sha256"] = value.strip()
+                continue
+            previous, _, current = line.partition("\t")
+            if not current or previous == "previous_symbol":
+                continue
+            key = previous.strip().upper()
+            if key in _NON_GENE_SYMBOL_TOKENS or key in _MISSING_GENE_LABELS:
+                continue
+            value = current.strip().upper()
+            if key in mapping and mapping[key] != value:
+                raise RuntimeError(
+                    f"DEGORA gene-symbol table is invalid: {key!r} maps to both "
+                    f"{mapping[key]!r} and {value!r}. Reinstall DEGORA."
+                )
+            mapping[key] = value
+    required_metadata = (
+        "gene_symbol_table_source",
+        "gene_symbol_table_snapshot_date",
+        "gene_symbol_table_source_sha256",
+    )
+    missing_metadata = [key for key in required_metadata if not metadata[key]]
+    source_sha256 = metadata["gene_symbol_table_source_sha256"]
+    expected_sentinels = {"CTGF": "CCN2", "IL8": "CXCL8", "KIAA0101": "PCLAF"}
+    bad_sentinels = {
+        previous: mapping.get(previous)
+        for previous, current in expected_sentinels.items()
+        if mapping.get(previous) != current
+    }
+    if (
+        missing_metadata
+        or not re.fullmatch(r"[0-9a-f]{64}", source_sha256)
+        or len(mapping) < 10_000
+        or bad_sentinels
+    ):
+        details = []
+        if missing_metadata:
+            details.append("missing metadata: " + ", ".join(missing_metadata))
+        if source_sha256 and not re.fullmatch(r"[0-9a-f]{64}", source_sha256):
+            details.append("invalid source SHA-256")
+        if len(mapping) < 10_000:
+            details.append(f"only {len(mapping)} mappings")
+        if bad_sentinels:
+            details.append(f"sentinel mismatch: {bad_sentinels}")
+        raise RuntimeError(
+            f"DEGORA gene-symbol table is invalid ({'; '.join(details)}). "
+            "Reinstall DEGORA rather than scoring with incomplete symbol resolution."
+        )
+    return mapping, metadata
+
+
+def _retired_symbols() -> dict[str, str]:
+    global _RETIRED_SYMBOLS, _RETIRED_SYMBOL_TABLE_METADATA
+    if _RETIRED_SYMBOLS is None:
+        _RETIRED_SYMBOLS, _RETIRED_SYMBOL_TABLE_METADATA = _load_retired_symbols()
+    return _RETIRED_SYMBOLS
+
+
+def gene_symbol_table_metadata() -> dict[str, str]:
+    """Return exact source and artifact identifiers for the bundled HGNC snapshot."""
+
+    _retired_symbols()
+    return dict(_RETIRED_SYMBOL_TABLE_METADATA)
+
 
 def _strip_accession_version(text: str) -> str:
     match = _VERSIONED_ACCESSION_RE.match(text)
@@ -773,14 +886,36 @@ def _strip_accession_version(text: str) -> str:
     return match.group(1) or match.group(2) or text
 
 
-def canonical_gene_symbol(value: Any) -> str:
+def _is_explicit_human_species(species: Any) -> bool:
+    """Return whether ``species`` explicitly names the human symbol namespace."""
+
+    if species is None:
+        return False
+    try:
+        if pd.isna(species):
+            return False
+    except (TypeError, ValueError):
+        return False
+    return str(species).strip().casefold() in {"human", "homo sapiens"}
+
+
+def canonical_gene_symbol(value: Any, *, species: Any = None) -> str:
     """Return the symbol DEGORA stores for one user-supplied gene label.
 
     This is the single definition of "the same gene" across DEGORA. Source DEG
     tables, the optional GoldPanel and browser/API lookups all pass through it,
     so a panel written as ``SEPT9`` and a table written as ``9-Sep`` resolve to
-    the one symbol that is actually scored (``SEPTIN9``). Returns "" when the
-    value carries no usable identifier.
+    the one symbol that is actually scored (``SEPTIN9``), and a 2015 paper's
+    ``CTGF`` joins a 2023 paper's ``CCN2`` when the caller explicitly identifies
+    the data as human. Returns "" when the value carries no usable identifier.
+
+    Three rules apply in order, each narrower than the last: Excel date damage is
+    repaired, a version suffix is stripped from accession-shaped identifiers only,
+    and, only for an explicitly human species, an unambiguous retired HGNC symbol
+    is replaced by its current symbol. A blank, unknown or non-human species keeps
+    the pre-v0.4.39 behaviour because HGNC retirements are not a cross-species
+    namespace. The label the source table actually carried is kept in
+    ``input_gene_label``.
     """
 
     if value is None:
@@ -793,14 +928,142 @@ def canonical_gene_symbol(value: Any) -> str:
         pass
     repaired = _repair_excel_date_gene_symbol(value)
     text = _strip_accession_version(str(repaired).strip()).upper()
-    return "" if text in _MISSING_GENE_LABELS else text
+    if text in _MISSING_GENE_LABELS:
+        return ""
+    if _is_explicit_human_species(species):
+        return _retired_symbols().get(text, text)
+    return text
 
 
-def _clean_gene_symbol(values: pd.Series) -> pd.Series:
+# DESeq2 writes the contrast it computed into the results column's own header, e.g.
+# "log2 fold change (MLE): group t6 vs Ctrl". That string is the only place in a
+# deposited table that says which group was the numerator, and it disagrees with the
+# file name often enough to matter: one public series deposited its quiescent contrasts
+# as "Starv Control vs Starv 3h TGFb" under file names reading "..._TGFB_vs_..._ctrl".
+_DESEQ2_CONTRAST_HEADER_RE = re.compile(
+    r"log2\s*fold\s*change[^:]*:\s*(?P<numerator>\S.*?)\s+vs\s+"
+    r"(?P<denominator>\S.*?)\s*$",
+    re.IGNORECASE,
+)
+CUFFDIFF_DIRECTION_MIN_ROWS = 20
+
+
+CUFFDIFF_COLUMNS = frozenset({"sample_1", "sample_2", "value_1", "value_2", "status"})
+# cuffdiff writes an infinite fold change as the largest finite double rather than
+# "inf", so a gene expressed in only one condition arrives as 1.79769e+308 and trips
+# the |log2FC| > 30 refusal. Naming the format turns "this column is not a log2 fold
+# change" into a two-line fix.
+CUFFDIFF_INFINITY = 1.7976931348623157e308
+
+
+def looks_like_cuffdiff(frame: pd.DataFrame) -> bool:
+    """Whether this table is a cuffdiff ``gene_exp.diff`` export."""
+
+    return CUFFDIFF_COLUMNS <= {str(name).strip().lower() for name in frame.columns}
+
+
+def _first_text(series: pd.Series) -> str:
+    for value in series:
+        text = str(value).strip()
+        if text and text.lower() not in {"nan", "none"}:
+            return text
+    return ""
+
+
+def contrast_direction_evidence(frame: pd.DataFrame, mapping: TableMapping) -> str:
+    """Return what the source table says about its own contrast direction, or "".
+
+    Direction is the one thing DEGORA cannot verify and the one thing that inverts
+    every up/down call when it is wrong, so where the table states it, say so. Only
+    the table's own contents are read: a file *name* of the form ``A_vs_B`` is
+    deliberately ignored, because the two real inversions this check was built from
+    were both files whose name said the opposite of their contents.
+    """
+
+    lfc_column = str(getattr(mapping, "lfc_column", "") or "")
+    if not lfc_column:
+        return ""
+    match = _DESEQ2_CONTRAST_HEADER_RE.search(lfc_column)
+    if match:
+        numerator = match.group("numerator").strip()
+        denominator = match.group("denominator").strip()
+        contrast = f"{numerator} vs {denominator}"
+        return (
+            f"the effect column's own header says {contrast!r}, which is how DESeq2 records the "
+            f"contrast it computed: {numerator!r} is the numerator and "
+            f"{denominator!r} the denominator, so a positive value means up in "
+            f"{numerator!r}. Trust this over the file name."
+        )
+
+    columns = {str(name).strip().lower(): name for name in frame.columns}
+    if not {"sample_1", "sample_2", "value_1", "value_2"} <= set(columns):
+        return ""
+    resolved = resolve_column_name(frame, lfc_column)
+    if resolved not in frame.columns:
+        return ""
+    pair_rows = frame[[columns["sample_1"], columns["sample_2"]]].copy()
+    pair_rows.columns = ["sample_1", "sample_2"]
+    pair_rows = pair_rows.astype("string").fillna("").apply(lambda series: series.str.strip())
+    pairs = sorted(
+        {
+            (str(row.sample_1), str(row.sample_2))
+            for row in pair_rows.itertuples(index=False)
+            if str(row.sample_1) and str(row.sample_2)
+        }
+    )
+    if len(pairs) > 1:
+        shown = ", ".join(f"{left!r}/{right!r}" for left, right in pairs[:5])
+        if len(pairs) > 5:
+            shown += f", and {len(pairs) - 5} more"
+        return (
+            f"this cuffdiff table contains {len(pairs):,} sample_1/sample_2 comparisons "
+            f"({shown}); no single contrast direction is inferred. Split or review each comparison "
+            "separately before confirming treatment-minus-control direction."
+        )
+    lfc = pd.to_numeric(frame[resolved], errors="coerce").to_numpy(dtype=float)
+    value_1 = pd.to_numeric(frame[columns["value_1"]], errors="coerce").to_numpy(dtype=float)
+    value_2 = pd.to_numeric(frame[columns["value_2"]], errors="coerce").to_numpy(dtype=float)
+    usable = (
+        np.isfinite(lfc)
+        & np.isfinite(value_1)
+        & np.isfinite(value_2)
+        & (value_1 > 0)
+        & (value_2 > 0)
+        & (lfc != 0.0)
+    )
+    if int(usable.sum()) < CUFFDIFF_DIRECTION_MIN_ROWS:
+        return ""
+    implied = np.log2(value_2[usable] / value_1[usable])
+    directional = implied != 0.0
+    if not directional.any():
+        return ""
+    agreement = float(np.mean(np.sign(lfc[usable][directional]) == np.sign(implied[directional])))
+    name_1 = _first_text(frame[columns["sample_1"]]) or "sample_1"
+    name_2 = _first_text(frame[columns["sample_2"]]) or "sample_2"
+    if agreement >= 0.95:
+        return (
+            f"this is a cuffdiff table (sample_1={name_1!r}, sample_2={name_2!r}) and "
+            f"{lfc_column!r} tracks log2(value_2/value_1) on {int(directional.sum()):,} rows, so a "
+            f"positive value means up in {name_2!r} relative to {name_1!r}. Trust this over the file "
+            "name: cuffdiff puts sample_1 in the denominator whatever the file is called."
+        )
+    if agreement <= 0.05:
+        return (
+            f"this is a cuffdiff table (sample_1={name_1!r}, sample_2={name_2!r}) and "
+            f"{lfc_column!r} runs opposite to cuffdiff's own log2(value_2/value_1) on "
+            f"{int(directional.sum()):,} rows, so a positive value means up in {name_1!r} relative to "
+            f"{name_2!r} - the column has been inverted since cuffdiff wrote it."
+        )
+    return ""
+
+
+def _clean_gene_symbol(values: pd.Series, *, species: Any = None) -> pd.Series:
     """Vectorised canonical_gene_symbol: one rule, applied per distinct label."""
 
     codes, uniques = pd.factorize(values, use_na_sentinel=True)
-    canonical = np.array([canonical_gene_symbol(unique) for unique in uniques], dtype=object)
+    canonical = np.array(
+        [canonical_gene_symbol(unique, species=species) for unique in uniques], dtype=object
+    )
     mapped = np.where(codes >= 0, canonical[np.maximum(codes, 0)] if len(canonical) else "", "")
     out = pd.Series(mapped, index=values.index, dtype="string")
     return out.mask(out.eq(""), pd.NA)
@@ -1139,7 +1402,7 @@ def harmonize_frame(frame: pd.DataFrame, mapping: TableMapping, study_meta: dict
             f"Required column {mapping.gene_column!r} not found. Available columns: {list(frame.columns)!r}."
             + _row_label_hint(frame)
         )
-    genes = _clean_gene_symbol(frame[gene_column])
+    genes = _clean_gene_symbol(frame[gene_column], species=study_meta.get("species"))
     input_gene_labels = frame[gene_column].map(original_gene_label)
     lfc = _series_as_numeric(frame, mapping.lfc_column)
     pvalue = _series_as_numeric(frame, mapping.p_column)

@@ -18,7 +18,7 @@ from numpy.typing import NDArray
 from scipy.stats import beta, norm
 from scipy.stats import t as t_dist
 
-from . import SCORE_VERSION, runtime_version_info
+from . import GENE_SYMBOL_RESOLUTION_VERSION, SCORE_VERSION, runtime_version_info
 from .aggregate import (
     SOURCE_UNIT_COLLAPSE_RULE,
     STOUFFER_WEIGHT_RULE,
@@ -29,6 +29,7 @@ from .aggregate import (
     validate_min_studies,
     validate_normalized_rank,
 )
+from .harmonize import gene_symbol_table_metadata
 from .formula_safety import (
     formula_guard_metadata,
     neutralize_formula_text,
@@ -604,14 +605,26 @@ NEAR_DUPLICATE_SOURCE_RULE = (
     f"are numerically near-identical; at most {NEAR_DUPLICATE_MAX_SOURCE_PAIRS} source pairs "
     "are checked per run, and the check changes no weight or rank"
 )
-WITHIN_SOURCE_DIRECTION_SPEARMAN = -0.80
-WITHIN_SOURCE_DIRECTION_MAX_SIGN_AGREEMENT = 0.10
+# A contrast written control-minus-treatment does not produce a mirror image of its
+# well-formed neighbour: the two contrasts are different conditions or time points, so
+# biological and technical variation dilutes the reversal long before the correlation
+# approaches -1. Measured on real reversed pairs (one series' quiescent contrasts
+# deposited with Control in the DESeq2 numerator while its proliferating contrasts used
+# TGF-beta) the pairwise log2FC Spearman ran -0.23 to -0.50 with 33-43% same-sign
+# agreement, while well-formed pairs from four public series ran +0.26 to +0.88 with
+# 60-87% agreement. The previous -0.80 / 10% pair only fired on a table whose sign had
+# been flipped against itself, so it never named a real reversal; these bounds sit in the
+# measured gap. Significance keeps a 20-gene fixture from tripping on noise: the same
+# one-sided test the source-unit flag uses must also hold.
+WITHIN_SOURCE_DIRECTION_SPEARMAN = -0.15
+WITHIN_SOURCE_DIRECTION_MAX_SIGN_AGREEMENT = 0.45
 WITHIN_SOURCE_DIRECTION_MIN_SHARED_GENES = 20
 WITHIN_SOURCE_DIRECTION_MAX_CONTRAST_PAIRS = 1_000
 WITHIN_SOURCE_DIRECTION_RULE = (
     f"advisory only: two contrasts inside one source unit are named when at least "
     f"{WITHIN_SOURCE_DIRECTION_MIN_SHARED_GENES} genes overlap, log2FC Spearman is at most "
-    f"{WITHIN_SOURCE_DIRECTION_SPEARMAN:g}, and same-sign agreement is at most "
+    f"{WITHIN_SOURCE_DIRECTION_SPEARMAN:g} and significantly negative (one-sided t approximation, "
+    f"p < {DIRECTION_CONFLICT_ALPHA:g}), and same-sign agreement is at most "
     f"{WITHIN_SOURCE_DIRECTION_MAX_SIGN_AGREEMENT:.0%}; at most "
     f"{WITHIN_SOURCE_DIRECTION_MAX_CONTRAST_PAIRS} within-source contrast pairs are checked per run, "
     "and the check changes no value or rank"
@@ -1476,14 +1489,19 @@ def within_source_direction_warnings(harmonized: pd.DataFrame) -> list[str]:
                     not np.isfinite(spearman)
                     or spearman > WITHIN_SOURCE_DIRECTION_SPEARMAN
                     or same_sign > WITHIN_SOURCE_DIRECTION_MAX_SIGN_AGREEMENT
+                    or not _negative_correlation_is_significant(spearman, len(lfc_a))
                 ):
                     continue
                 warnings.append(
                     f"contrasts {contrast_a!r} and {contrast_b!r} inside source unit "
-                    f"{str(source_unit)!r} have strongly reversed effect patterns across "
-                    f"{len(lfc_a):,} shared genes (log2FC Spearman {spearman:.2f}; "
-                    f"same-sign agreement {same_sign:.1%}). Verify that both effects use the declared "
-                    "treatment-minus-control direction; values and ranks are unchanged."
+                    f"{str(source_unit)!r} disagree in direction across {len(lfc_a):,} shared genes "
+                    f"(log2FC Spearman {spearman:.2f}; same-sign agreement {same_sign:.1%}). These "
+                    "may be biologically opposing comparisons or one may have a reversed contrast "
+                    "direction. Review both source tables and their intervention, cell-system and "
+                    "time-point context; a DESeq2 header names the numerator and cuffdiff names "
+                    "sample_1 and sample_2. This advisory does not identify which contrast, if any, "
+                    "is reversed and does not predict its net contribution; values and ranks are "
+                    "unchanged."
                 )
     return warnings
 
@@ -2210,6 +2228,8 @@ def degora_score_table(
     if consensus.empty:
         metadata = {
             "score_version": SCORE_VERSION,
+            "gene_symbol_resolution_version": GENE_SYMBOL_RESOLUTION_VERSION,
+            **gene_symbol_table_metadata(),
             "score_formula": SCORE_FORMULA,
             "support_normalization_rule": SUPPORT_NORMALIZATION_RULE,
             "score_weights": ablation.weights,
@@ -2527,6 +2547,8 @@ def degora_score_table(
 
     metadata = {
         "score_version": SCORE_VERSION,
+        "gene_symbol_resolution_version": GENE_SYMBOL_RESOLUTION_VERSION,
+        **gene_symbol_table_metadata(),
         "score_formula": SCORE_FORMULA,
         "support_normalization_rule": SUPPORT_NORMALIZATION_RULE,
         "score_weights": ablation.weights,

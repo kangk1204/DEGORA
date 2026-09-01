@@ -263,6 +263,60 @@ AUTHOR_REVIEW_REQUIRED_STATUSES = {
 }
 
 
+def _load_publication_snapshot(snapshot_dir: Path, query: str, species: str) -> dict[str, Any]:
+    """Read a previously written federated snapshot so --select need not re-search.
+
+    The export set is verified against its own manifest first: preparing from a
+    half-written or mixed-generation folder would select records that the snapshot's
+    audit trail does not describe. Query and species must match what the caller
+    asked for, because a snapshot carries one species by construction and preparing
+    a Human snapshot under --species mouse would silently cross the boundary the
+    whole workflow keeps.
+    """
+
+    from .discovery_export import SEARCH_JSON_NAME, verify_publication_search_export
+
+    try:
+        verify_publication_search_export(snapshot_dir)
+    except ValueError as exc:
+        raise CliUsageError(
+            f"--from-snapshot {snapshot_dir} is not a complete federated search export: {exc}. "
+            "Run the search again into a fresh folder."
+        ) from exc
+    try:
+        snapshot = json.loads((snapshot_dir / SEARCH_JSON_NAME).read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise CliUsageError(f"--from-snapshot {snapshot_dir} could not be read: {exc}") from exc
+    if not isinstance(snapshot, dict) or not isinstance(snapshot.get("records"), list):
+        raise CliUsageError(f"--from-snapshot {snapshot_dir} holds no publication records")
+    species_field = snapshot.get("species")
+    if isinstance(species_field, dict):
+        species_field = species_field.get("key", "")
+    snapshot_species = str(species_field or snapshot.get("species_key") or "").strip().lower()
+    if not snapshot_species:
+        raise CliUsageError(
+            f"--from-snapshot {snapshot_dir} does not record the search species. "
+            "Run the search again so Human and Mouse preparation cannot be mixed."
+        )
+    if snapshot_species != str(species).strip().lower():
+        raise CliUsageError(
+            f"--from-snapshot {snapshot_dir} was searched for {snapshot_species!r}, not {species!r}. "
+            "Human and Mouse are kept in separate workspaces; prepare from the snapshot of the species you asked for."
+        )
+    snapshot_query = str(snapshot.get("query") or "").strip()
+    if not snapshot_query:
+        raise CliUsageError(
+            f"--from-snapshot {snapshot_dir} does not record the search query. "
+            "Run the search again so the prepared run retains its search context."
+        )
+    if snapshot_query != str(query).strip():
+        raise CliUsageError(
+            f"--from-snapshot {snapshot_dir} was searched for {snapshot_query!r}, not {query!r}. "
+            "Pass the snapshot's own query so the prepared run records the search it came from."
+        )
+    return snapshot
+
+
 def _prepared_candidate_counts(studies: list[Any]) -> tuple[int, int, int]:
     """Count exact author, review-required author, and upstream candidates."""
 
@@ -482,6 +536,7 @@ def _ablate(args: argparse.Namespace) -> int:
         write_ablation_report,
     )
     from .score_db import ScoreAblation
+    from .slice_runner import infer_single_species
 
     results = Path(args.results)
     harmonized = load_harmonized(results)
@@ -506,7 +561,8 @@ def _ablate(args: argparse.Namespace) -> int:
             variants.append(ScoreAblation(name=name.strip(), component_weights=parse_weight_spec(body), notes="caller-supplied weights"))
         except ValueError as exc:
             raise CliUsageError(f"--weights {spec!r}: {exc}") from exc
-    gold = read_gene_list(args.gold_panel) if args.gold_panel else None
+    gold_species = infer_single_species(harmonized)
+    gold = read_gene_list(args.gold_panel, species=gold_species) if args.gold_panel else None
     summary, ranks = run_ablations(harmonized, min_studies=min_studies, ablations=variants, gold_genes=gold, top_k=top_k)
     written = write_ablation_report(summary, ranks, output_dir)
     print(format_summary(summary))
@@ -866,7 +922,22 @@ def build_parser() -> argparse.ArgumentParser:
         default=1,
         help=f"One-based globally sorted display page; {DISCOVERY_PAGE_SIZE} rows per page.",
     )
-    discover.add_argument("--output-dir", required=True)
+    discover.add_argument(
+        "--output-dir",
+        help=(
+            "Where the snapshot and any preparation artifacts are written. Required for a search; "
+            "with --from-snapshot it defaults to a 'prepared' folder inside the snapshot's folder."
+        ),
+    )
+    discover.add_argument(
+        "--from-snapshot",
+        metavar="DIR",
+        help=(
+            "Prepare --select records from an existing federated snapshot folder instead of running "
+            "the search again. The folder's export set is verified against its manifest, and its "
+            "query and species must match the ones given here."
+        ),
+    )
     discover.add_argument(
         "--select",
         action="append",
@@ -1035,12 +1106,30 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "discover":
             if len(str(args.query).strip()) < 2:
                 raise CliUsageError("query must be at least 2 characters (a condition, a perturbation, a pathway)")
-            output = Path(args.output_dir).resolve()
+            snapshot_dir = Path(args.from_snapshot).resolve() if args.from_snapshot else None
+            if snapshot_dir is not None:
+                # Preparing used to mean running the whole search again into a second
+                # folder, so a reader who wanted to prepare two records after reading
+                # the snapshot paid for every provider request twice.
+                if args.source != "federated":
+                    raise CliUsageError("--from-snapshot applies to the federated search; legacy --source geo has no snapshot to reuse")
+                if not args.select:
+                    raise CliUsageError("--from-snapshot prepares records: pass at least one --select ID")
+            elif not args.output_dir:
+                raise CliUsageError("--output-dir is required")
+            # The preparation writes its own artifacts and refuses a folder that is
+            # not empty, so it cannot land on top of the snapshot it is reading.
+            output = (
+                Path(args.output_dir).resolve()
+                if args.output_dir
+                else (snapshot_dir / "prepared")
+            )
             if output.exists() and any(output.iterdir()) and not args.force:
                 raise FileExistsError(
                     f"discovery output already exists and is not empty: {output}. Each search writes its own "
-                    "folder: pass a new --output-dir (for example one named after the query), or use the "
-                    "browser's Discover tab, which pages through one snapshot without re-searching."
+                    "folder: pass a new --output-dir (for example one named after the query), prepare from the "
+                    "snapshot you already have with --from-snapshot, or use the browser's Discover tab, which "
+                    "pages through one snapshot without re-searching."
                 )
             if args.source == "geo":
                 from .discovery import export_search_page, prepare_geo_studies, search_geo
@@ -1115,7 +1204,16 @@ def main(argv: list[str] | None = None) -> int:
                     search_kwargs["progress"] = report_stage
             except (TypeError, ValueError):
                 pass
-            snapshot = search_publications(args.query, args.species, **search_kwargs)
+            if snapshot_dir is not None:
+                snapshot = _load_publication_snapshot(snapshot_dir, args.query, args.species)
+                print(
+                    f"Reusing the snapshot in {snapshot_dir}: "
+                    f"{len(snapshot.get('records', []))} record(s), searched {snapshot.get('generated_at', 'earlier')}.",
+                    file=sys.stderr,
+                    flush=True,
+                )
+            else:
+                snapshot = search_publications(args.query, args.species, **search_kwargs)
             records = list(snapshot.get("records", []))
             if args.select:
                 try:

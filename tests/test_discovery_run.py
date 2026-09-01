@@ -1558,7 +1558,7 @@ def test_a_gzipped_workbook_matrix_reaches_the_welch_derivation(tmp_path: Path) 
     bundle.mkdir()
     plain = bundle / "GSE100003_matrix.xlsx"
     pd.DataFrame(
-        {"gene": [f"G{i}" for i in range(40)], "c1": [5.0 + i * 0.4 for i in range(40)], "c2": [5.5 + i * 0.4 for i in range(40)],
+        {"gene": [f"GX{i}" for i in range(40)], "c1": [5.0 + i * 0.4 for i in range(40)], "c2": [5.5 + i * 0.4 for i in range(40)],
          "t1": [9.0 + i * 0.4 for i in range(40)], "t2": [9.5 + i * 0.4 for i in range(40)]}
     ).to_excel(plain, index=False)
     gz = bundle / "GSE100003_matrix.xlsx.gz"
@@ -1595,7 +1595,7 @@ def test_the_result_warning_list_carries_each_warning_once(tmp_path: Path) -> No
     # and before deduplication the same sentence appeared twice in the result.
     first = prepared["studies"][0]["files"][0]
     path = Path(first["inspection"]["local_path"])
-    genes = [f"G{i}" for i in range(40)]
+    genes = [f"GX{i}" for i in range(40)]
     pd.DataFrame({"gene": genes, "log2FoldChange": [0.2 + i * 0.1 for i in range(40)], "pvalue": [0.001] * 40, "padj": [0.01] * 40}).to_csv(path, index=False)
     first["inspection"]["full_file_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
     result = run_discovery_analysis(prepared, _selections(), tmp_path / "analysis", species="human", min_studies=1)
@@ -1900,7 +1900,7 @@ def test_bom_semicolon_matrix_with_leading_blank_lines_is_read_identically(tmp_p
     bundle = tmp_path / "bundle"
     bundle.mkdir()
     path = bundle / "GSE100004_matrix.csv"
-    rows = ["gene;c1;c2;t1;t2"] + [f"G{i};{i + 1}.1;{i + 1}.2;{i + 5}.1;{i + 5}.2" for i in range(40)]
+    rows = ["gene;c1;c2;t1;t2"] + [f"GX{i};{i + 1}.1;{i + 1}.2;{i + 5}.1;{i + 5}.2" for i in range(40)]
     path.write_text("\ufeff\n\n" + "\n".join(rows) + "\n", encoding="utf-8")
     study, candidate, bundle = _matrix_candidate_for_path(path)
     row, summary = _fallback_row(
@@ -1914,7 +1914,7 @@ def test_bom_semicolon_matrix_with_leading_blank_lines_is_read_identically(tmp_p
         replay_command="degora",
     )
     assert summary["n_gene_rows"] == 40
-    assert set(pd.read_csv(row["source_path"])["gene_symbol"]) == {f"G{i}" for i in range(40)}
+    assert set(pd.read_csv(row["source_path"])["gene_symbol"]) == {f"GX{i}" for i in range(40)}
 
 
 def test_geo_series_matrix_preamble_is_excluded_by_preflight_and_derivation(tmp_path: Path) -> None:
@@ -1925,7 +1925,7 @@ def test_geo_series_matrix_preamble_is_excluded_by_preflight_and_derivation(tmp_
     bundle.mkdir()
     path = bundle / "GSE100004_series_matrix.txt.gz"
     table = ['"gene"\t"c1"\t"c2"\t"t1"\t"t2"']
-    table.extend(f'"G{i}"\t{i + 1}.1\t{i + 1}.2\t{i + 5}.1\t{i + 5}.2' for i in range(40))
+    table.extend(f'"GX{i}"\t{i + 1}.1\t{i + 1}.2\t{i + 5}.1\t{i + 5}.2' for i in range(40))
     payload = (
         '!Series_title\t"metadata with tabs"\n\n!series_matrix_table_begin\n'
         + "\n".join(table)
@@ -1945,7 +1945,7 @@ def test_geo_series_matrix_preamble_is_excluded_by_preflight_and_derivation(tmp_
         replay_command="degora",
     )
     assert summary["n_input_rows"] == 40
-    assert set(pd.read_csv(row["source_path"])["gene_symbol"]) == {f"G{i}" for i in range(40)}
+    assert set(pd.read_csv(row["source_path"])["gene_symbol"]) == {f"GX{i}" for i in range(40)}
 
 
 def test_author_table_keeps_header_alignment_with_blank_lines_and_sniffed_separator(tmp_path: Path) -> None:

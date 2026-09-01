@@ -2,6 +2,92 @@
 
 Historical release notes are kept here so the README remains focused on installation and first use.
 
+## 0.4.39 (unreleased)
+
+The score formula is unchanged at v1.3: `SCORE_VERSION` remains
+`degora_score_v1_3_source_unit_mean`, and no weight, eligibility rule or rank
+semantics moved. Gene *identity* did change, so this release adds a second
+version string beside it.
+
+**Retired human gene symbols now resolve to the current symbol.** DEGORA joins source
+tables on the gene symbol, and the previous release resolved only Excel date
+damage (`SEPT9`, `MARCH1`, `DEC1`) and accession version suffixes. A paper written
+before a rename therefore never met one written after it: in a four-source
+TGF-beta corpus built from public GEO tables, 114 genes were scored twice, once
+under a retired symbol and once under the current one, and 100 of them carried
+exactly two of the four source units on each side. `CTGF` and `CCN2` were two
+genes; a GoldPanel entry for `CCN2` reported the marker as absent while the gene
+sat at rank 9 as `CTGF`. The unambiguous HGNC retirements now ship with the
+package as `degora/data/hgnc_previous_symbols.tsv`, built by
+`scripts/build_hgnc_symbol_table.py`. A previous symbol that HGNC also uses as an
+approved symbol (`BRF1`, `AK3`), one that names more than one current gene
+(`DEC1`, which keeps its documented `BHLHE40` mapping), one shaped like an
+accession or a number, and one that reads as something else in a spreadsheet
+(`P`, `STAT`) are all deliberately absent, because a wrong merge is worse than a
+missed one. **This changes rankings on a corpus whose sources use different
+annotation vintages** - that is the defect being fixed - so every run now records
+`gene_symbol_resolution_version`, the exact HGNC input snapshot date and SHA-256,
+and the bundled table's SHA-256 beside `score_version` in
+`degora_score_metadata.json`, and two runs are comparable
+gene-for-gene only when those match. The bundled demo shows the change at its
+smallest: every one of its 71 numeric columns is identical to 0.4.38 and every rank
+is the same, and the only difference is that the gene the fixture writes as `DDX58`
+is now reported under its current symbol `RIGI`, with `DDX58` kept in
+`input_gene_label`.
+
+The HGNC retirement table is applied only when the source is explicitly Human or
+`Homo sapiens`. Mouse, other, mixed and unknown-species inputs receive only the
+species-neutral Excel-date repair and accession-version stripping used in 0.4.38.
+Aggregate consumers such as GoldPanel lookup, export, ablation and the API apply
+human retirements only when the run scope is unambiguously human. This boundary is
+recorded as `degora_symbols_v3_species_scoped_hgnc_retirements`.
+
+**A reversed contrast inside one source unit is now named.** The within-source
+direction advisory required a log2FC Spearman of at most -0.80 with at most 10%
+same-sign agreement, which only a table flipped against itself can reach. Measured
+on a public series that deposited its quiescent contrasts with Control in the
+DESeq2 numerator while its proliferating contrasts used TGF-beta, the real reversed
+pairs sat at -0.23 to -0.50 with 33-43% agreement, and nothing was reported. The
+bounds are now -0.15 and 45%, with the same one-sided significance test the
+source-unit flag uses so a small fixture cannot trip on noise; well-formed pairs
+from four public series ran +0.26 to +0.88 and stay silent. The advisory now states
+only what the evidence supports: the comparisons may be biologically opposing or
+one direction may be reversed, and both source tables require manual review. It
+does not identify a reversed contrast or predict its net contribution. Weights and
+ranks are unchanged.
+
+**The direction a table states about itself is quoted back before you confirm it.**
+`validate`, `run` and `degora init` now read the contrast out of the table's own
+contents - a DESeq2 results column carries it in its header
+(`log2 fold change (MLE): group Starv Control vs Starv 3h TGFb`), and a cuffdiff
+export names `sample_1` and `sample_2` with sample_1 in the denominator - and show
+it beside the direction question. File names are deliberately not read: both real
+inversions this was built from were files whose name said the opposite of their
+contents. DESeq2's `vs` separator is parsed case-insensitively. A cuffdiff file
+containing more than one sample pair is reported as multi-comparison and receives
+no single direction inference.
+
+**GEO's bot challenge is reported as a block rather than a missing record.** GEO
+answers a rate-limited, VPN or datacenter address with HTTP 200 and a CAPTCHA page,
+which parsed to no Series record and read as "this study does not exist". The
+message now names an explicit challenge as a possible access block without
+claiming that the record exists. A generic HTML or XML page is reported separately
+because it may instead be an error, maintenance or redirect response. Nothing
+retries or works around either response.
+
+**A cuffdiff export is refused with cuffdiff's own fix.** `gene_exp.diff` writes an
+infinite fold change as 1.79769e+308, which trips the |log2FC| > 30 refusal; the
+advice offered was to convert the column to log2, which is not the problem. A
+cuffdiff table is now recognised and the fix names the `status` column and the
+infinity encoding instead.
+
+**Preparing from a search no longer repeats the search.** `degora discover
+--from-snapshot DIR --select ID` prepares from a snapshot already on disk, after
+verifying its export set against its own manifest and checking that its query and
+species match the ones given. A snapshot missing either field is rejected.
+`--output-dir` is optional in that mode and defaults to a `prepared/` folder inside
+the snapshot's folder.
+
 ## 0.4.38
 
 The scoring and aggregation contract remains v1.3. This release changes neither

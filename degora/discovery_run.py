@@ -1187,6 +1187,7 @@ def _fallback_row(
             sheet_name=inspected_sheet,
             header_row=inspected_header,
             gene_value_transform=gene_value_transform or None,
+            species=spec.scientific_name,
             command=replay_command,
             metadata={
                 "accession": study.get("accession", ""),

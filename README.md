@@ -26,7 +26,8 @@ source-resolved evidence for each gene.
 
 ## Quickstart
 
-For a stable first run, use the tagged v0.4.38 release:
+For a stable first run, use the tagged v0.4.38 release. The changes planned for
+v0.4.39 remain on the development branch until release verification is complete:
 
 ```bash
 git clone --depth 1 --branch v0.4.38 https://github.com/kangk1204/DEGORA.git
@@ -452,6 +453,19 @@ checked, and mixed-species quarantine cannot apply to it. Confirm the species of
 a `query_constrained` record yourself before activating it; the browser asks for
 that confirmation only for such records.
 
+Preparing records from a search you have already run does not repeat the search.
+Point `--from-snapshot` at the folder the search wrote and pass the IDs to prepare;
+the folder's export set is checked against its own manifest first, and its query and
+species must match the ones you give:
+
+```bash
+degora discover "hypoxia HIF1" --species human --from-snapshot search-human \
+  --select PMID:24926665 --select GSE52778
+```
+
+Preparation artifacts land in `--output-dir` when you name one and in a `prepared/`
+folder inside the snapshot's own folder when you do not.
+
 You can also use the local browser:
 
 ```bash
@@ -555,26 +569,55 @@ The included synthetic demo is numerically and semantically reproducible from th
 - The primary output rank is `quality_weighted_degora_rank`. The earlier
   `degora_rank` column is the unweighted audit/reference lane, even when a CSV
   viewer displays it first.
-- Gene symbols are resolved to one current symbol before anything is compared.
-  Excel date damage is undone (`9-Sep` -> `SEPTIN9`) and legacy symbols are
-  updated (`SEPT9` -> `SEPTIN9`, `MARCH1` -> `MARCHF1`, `DEC1` -> `BHLHE40`), so
-  two tables that spell the same gene differently still count as one gene. The
-  same resolution is applied to the optional GoldPanel and to browser/API
-  lookups, so searching `SEPT9` finds the gene DEGORA scored. The label each
+- Gene labels are normalized before they are compared. Excel date damage is
+  undone (`9-Sep` -> `SEPTIN9`) and accession version suffixes are removed for
+  every species. Retired **human** HGNC symbols are updated only when the source
+  or run is explicitly Human or `Homo sapiens` (`CTGF` -> `CCN2`, `IL8` ->
+  `CXCL8`, `KIAA0101` -> `PCLAF`). Mouse, other, mixed and unknown-species inputs
+  keep their labels after the species-neutral repairs; DEGORA never applies a
+  human retirement table to them. Human GoldPanels and browser/API lookups use
+  the same rule when their run scope is unambiguously human. The label each
   source table actually carried is kept in the `input_gene_label` column of
   `slice_harmonized.csv`, and `degora run` reports how many symbols it changed.
+  The retirement table ships with the package as
+  `degora/data/hgnc_previous_symbols.tsv`; it is built from the HGNC complete set
+  by `scripts/build_hgnc_symbol_table.py`. Its header records the retrieval date
+  and SHA-256 of the exact HGNC input snapshot, and every run records those values,
+  the bundled table's own SHA-256, and
+  `gene_symbol_resolution_version` beside `score_version` in
+  `degora_score_metadata.json`. Only unambiguous retirements are listed, because a
+  wrong merge is worse than a missed one: a previous symbol that HGNC also uses as
+  an approved symbol (`BRF1`, `AK3`), one that names more than one current gene
+  (`DEC1`, which is the previous symbol of both `BHLHE40` and `DELEC1`, and stays
+  mapped to `BHLHE40` by the documented rule above), and one that reads as
+  something else in a spreadsheet (`P`, `STAT`) are all left alone.
   A version suffix is removed only from accession-shaped identifiers
   (`ENSG00000141510.16`, `NM_000546.5`, an Entrez ID exported as `7157.0`);
   a dotted symbol such as `NKX2.5` is kept as written, and matches a partner
   table only when that table writes it the same way (`NKX2-5` is a different
-  label). `DEC1` is also the previous symbol of `DELEC1`; DEGORA maps it to
-  `BHLHE40`, and `input_gene_label` keeps the original so the choice is visible.
+  label).
+- Where a source table states the contrast it computed, `validate`, `run` and
+  `degora init` quote it back before asking you to confirm the direction: a DESeq2
+  results column carries its contrast in its own header
+  (`log2 fold change (MLE): group Ctrl vs Treated`), and a cuffdiff export names
+  `sample_1` and `sample_2` and puts sample_1 in the denominator. File *names* are
+  never read for this, because a deposited file called `A_vs_B` is not reliably
+  `A` over `B`. A cuffdiff file with more than one sample pair is not assigned one
+  direction; split or review its comparisons separately.
 - `validate` and `run` refuse an effect column whose values have the shape of a
   linear fold change (no negative values, values below 0.5 and above 1), refuse
   a p-value written as a bound (`<1E-16`, `p<0.05`) rather than dropping the
   row, refuse a mapping onto a header the table carries twice, and refuse one
   result table declared under two different source units. Rows dropped for a
   missing gene, effect or p-value are always reported, whatever their share.
+- Two contrasts *inside* one source unit that disagree in direction are named in
+  the run warnings as well. A pair qualifies when at least 20 genes overlap, its
+  log2FC Spearman is at most -0.15 and significantly negative, and same-sign
+  agreement is at most 45%. This is an advisory, not a reversal detector: the
+  contrasts may represent biologically opposing interventions, cell systems or
+  time points, or one direction may be reversed. Review both source tables and
+  their biological context. DEGORA does not identify which contrast is wrong,
+  predict the net contribution, or change any value or rank.
 - Source units whose log2 fold changes run against the rest of the corpus are
   flagged `source_direction_conflict_flag` in the source-quality diagnostics and
   named in the run warnings as a possibly reversed contrast. A unit qualifies
@@ -600,7 +643,7 @@ The included synthetic demo is numerically and semantically reproducible from th
 - `direction_confirmed`, `biological_replicates_confirmed`, the sample groups of a matrix contrast and `lfc_scale` are analyst-provided confirmations. DEGORA records them with every run (`reviewer_attestations` in the discovery run summary) and cannot independently verify them; an incorrect confirmation can produce a ranking that appears internally consistent.
 - Public-data fallback uses a documented Welch workflow and does not automatically correct study-level batch or condition confounding.
 - Result-table semantics, contrast direction, group labels, and species must be reviewed before activation.
-- The Search workflow keeps Human and Mouse in separate workspaces and never pools them, and a prepared discovery bundle is refused if its species does not match the run. Scoring itself matches on gene symbol and is **not** species-specific: a hand-written config naming sources from two species produces one pooled ranking, in which those sources can satisfy the `min_studies` replication rule between them. The run warns when it sees more than one `species` value, and every evidence row records the species it came from.
+- The Search workflow keeps Human and Mouse in separate workspaces and never pools them, and a prepared discovery bundle is refused if its species does not match the run. Human HGNC retirement mapping is species-scoped, but scoring itself still matches on gene symbol and is **not** species-specific: a hand-written config naming sources from two species produces one pooled ranking, in which those sources can satisfy the `min_studies` replication rule between them. The run warns when it sees more than one `species` value, and every evidence row records the species it came from.
 
 ## Development checks
 

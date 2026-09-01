@@ -761,7 +761,9 @@ def test_reversed_contrasts_inside_one_source_unit_emit_advisory_warning() -> No
     warnings = score_db.within_source_direction_warnings(harmonized)
 
     assert len(warnings) == 1
-    assert "strongly reversed effect patterns" in warnings[0]
+    assert "disagree in direction" in warnings[0]
+    assert "biologically opposing comparisons" in warnings[0]
+    assert "does not identify which contrast" in warnings[0]
     assert "values and ranks are unchanged" in warnings[0]
     pd.testing.assert_frame_equal(harmonized, before)
 

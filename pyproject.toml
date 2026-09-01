@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "degora"
-version = "0.4.38"
+version = "0.4.39"
 description = "Excel-first integration of published heterogeneous DEG tables"
 readme = "README.md"
 license = "MIT"
@@ -40,7 +40,13 @@ dev = [
 degora = "degora.cli:main"
 
 [tool.setuptools]
-packages = ["degora"]
+packages = ["degora", "degora.data"]
+
+# The gene-symbol retirement table is not optional data: without it a wheel would
+# score the same gene twice whenever two papers spell it differently, so it has to
+# travel with the package rather than be fetched at runtime.
+[tool.setuptools.package-data]
+degora = ["data/hgnc_previous_symbols.tsv"]
 
 [tool.pytest.ini_options]
 # SciPy's moment routine warns about catastrophic cancellation on a synthetic

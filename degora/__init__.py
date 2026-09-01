@@ -5,10 +5,22 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-__all__ = ["SCORE_VERSION", "__version__", "format_version_info", "runtime_version_info"]
+__all__ = [
+    "GENE_SYMBOL_RESOLUTION_VERSION",
+    "SCORE_VERSION",
+    "__version__",
+    "format_version_info",
+    "runtime_version_info",
+]
 
-__version__ = "0.4.38"
+__version__ = "0.4.39"
 SCORE_VERSION = "degora_score_v1_3_source_unit_mean"
+# Gene identity is versioned separately from the score formula. v1 was the
+# species-neutral Excel date-damage rescue plus accession-version stripping.
+# The unpublished v2 candidate applied human HGNC retirements without a species
+# boundary. v3 applies those retirements only to explicitly human inputs; mouse,
+# other and unknown species retain the species-neutral v1 rules.
+GENE_SYMBOL_RESOLUTION_VERSION = "degora_symbols_v3_species_scoped_hgnc_retirements"
 
 
 def _is_tracked_by_repo(repo: Path, module_path: Path) -> bool:

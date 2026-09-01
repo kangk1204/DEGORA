@@ -85,14 +85,14 @@ def default_ablations() -> list[ScoreAblation]:
     return variants
 
 
-def read_gene_list(path: str | Path) -> list[str]:
-    """Read gold genes from a text/CSV list or from a DEGORA config's GoldPanel sheet."""
+def read_gene_list(path: str | Path, *, species: Any = None) -> list[str]:
+    """Read gold genes, applying HGNC retirements only for explicit human data."""
 
     source = Path(path)
     if source.suffix.lower() in {".xlsx", ".xls"}:
         from .slice_runner import _read_locked_gold_panel
 
-        panel = _read_locked_gold_panel(source)
+        panel = _read_locked_gold_panel(source, species=species)
         if panel["status"] != "locked":
             raise ValueError(f"{source.name}: {panel['reason'] or 'no locked GoldPanel genes'}")
         return list(panel["genes"])
@@ -102,7 +102,7 @@ def read_gene_list(path: str | Path) -> list[str]:
         cell = line.split(",")[0].split("\t")[0].strip()
         if not cell or cell.startswith("#") or cell.lower() in {"gene", "gene_symbol", "symbol"}:
             continue
-        symbol = canonical_gene_symbol(cell)
+        symbol = canonical_gene_symbol(cell, species=species)
         if symbol:
             genes.append(symbol)
     return sorted(dict.fromkeys(genes))

@@ -230,7 +230,11 @@ COLUMN_DEFINITIONS: dict[str, tuple[str, str, str]] = {
     "key": ("SQLite metadata key.", "text", "not expected"),
     "degora_rank": ("Rank by the original DEGORA score.", "1 is highest priority", "blank means not ranked"),
     "rank_label": ("Human-readable rank label.", "text such as '#1 / 20000'", "blank means not ranked"),
-    "gene_symbol": ("HGNC-style gene symbol after harmonization.", "uppercase gene symbol", "not expected for scored rows"),
+    "gene_symbol": (
+        "Normalized gene label after species-aware harmonization.",
+        "uppercase gene label in the source species namespace",
+        "not expected for scored rows",
+    ),
     "evidence_tier": ("Qualitative evidence tier assigned from DEGORA support and score metrics.", "text label", "blank means not classified"),
     "degora_score": ("Original DEGORA prioritization score; relative index, not a probability.", "higher is stronger", "blank means not scored"),
     "top_percent": ("Percentile position from the top of the ranked gene list.", "0-100, lower is better", "blank means not ranked"),
@@ -482,7 +486,48 @@ def _read_json(path: Path) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
-def _read_gold_from_config(config_path: Path | None) -> tuple[pd.DataFrame, str, str]:
+_SPECIES_ALIASES = {
+    "human": "Homo sapiens",
+    "homo sapiens": "Homo sapiens",
+    "mouse": "Mus musculus",
+    "mus musculus": "Mus musculus",
+}
+
+
+def _database_gene_species(db_path: Path) -> str | None:
+    """Return one complete database species, or ``None`` when it is not provable.
+
+    Gene-symbol resolution must not guess from one capped export sheet. Inspect
+    every species value stored in both source-level tables and fail closed when a
+    populated species column contains a blank, an unknown label, or more than one
+    species. Older databases without either species column retain the generic
+    (non-HGNC) resolver behaviour.
+    """
+
+    if not db_path.exists() or db_path.stat().st_size == 0:
+        return None
+    observed: set[str] = set()
+    found_value = False
+    with sqlite3.connect(db_path) as connection:
+        for table in ("studies", "gene_evidence"):
+            rows = connection.execute(f"PRAGMA table_info({table})").fetchall()
+            if "species" not in {str(row[1]) for row in rows}:
+                continue
+            for (value,) in connection.execute(f"SELECT DISTINCT species FROM {table}"):
+                found_value = True
+                label = str(value or "").strip().casefold()
+                normalized = _SPECIES_ALIASES.get(label)
+                if normalized is None:
+                    return None
+                observed.add(normalized)
+    return next(iter(observed)) if found_value and len(observed) == 1 else None
+
+
+def _read_gold_from_config(
+    config_path: Path | None,
+    *,
+    species: str | None = None,
+) -> tuple[pd.DataFrame, str, str]:
     """Read optional curated genes without disguising a broken panel as an absent one."""
 
     if config_path is None:
@@ -519,7 +564,9 @@ def _read_gold_from_config(config_path: Path | None) -> tuple[pd.DataFrame, str,
     # output is matched on. Without the second column a panel written with legacy
     # symbols reported every gene as absent.
     gold["gene_symbol"] = gold["gene_symbol"].astype("string").fillna("").str.upper().str.strip()
-    gold["resolved_gene_symbol"] = [canonical_gene_symbol(value) for value in gold["gene_symbol"].tolist()]
+    gold["resolved_gene_symbol"] = [
+        canonical_gene_symbol(value, species=species) for value in gold["gene_symbol"].tolist()
+    ]
     gold = (
         gold.loc[gold["resolved_gene_symbol"].astype("string").fillna("").ne("")]
         .drop_duplicates("resolved_gene_symbol")
@@ -539,7 +586,12 @@ def _read_gold_from_config(config_path: Path | None) -> tuple[pd.DataFrame, str,
     return gold, "locked", ""
 
 
-def _curated_lookup(gold: pd.DataFrame, genes: pd.DataFrame) -> pd.DataFrame:
+def _curated_lookup(
+    gold: pd.DataFrame,
+    genes: pd.DataFrame,
+    *,
+    species: str | None = None,
+) -> pd.DataFrame:
     if gold.empty or genes.empty or "gene_symbol" not in genes.columns:
         return pd.DataFrame()
     rank_columns = [
@@ -555,7 +607,9 @@ def _curated_lookup(gold: pd.DataFrame, genes: pd.DataFrame) -> pd.DataFrame:
     present = [column for column in rank_columns if column in genes.columns]
     if "resolved_gene_symbol" not in gold.columns:
         gold = gold.assign(
-            resolved_gene_symbol=[canonical_gene_symbol(value) for value in gold["gene_symbol"].tolist()]
+            resolved_gene_symbol=[
+                canonical_gene_symbol(value, species=species) for value in gold["gene_symbol"].tolist()
+            ]
         )
     lookup = gold.merge(
         genes[present].rename(columns={"gene_symbol": "resolved_gene_symbol"}),
@@ -883,8 +937,12 @@ def _export_run_workbook_locked(
             # Mirror the JSON/gold readers: a truncated or hand-edited TSV must not
             # abort the whole workbook export; fall back to an empty Source_quality sheet.
             diagnostics = pd.DataFrame()
-    gold, gold_panel_status, gold_panel_reason = _read_gold_from_config(config_path)
-    lookup = _curated_lookup(gold, genes)
+    gene_species = _database_gene_species(db_path)
+    gold, gold_panel_status, gold_panel_reason = _read_gold_from_config(
+        config_path,
+        species=gene_species,
+    )
+    lookup = _curated_lookup(gold, genes, species=gene_species)
     summary = _summary_rows(
         result_dir,
         genes,

@@ -33,6 +33,9 @@ from .formula_safety import (
     restore_formula_text_if_marked,
 )
 from .harmonize import (
+    CUFFDIFF_INFINITY,
+    contrast_direction_evidence,
+    looks_like_cuffdiff,
     is_workbook_path,
     TableMapping,
     bounded_value_examples,
@@ -647,7 +650,7 @@ def _read_catalog_frame(path: Path) -> pd.DataFrame:
         ) from exc
 
 
-def _read_locked_gold_panel(path: Path) -> dict[str, Any]:
+def _read_locked_gold_panel(path: Path, *, species: Any = None) -> dict[str, Any]:
     """Read an optional locked gold panel from beginner Excel configs."""
 
     if path.suffix.lower() not in {".xlsx", ".xls"}:
@@ -704,7 +707,8 @@ def _read_locked_gold_panel(path: Path) -> dict[str, Any]:
         {
             symbol
             for symbol in (
-                canonical_gene_symbol(value) for value in gold["gene_symbol"].tolist()
+                canonical_gene_symbol(value, species=species)
+                for value in gold["gene_symbol"].tolist()
             )
             if symbol
         }
@@ -1491,6 +1495,42 @@ def catalog_include_mask(catalog: pd.DataFrame) -> pd.Series:
     return pd.Series(mask, index=catalog.index, dtype=bool)
 
 
+def infer_single_species(catalog: pd.DataFrame) -> str | None:
+    """Return one explicit species shared by every active catalog row.
+
+    HGNC retirement aliases are safe only in a human namespace. A blank species
+    or a mixed-species catalog therefore returns ``None`` so callers keep the
+    generic pre-v0.4.39 symbol behaviour. Human/Mouse aliases are normalized only
+    to recognize equivalent labels; an otherwise unknown single label is returned
+    unchanged and cannot activate human HGNC mapping.
+    """
+
+    if "species" not in catalog.columns or catalog.empty:
+        return None
+    active = catalog
+    if "include_in_analysis" in catalog.columns:
+        active = catalog.loc[catalog_include_mask(catalog)]
+    if active.empty:
+        return None
+
+    normalized: list[str] = []
+    for value in active["species"]:
+        label = _nonempty(value)
+        if label is None:
+            return None
+        identity = label.casefold()
+        if identity in {"human", "homo sapiens"}:
+            normalized.append("Homo sapiens")
+        elif identity in {"mouse", "mus musculus"}:
+            normalized.append("Mus musculus")
+        else:
+            normalized.append(label)
+    identities = {label.casefold() for label in normalized}
+    if len(identities) != 1:
+        return None
+    return normalized[0]
+
+
 def apply_gene_type_filter(frame: pd.DataFrame, column: str | None, keep: str | None) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Filter a source table by gene type when the catalog explicitly requests it."""
 
@@ -1881,6 +1921,13 @@ def _validate_numeric_source_columns(
     scale_problem_seen = False
     fixes: list[str] = []
     warnings: list[str] = []
+    direction_evidence = contrast_direction_evidence(frame, mapping)
+    if direction_evidence:
+        warnings.append(
+            f"{row['study_id']}: {direction_evidence} DEGORA cannot check the direction itself, and "
+            "sign_convention records only what you declared, so confirm this is the "
+            "treatment-minus-control direction you intended."
+        )
     for catalog_column, meaning in (("lfc_column", "log2 fold change"), ("p_column", "p-value"), ("padj_column", "adjusted p-value")):
         source_column = getattr(mapping, catalog_column)
         if not source_column:
@@ -1925,11 +1972,23 @@ def _validate_numeric_source_columns(
             warnings.extend(scale_warnings)
             if scale_problems:
                 scale_problem_seen = True
-                fixes.append(
-                    f"{row['study_id']}: convert {source_column!r} to log2 (log2 of the ratio, or sign x log2|value| "
-                    "for a signed linear fold change) and save the table, map a log2 column instead, or - if "
-                    "the values are already log2 - set lfc_scale to log2 on this row."
-                )
+                if looks_like_cuffdiff(frame):
+                    # The values past the line are cuffdiff's own encoding of an
+                    # infinite fold change, not a mis-mapped column, and the fix is
+                    # the routine cuffdiff clean-up rather than a scale conversion.
+                    fixes.append(
+                        f"{row['study_id']}: this is a cuffdiff gene_exp.diff table. cuffdiff writes an "
+                        f"infinite fold change as {CUFFDIFF_INFINITY:g} when one condition has zero FPKM, and "
+                        "marks rows it could not test in its 'status' column. Keep the rows whose status is OK "
+                        "and clear the fold change on the infinite ones, then map the cleaned table; DEGORA "
+                        "reports how many rows that leaves behind."
+                    )
+                else:
+                    fixes.append(
+                        f"{row['study_id']}: convert {source_column!r} to log2 (log2 of the ratio, or sign x log2|value| "
+                        "for a signed linear fold change) and save the table, map a log2 column instead, or - if "
+                        "the values are already log2 - set lfc_scale to log2 on this row."
+                    )
         unparsed = numeric.isna() & raw.notna()
         n_unparsed = int(unparsed.sum())
         n_present = int(raw.notna().sum())
@@ -2254,7 +2313,9 @@ def validate_catalog_inputs(
     unit_series = _source_unit_series(catalog)
     source_units = set(unit_series[unit_series.ne("")].tolist())
     identifier_overlap_warnings = _check_identifier_space_overlap(identifiers_by_unit, catalog_path)
-    gold_panel = _read_locked_gold_panel(catalog_path)
+    gold_panel = _read_locked_gold_panel(
+        catalog_path, species=infer_single_species(catalog)
+    )
     warnings = [
         *catalog.attrs.get("promoted_alias_warnings", []),
         *_microarray_warnings(catalog),
@@ -2533,7 +2594,9 @@ def _run_slice_locked(catalog_path: Path, output_dir: Path, harmonized_dir: Path
     time_course_report_warnings = time_course_selection_warnings(time_course_report)
     input_warnings.extend(time_course_report_warnings)
 
-    gold_panel = _read_locked_gold_panel(catalog_path)
+    gold_panel = _read_locked_gold_panel(
+        catalog_path, species=infer_single_species(catalog)
+    )
     if gold_panel["status"] == "locked":
         recall50 = recall_at_k(consensus, gold_panel["genes"], 50)
         recall100 = recall_at_k(consensus, gold_panel["genes"], 100)

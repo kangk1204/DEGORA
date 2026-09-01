@@ -22,6 +22,8 @@ def _demo_rows(scale: float, *, late: bool = False) -> pd.DataFrame:
     ISG15/IFIT1/MX1/OAS1 (plus STAT1/IRF7 and the RPL13A/TBP/HPRT1 housekeeping
     negatives) are present in every table. The early/late branch intentionally
     carries DIFFERENT secondary genes -- CXCL10 in early (4h/6h) tables, DDX58/IFIH1
+    (DDX58 is scored under its current HGNC symbol RIGI, with DDX58 kept in
+    input_gene_label)
     in late (12h/24h) tables -- to demonstrate time-course content; each still spans
     two source units so it clears min_studies. The varying gene sets across time
     points are by design, not a data error.

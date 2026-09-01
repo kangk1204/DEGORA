@@ -11,9 +11,18 @@ import degora
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_v0438_keeps_the_v13_scoring_and_aggregation_contract() -> None:
-    assert degora.__version__ == "0.4.38"
+def test_v0439_keeps_the_v13_scoring_and_aggregation_contract() -> None:
+    assert degora.__version__ == "0.4.39"
     assert degora.SCORE_VERSION == "degora_score_v1_3_source_unit_mean"
+
+
+def test_gene_identity_is_versioned_separately_from_the_score() -> None:
+    # v0.4.39 changed which labels are the same gene without touching the formula,
+    # so a run records both and two runs are comparable gene-for-gene only when the
+    # resolution version matches as well.
+    assert degora.GENE_SYMBOL_RESOLUTION_VERSION == (
+        "degora_symbols_v3_species_scoped_hgnc_retirements"
+    )
 
 
 def _place_module_in_checkout(tmp_path: Path, monkeypatch) -> Path:

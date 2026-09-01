@@ -47,6 +47,7 @@ from .identifiers import (
 )
 from .harmonize import (
     _excel_payload,
+    contrast_direction_evidence,
     _record_duplicate_headers,
     TableMapping,
     _is_binary_probability_indicator,
@@ -1236,6 +1237,9 @@ def run_init(
             effect_is_log2 = scale
 
         echo("")
+        direction_evidence = _contrast_direction_evidence(path, inference, effect_column)
+        if direction_evidence:
+            echo(f"  What this table says about its own direction: {direction_evidence}")
         echo(f"  {DIRECTION_QUESTION}")
         direction = _prompt_yes_no("  Answer", DIRECTION_HELP, ask, echo)
         if direction is None:
@@ -1398,6 +1402,27 @@ def _effect_scale_evidence(path: Path, inference: SourceInference, column: str) 
     elif n_negative == 0:
         shape += " A log2 table of both up and down genes would have negative values."
     return shape
+
+
+def _contrast_direction_evidence(path: Path, inference: SourceInference, column: str) -> str:
+    """What the table itself says about which group is the numerator, or "".
+
+    The direction question is the one DEGORA cannot answer, and a reader who has to
+    leave the terminal to find the answer often guesses instead. Where the deposited
+    table states its contrast - a DESeq2 results header, cuffdiff's sample_1/sample_2
+    columns - put that sentence in front of the question. The file name is never read:
+    both real inversions this was built from had file names saying the opposite.
+    """
+
+    if not column:
+        return ""
+    frame, problem = _read_header(path, sheet_name=inference.sheet_name, header_row=inference.header_row)
+    if problem or frame.empty:
+        return ""
+    return contrast_direction_evidence(
+        frame,
+        TableMapping(gene_column="", lfc_column=column, p_column=""),
+    )
 
 
 def _ask_source_unit_id(

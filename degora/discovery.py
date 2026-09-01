@@ -729,6 +729,10 @@ class NcbiGeoClient:
             )
         return publications
 
+    @staticmethod
+    def _soft_unavailable_reason(accession: str, text: str) -> str:
+        return geo_soft_unavailable_reason(accession, text)
+
     def fetch_geo_soft(self, accession: str) -> str:
         if not re.fullmatch(r"GSE\d+", str(accession).upper()):
             raise DiscoveryError(f"invalid GEO Series accession: {accession}")
@@ -738,7 +742,7 @@ class NcbiGeoClient:
         payload = self.get_bytes(url, max_bytes=MAX_SOFT_BYTES)
         text = payload.decode("utf-8", "replace")
         if "^SERIES" not in text:
-            raise DiscoveryUnavailableError(f"GEO returned no Series SOFT record for {accession}")
+            raise DiscoveryUnavailableError(geo_soft_unavailable_reason(accession, text))
         return text
 
     def fetch_geo_sample_soft(self, accession: str) -> str:
@@ -2100,6 +2104,44 @@ def inspect_upstream_bytes(name_or_url: str, payload: bytes, *, declared_role: s
     result["payload_sha256"] = hashlib.sha256(original_payload).hexdigest()
     result["payload_bytes"] = len(original_payload)
     return result
+
+
+_HTML_BODY_RE = re.compile(r"^\s*(?:<!doctype\s+html|<html\b|<\?xml|<head\b)", re.IGNORECASE)
+_BOT_CHALLENGE_RE = re.compile(
+    r"recaptcha|hcaptcha|captcha|unusual traffic|are you a robot|access denied|cloudflare",
+    re.IGNORECASE,
+)
+
+
+def geo_soft_unavailable_reason(accession: str, text: str) -> str:
+    """Explain a SOFT response that is not a Series record.
+
+    GEO answers a rate-limited or datacenter IP with HTTP 200 and a CAPTCHA page
+    rather than an error, so the body parses to no Series record and the accession
+    looked to the reader like a study that does not exist. Nothing here retries or
+    works around the block - the point is that the message names it, because the
+    fix is to run the search from a network GEO will answer.
+    """
+
+    body = str(text)
+    if _BOT_CHALLENGE_RE.search(body[:4000]):
+        return (
+            f"GEO answered the SOFT request for {accession} with a web page containing a CAPTCHA or "
+            "access challenge instead of a Series record. This can occur when automated requests from a "
+            "shared institutional, VPN or cloud address are blocked or rate-limited. The response "
+            "does not establish whether the Series record exists. Retry later or verify the accession "
+            "through GEO and its FTP mirror from a network GEO answers."
+        )
+    if _HTML_BODY_RE.search(body):
+        return (
+            f"GEO answered the SOFT request for {accession} with a web or XML page instead of a Series "
+            "record. It may be an error, maintenance or redirect page; it is not enough to diagnose "
+            "rate limiting or confirm that the accession exists. Inspect the response and verify the "
+            "accession through GEO before using it."
+        )
+    if not body.strip():
+        return f"GEO returned an empty SOFT response for {accession}"
+    return f"GEO returned no Series SOFT record for {accession}"
 
 
 def parse_geo_soft(text: str) -> dict[str, Any]:

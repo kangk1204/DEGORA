@@ -5235,6 +5235,37 @@ def _table_columns(connection: sqlite3.Connection, table: str) -> set[str]:
     return {str(row[1]) for row in connection.execute(f"PRAGMA table_info({table})").fetchall()}
 
 
+_DATABASE_SPECIES_ALIASES = {
+    "human": "Homo sapiens",
+    "homo sapiens": "Homo sapiens",
+    "mouse": "Mus musculus",
+    "mus musculus": "Mus musculus",
+}
+
+
+def _database_gene_species(connection: sqlite3.Connection) -> str | None:
+    """Infer one complete database species for species-scoped symbol lookup.
+
+    A missing, blank, unknown, or mixed scope deliberately selects the generic
+    resolver. This prevents a human HGNC retirement from silently rewriting a
+    mouse symbol merely because one evidence table lacked scope.
+    """
+
+    observed: set[str] = set()
+    found_value = False
+    for table in ("studies", "gene_evidence"):
+        if "species" not in _table_columns(connection, table):
+            continue
+        for row in connection.execute(f"SELECT DISTINCT species FROM {table}"):
+            found_value = True
+            label = str(row[0] or "").strip().casefold()
+            normalized = _DATABASE_SPECIES_ALIASES.get(label)
+            if normalized is None:
+                return None
+            observed.add(normalized)
+    return next(iter(observed)) if found_value and len(observed) == 1 else None
+
+
 def _column_or_fallback(preferred: str, fallback: str, available: set[str]) -> str:
     if preferred in available:
         return preferred
@@ -6602,6 +6633,7 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
         query = _text_param(params, "q", maximum=128).upper()
 
         with closing(_connect(db_path or self.server.db_path)) as connection:
+            gene_species = _database_gene_species(connection)
             columns = _table_columns(connection, "genes")
             score_column = _column_or_fallback(PRIMARY_SCORE_COLUMN, "degora_score", columns)
             direction_column = _column_or_fallback(PRIMARY_DIRECTION_COLUMN, "consensus_direction", columns)
@@ -6619,7 +6651,7 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
                 # as (SEPTIN9). Both forms are matched so partial queries such as
                 # "SEPT" keep working unchanged.
                 terms = [query]
-                resolved = canonical_gene_symbol(query)
+                resolved = canonical_gene_symbol(query, species=gene_species)
                 if resolved and resolved != query:
                     terms.append(resolved)
                 where.append("(" + " OR ".join("gene_symbol LIKE ? ESCAPE '\\'" for _ in terms) + ")")
@@ -6642,12 +6674,13 @@ class DegoraRequestHandler(BaseHTTPRequestHandler):
         if len(symbol) > 128:
             raise ValueError("gene symbol is too long; maximum length is 128 characters")
         with closing(_connect(db_path or self.server.db_path)) as connection:
+            gene_species = _database_gene_species(connection)
             matched = symbol
             gene = _one_row(connection.execute("SELECT * FROM genes WHERE gene_symbol = ?", [symbol]))
             if gene is None:
                 # A legacy or Excel-date symbol names the same gene as the current
                 # symbol the run scored; resolve it rather than reporting a 404.
-                resolved = canonical_gene_symbol(symbol)
+                resolved = canonical_gene_symbol(symbol, species=gene_species)
                 if resolved and resolved != symbol:
                     gene = _one_row(
                         connection.execute("SELECT * FROM genes WHERE gene_symbol = ?", [resolved])
