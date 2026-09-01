@@ -4,6 +4,26 @@ DEGORA combines differential-expression result tables into a source-traceable ge
 
 The software can also search public Human or Mouse records, help you inspect available result tables or upstream matrices, and prepare a species-specific analysis. Human and Mouse records are always kept in separate workspaces and separate runs.
 
+## Search and Evidence Atlas
+
+### Search public records
+
+Search Human or Mouse studies in separate workspaces, review linked records,
+and inspect likely DEG inputs before preparation.
+
+![DEGORA Search view showing ranked Human publication records and linked data](docs/assets/degora-search.png)
+
+*Search results are illustrative and may change as public databases are updated.*
+
+### Inspect ranked evidence
+
+After a run, the Evidence Atlas displays the gene ranking together with the
+source-resolved evidence for each gene.
+
+![DEGORA Evidence Atlas showing ranked genes and source-resolved evidence](docs/assets/degora-evidence-atlas.png)
+
+*Evidence Atlas view of the bundled synthetic demo.*
+
 ## Quickstart
 
 For a stable first run, use the tagged v0.4.38 release:

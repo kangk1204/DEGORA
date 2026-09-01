@@ -8,6 +8,7 @@ include requirements.txt
 include CHANGELOG.md
 include .gitattributes
 include .gitignore
+recursive-include docs/assets *.png
 recursive-include tests *.py *.json
 # Keep the high-risk public-discovery regression suite explicit as well as
 # covered by the recursive test rule, so its accidental removal is visible.
